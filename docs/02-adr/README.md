@@ -16,8 +16,10 @@ This directory contains technical architecture decisions for the unnamed drug de
 | ADR | Status | Title | Category | Date |
 |-----|:------:|-------|:--------:|------|
 | [001](001-card-type-system-and-interaction-rules.md) | 📋 | Card Type System and Interaction Rules | 🃏 Cards | 2025-11-09 |
-| [002](002-betting-system-and-hand-structure.md) | 📋 | Betting System and Hand Structure | 🃏 Cards | 2025-11-09 |
+| [002](002-betting-system-and-hand-structure.md) | 📋 | Betting System and Hand Structure (overview) | 🃏 Cards | 2025-11-09 |
 | [003](003-insurance-and-conviction-system.md) | 📋 | Insurance and Conviction System | 🃏 Cards | 2025-11-09 |
+| [004](004-hand-state-machine.md) | 📋 | Hand State Machine and Round Structure | 🃏 Cards | 2025-11-09 |
+| [005](005-initiative-system.md) | 📋 | Initiative System and Raise Control | 🃏 Cards | 2025-11-09 |
 
 ---
 

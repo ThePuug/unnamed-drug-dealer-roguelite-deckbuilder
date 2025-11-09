@@ -2,9 +2,9 @@
 
 ## Status
 
-**Draft** - 2025-11-09
+**Approved** - 2025-11-09 (Ready for SOW-002 Creation)
 
-**Depends On:** RFC-001-revised (must complete SOW-001 first)
+**Depends On:** ✅ RFC-001-revised (SOW-001 completed and merged)
 
 ## Feature Request
 
@@ -145,19 +145,219 @@ Players should experience:
 
 ## Feasibility Analysis
 
-*[ARCHITECT to complete]*
+**Analyst:** ARCHITECT Role
+**Date:** 2025-11-09
+**Based On:** SOW-001 completion (foundation validated)
 
 ### Technical Assessment
 
-*To be added by ARCHITECT*
+**Verdict:** ✅ **FEASIBLE** (15-18 hours estimated)
+
+**Foundation Ready from SOW-001:**
+- ✅ Card data model supports all new card types (Deal Modifiers are just new CardType variants)
+- ✅ State machine extensible (can insert BettingPhase between states)
+- ✅ Totals calculation handles multiplicative modifiers (simple extension)
+- ✅ UI framework established (can add betting buttons, initiative indicator)
+- ✅ HandState component tracks game state (can add betting rounds, initiative)
+
+**New Systems Required:**
+
+**1. Betting Phase System (~4-5 hours)**
+- Add `BettingPhase` state (Check/Raise/Fold actions)
+- Track initiative (first raiser)
+- Track raise count (max 3 per round)
+- Handle fold logic (remove player from round, preserve cards)
+- All-in detection (last card played ends betting for that player)
+
+**Implementation Approach:**
+- Extend `State` enum: Insert `BettingPhase` after `Draw`
+- Add `BettingState` component: `{ initiative: Option<Owner>, raise_count: u8, folded_players: Vec<Owner> }`
+- Add betting UI buttons: Check, Raise (shows hand), Fold
+- Reuse existing `card_click_system` for raise card selection
+
+**2. Multi-Round Loop (~3-4 hours)**
+- Extend state machine: `Draw → Betting → Flip → [Decision] × 3 → Resolve`
+- Add round counter tracking (1/3, 2/3, 3/3)
+- Add decision point UI ("Continue or Fold?" prompt between rounds)
+- Reset betting state per round (initiative, raise count)
+
+**Implementation Approach:**
+- Add `round: u8` field to `HandState`
+- Add `DecisionPoint` state (between Flip and next Draw)
+- Loop rounds: After `Flip`, check `round < 3` → `DecisionPoint` or `Resolve`
+
+**3. Basic AI (~4-5 hours)**
+- **Narc AI:** Random card selection weighted by round (60%/40% → 80%/20%)
+- **Customer AI:** Check until Round 3, then 70% Raise / 30% Fold (if Evidence > 60)
+- Both use static decks (no learning, just heuristics)
+
+**Implementation Approach:**
+- Add `ai_decision_system` (runs during `BettingPhase` for Narc/Customer turns)
+- Use `rand` crate for weighted randomness
+- Simple if/else logic (no ML, no minimax)
+
+**4. Card Collection Expansion (~2-3 hours)**
+- Add 7 new cards (4 Deal Modifiers + 3 Evidence/Cover variants)
+- Implement multiplicative price calculation (base_price × modifier)
+- Update `create_narc_deck`, `create_customer_deck`, `create_player_deck`
+
+**Implementation Approach:**
+- Add `DealModifier` card type: `{ price_multiplier: f32, evidence: i32, heat: i32 }`
+- Modify `calculate_totals`: Check for modifiers, apply to Product price
+- Hardcode new cards (RON files deferred to future iteration)
+
+**5. UI Improvements (~2-3 hours)**
+- Turn indicator (highlight active player)
+- Initiative indicator ("Has Initiative" badge)
+- Raise counter ("2 raises left")
+- Fold button (always visible during betting)
+- Round counter ("Round 2/3")
+- Decision point prompt ("Continue or Fold?")
+
+**Implementation Approach:**
+- Extend `ui_update_system` (add new UI components)
+- Add `BettingUIRoot` component (betting-specific UI)
+- Reuse color-coding from SOW-001 (green = your turn, etc.)
+
+**Total Estimate:** 15-18 hours (fits within ≤20 hour SOW constraint)
+
+---
 
 ### System Integration
 
-*To be added by ARCHITECT*
+**Integration Points:**
+
+**From SOW-001 (Reuse):**
+1. **Card Model** → Extend with new card types (trivial, just add enum variants)
+2. **State Machine** → Insert betting phase (extensibility point designed for this)
+3. **Totals Calculation** → Add multiplier support (pure function, easy to extend)
+4. **UI Framework** → Add betting buttons (Bevy UI already set up)
+5. **HandState** → Add betting fields (fields already public for UI access)
+
+**New Dependencies:**
+- `rand` crate for AI randomness (already in ecosystem, well-maintained)
+
+**Data Flow:**
+```
+Draw → [Narc Betting] → [Customer Betting] → [Player Betting] → Flip
+  ↓                                                                 ↓
+Round++                                                      Show Cards
+  ↓                                                                 ↓
+Round < 3? → [DecisionPoint] → Continue/Fold → Draw         Resolve (if Round 3)
+```
+
+**No Breaking Changes:**
+- SOW-001 code untouched (all additions, no modifications)
+- Tests remain valid (no regression risk)
+
+---
 
 ### Alternatives Considered
 
-*To be added by ARCHITECT*
+**Alternative 1: Single-Round with Betting**
+- **Pros:** Simpler (no multi-round loop)
+- **Cons:** Doesn't validate escalation (core to game design)
+- **Verdict:** ❌ Rejected - Misses fun validation goal
+
+**Alternative 2: Smart AI (Minimax/Monte Carlo)**
+- **Pros:** Better opposition, more realistic
+- **Cons:** 10-15 extra hours, not needed for fun validation
+- **Verdict:** ❌ Deferred - Random AI sufficient for MVP
+
+**Alternative 3: RON Files for Card Data**
+- **Pros:** Hot-reloadable, easier balancing
+- **Cons:** 3-4 extra hours for minimal benefit (only 15 cards)
+- **Verdict:** ⏸️ Deferred - Hardcode for now, add when 20+ cards (RFC-003)
+
+**Alternative 4: Animated Card Flips**
+- **Pros:** Juicier, more satisfying
+- **Cons:** 5-6 extra hours, doesn't affect fun validation
+- **Verdict:** ⏸️ Deferred - Focus on mechanics first
+
+**Chosen Approach:**
+- Multi-round with basic AI (random + simple heuristics)
+- Hardcoded cards (15 cards manageable)
+- Minimal UI (functional, not polished)
+- **Rationale:** Fastest path to "is this fun?" answer
+
+---
+
+### Risks & Mitigation
+
+**Technical Risks:**
+
+**Risk 1: State Machine Complexity**
+- **Concern:** Adding betting phase + multi-round loop complicates state machine
+- **Mitigation:** SOW-001 designed for this (extensibility validated)
+- **Likelihood:** Low
+- **Impact:** Medium
+
+**Risk 2: AI Too Dumb / Too Smart**
+- **Concern:** Random AI creates no pressure OR overpowers player
+- **Mitigation:** Weighted randomness tunable (adjust % per round), static decks prevent cheese
+- **Likelihood:** Medium
+- **Impact:** Medium (but easy to tweak)
+
+**Risk 3: Betting UI Confusing**
+- **Concern:** Player doesn't understand initiative, raise count, fold timing
+- **Mitigation:** Clear indicators (turn highlight, initiative badge, raise counter)
+- **Likelihood:** Medium
+- **Impact:** High (game not fun if UI unclear)
+
+**Risk 4: Performance Degradation**
+- **Concern:** More systems → frame drops
+- **Mitigation:** Bevy ECS scales well, no heavy computations per frame
+- **Likelihood:** Very Low
+- **Impact:** Low
+
+**Risk 5: Not Fun**
+- **Concern:** After implementation, game still boring
+- **Mitigation:** This is THE validation (if not fun here, pivot/kill project)
+- **Likelihood:** Unknown (this RFC's purpose is to find out)
+- **Impact:** Critical (make or break)
+
+**Process Risks:**
+
+**Risk 6: Scope Creep**
+- **Concern:** "Just one more feature" expands past 20 hours
+- **Mitigation:** Strict MVP scope (defer animations, smart AI, RON files)
+- **Likelihood:** Medium
+- **Impact:** High (delays fun validation)
+
+**Risk 7: Playtest Bias**
+- **Concern:** Developer thinks it's fun, but it's not
+- **Mitigation:** Immediate external playtest after implementation
+- **Likelihood:** Medium
+- **Impact:** High (false positive on fun)
+
+---
+
+### Recommendations
+
+**Approve RFC-002 with conditions:**
+
+✅ **Approve IF:**
+1. Scope stays within 15-18 hours (no animations, no smart AI, no RON files)
+2. Immediate playtest after implementation (external validation)
+3. Acceptance criteria focus on "is this fun?" (not just "does it work?")
+
+❌ **Reject IF:**
+- Scope expands beyond 20 hours (must stay tight for fast validation)
+- Player adds "nice-to-have" features (animations, polish) before fun validation
+
+**Post-Implementation:**
+- If fun → Proceed to RFC-003 (Insurance & Stakes)
+- If not fun → Pivot (maybe single-round with different mechanics?) or Kill project
+
+---
+
+### Conclusion
+
+**RFC-002 is technically feasible** and builds cleanly on SOW-001 foundation. Estimated 15-18 hours fits within ≤20 hour constraint. No major technical risks (state machine extensibility validated).
+
+**Key Success Metric:** After implementation, answer "Is this game fun?" with confidence.
+
+**This RFC is make-or-break for game concept.** If betting + AI + multi-round doesn't create engaging loop, no amount of polish (RFC-003) will save it.
 
 ---
 
@@ -223,22 +423,27 @@ Players should experience:
 
 ## Approval
 
-**Status:** Awaiting ARCHITECT feasibility analysis
+**Status:** ✅ **APPROVED** - Ready for SOW-002 Creation
 
 **Approvers:**
-- ARCHITECT: [Pending]
+- ARCHITECT: ✅ Approved (15-18 hours estimated, technically feasible, builds cleanly on SOW-001)
 - PLAYER: ✅ Approved (player need defined, fun validation goals clear, builds on RFC-001 foundation)
 
-**Scope Constraint:** [ARCHITECT to estimate - target ≤20 hours]
+**Scope Constraint:** 15-18 hours (fits within ≤20 hour SOW limit)
 
 **Dependencies:**
-- RFC-001-revised: Must complete SOW-001 first (card model, state machine, UI foundation)
+- RFC-001-revised: ✅ SOW-001 completed and merged (foundation validated)
+
+**Conditions:**
+1. Scope must stay within 15-18 hours (no scope creep)
+2. Immediate playtest after implementation (external validation)
+3. Focus on "is this fun?" (not just technical completion)
 
 **Next Steps:**
-1. **Wait for RFC-001-revised completion** (SOW-001 implementation, 12-16 hours)
-2. **ARCHITECT:** Add feasibility analysis (effort estimate, integration points)
-3. **If Approved:** ARCHITECT creates SOW-002
-4. **DEVELOPER:** Implements per SOW-002
+1. ✅ **SOW-001 Complete** (foundation validated)
+2. ✅ **ARCHITECT:** Feasibility analysis complete (15-18 hours estimated)
+3. ➡️ **ARCHITECT:** Create SOW-002 (define phases, deliverables, acceptance criteria)
+4. **DEVELOPER:** Implement per SOW-002
 5. **Critical:** Playtest immediately after implementation (is it fun?)
 
 **Date:** 2025-11-09

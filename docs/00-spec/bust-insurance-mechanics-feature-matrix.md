@@ -8,29 +8,39 @@ Implementation tracking for Bust & Insurance Mechanics specification.
 
 ---
 
-## Summary
+## Legend
 
-**Overall Completion:** 0/26 features (0%)
-
-| Category | Complete | Partial | Not Started | Deferred |
-|----------|----------|---------|-------------|----------|
-| Core Bust Rule | 0 | 0 | 3 | 0 |
-| Insurance Activation | 0 | 0 | 6 | 0 |
-| Conviction System | 0 | 0 | 5 | 0 |
-| Resolution Flow | 0 | 0 | 4 | 0 |
-| Edge Cases | 0 | 0 | 5 | 0 |
-| Player Feedback | 0 | 0 | 3 | 0 |
-| **Total** | **0** | **0** | **26** | **0** |
+- ✅ **Complete** - Fully implemented per spec
+- 🔄 **In Progress** - Currently being developed (SOW active)
+- 🎯 **Planned** - RFC approved, SOW created, ready for implementation
+- ❌ **Not Started** - Planned but not implemented
+- ⏸️ **Deferred** - Intentionally postponed to post-MVP
 
 ---
 
-## Core Bust Rule: 0/3 complete (0%)
+## Summary
+
+**Overall Completion:** 1/26 features (4%)
+
+| Category | Complete | Not Started | Deferred |
+|----------|----------|-------------|----------|
+| Core Bust Rule | 1 | 2 | 0 |
+| Insurance Activation | 0 | 6 | 0 |
+| Conviction System | 0 | 5 | 0 |
+| Resolution Flow | 0 | 4 | 0 |
+| Edge Cases | 0 | 5 | 0 |
+| Player Feedback | 0 | 3 | 0 |
+| **Total** | **1** | **25** | **0** |
+
+---
+
+## Core Bust Rule: 1/3 complete (33%)
 
 | Feature | Status | RFC/ADR | Notes |
 |---------|:------:|---------|-------|
-| Evidence > Cover check | ❌ | - | Simple bust condition |
-| Bust triggers character death | ❌ | - | Run ends, character arrested (permadeath) |
-| Tie goes to player (Evidence = Cover) | ❌ | - | Safe if equal |
+| Evidence > Cover check | ✅ | SOW-001 | Simple bust condition → Game over |
+| Bust triggers character death | ❌ | Phase 2 | Run ends, character arrested (permadeath) |
+| Tie goes to player (Evidence = Cover) | ❌ | Phase 2 | Safe if equal |
 
 ---
 
@@ -94,12 +104,38 @@ Implementation tracking for Bust & Insurance Mechanics specification.
 
 ## Implementation Deviations
 
-_No implementations yet._
+_No deviations yet - SOW-001 in progress._
+
+---
+
+## Implementation Status by RFC/SOW
+
+### SOW-001: Minimal Playable Hand (~4h actual) - ✅ Complete
+
+**Status:** Approved - Ready to Merge
+
+**Features Delivered:**
+- ✅ Evidence > Cover check (simple bust condition → Game over)
+
+**Completion:** 1/26 features (4%)
+
+**Note:** SOW-001 includes basic bust checking only. No insurance, no conviction, no character persistence (just "game over" on bust). All other features deferred to RFC-003 or Phase 2.
+
+### RFC-003: Insurance and Complete Cards (14-18h) - Draft
+
+**Planned Features:**
+- Get Out of Jail cards (Insurance Activation: all 6 features)
+- Make It Stick cards (Conviction System: all 5 features)
+- Complete bust resolution flow
+- Bust warnings and feedback
 
 ---
 
 ## Notes
 
+- **SOW-001:** Simple bust check only (Evidence > Cover → Game over)
+- **RFC-003:** Full insurance/conviction system
+- **Phase 2:** Character permadeath integration
 - Bust mechanics are the CORE failure condition (permadeath trigger)
 - Insurance is expensive but necessary at high Heat
 - Make It Stick escalates with Heat (conviction common at Inferno tier)

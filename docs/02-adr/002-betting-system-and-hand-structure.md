@@ -6,6 +6,10 @@
 
 **Related RFC:** RFC-002 (Betting System and AI Opponents)
 
+**Note:** This ADR provides an overview of the betting system. Detailed architectural decisions extracted to:
+- **ADR-004:** Hand State Machine and Round Structure
+- **ADR-005:** Initiative System and Raise Control
+
 ## Context
 
 The game's core loop needs to create **poker-like tension** through betting rounds, where players make sequential "stay in or fold" decisions as Evidence accumulates. This is the primary innovation differentiating this from traditional deckbuilders.
@@ -390,6 +394,8 @@ fn handle_betting_action(
 
 - **RFC-002:** Betting System and AI Opponents (3-round structure, Check/Raise/Fold, initiative)
 - **ADR-001:** Card Type System and Interaction Rules (card flip → totals calculation)
+- **ADR-004:** Hand State Machine and Round Structure (detailed state flow, extracted from this ADR)
+- **ADR-005:** Initiative System and Raise Control (detailed initiative mechanics, extracted from this ADR)
 - **Poker Design:** Texas Hold'em betting structure (inspiration for initiative + raise limits)
 
 ## Date
