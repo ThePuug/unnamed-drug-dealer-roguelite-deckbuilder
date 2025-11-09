@@ -2,7 +2,7 @@
 
 ## Status
 
-**Proposed** - 2025-11-09
+**Accepted** - 2025-11-09 (Implemented in SOW-003)
 
 **Related RFC:** RFC-003 (Insurance and Complete Cards)
 
