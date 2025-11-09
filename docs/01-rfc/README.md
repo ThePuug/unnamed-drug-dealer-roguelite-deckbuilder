@@ -7,8 +7,8 @@ RFCs bridge player needs and technical reality. Each RFC starts with a player-fa
 | # | Title | Category | Status | Created | Has ADR |
 |---|-------|----------|--------|---------|---------|
 | 001 | MVP Core Prototype | 🛠️ Foundation | ✅ Split Approved (superseded) | 2025-11-09 | N/A |
-| 001-revised | Minimal Playable Hand | 🛠️ Foundation | ✅ Approved → SOW-001 Created | 2025-11-09 | TBD |
-| 002 | Betting System and AI Opponents | 🎲 Roguelite | 📝 Draft (depends on RFC-001) | 2025-11-09 | TBD |
+| 001-revised | Minimal Playable Hand | 🛠️ Foundation | ✅ Implemented (SOW-001 merged) | 2025-11-09 | ADR-001 |
+| 002 | Betting System and AI Opponents | 🎲 Roguelite | ✅ Implemented (SOW-002 merged) | 2025-11-09 | ADR-002/004/005 |
 | 003 | Insurance and Complete Cards | 🃏 Cards | 📝 Draft (depends on RFC-002) | 2025-11-09 | TBD |
 
 **Legend:**
