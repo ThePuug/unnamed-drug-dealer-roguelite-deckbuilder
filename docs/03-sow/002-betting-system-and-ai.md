@@ -2,7 +2,7 @@
 
 ## Status
 
-**Approved** - 2025-11-09 (Ready to Merge, Pending PLAYER Fun Assessment)
+**Merged** - 2025-11-09 (Merged to main as commit 943b729)
 
 ## References
 
