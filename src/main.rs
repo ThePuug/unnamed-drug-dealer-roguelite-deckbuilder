@@ -3,6 +3,7 @@
 
 use bevy::prelude::*;
 use rand::Rng;
+use rand::seq::SliceRandom;
 
 fn main() {
     App::new()
@@ -15,7 +16,9 @@ fn main() {
             auto_flip_system,
             betting_button_system,
             decision_point_button_system,
+            restart_button_system,
             update_betting_button_states,
+            update_restart_button_text,
             toggle_ui_visibility_system,
             update_played_cards_display_system,
             recreate_hand_display_system,
@@ -89,10 +92,17 @@ struct FoldButton;
 struct DecisionPointContainer;
 
 #[derive(Component)]
+struct BustContainer;
+
+#[derive(Component)]
 struct ContinueButton;
 
 #[derive(Component)]
 struct FoldDecisionButton;
+
+// Restart button (appears at end of hand)
+#[derive(Component)]
+struct RestartButton;
 
 #[derive(Component)]
 struct PlayedCardDisplay;
@@ -349,6 +359,50 @@ fn create_ui(commands: &mut Commands) {
                 });
             });
         });
+
+        // Restart UI (appears at Bust state)
+        parent.spawn((
+            NodeBundle {
+                style: Style {
+                    width: Val::Percent(100.0),
+                    height: Val::Px(100.0),
+                    justify_content: JustifyContent::Center,
+                    align_items: AlignItems::Center,
+                    margin: UiRect::top(Val::Px(20.0)),
+                    display: Display::None, // Hidden by default
+                    ..default()
+                },
+                ..default()
+            },
+            BustContainer,
+        ))
+        .with_children(|parent| {
+            // Restart button
+            parent.spawn((
+                ButtonBundle {
+                    style: Style {
+                        width: Val::Px(200.0),
+                        height: Val::Px(60.0),
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
+                        ..default()
+                    },
+                    background_color: Color::srgb(0.3, 0.6, 0.9).into(),
+                    ..default()
+                },
+                RestartButton,
+            ))
+            .with_children(|parent| {
+                parent.spawn(TextBundle::from_section(
+                    "RESTART HAND",
+                    TextStyle {
+                        font_size: 24.0,
+                        color: Color::WHITE,
+                        ..default()
+                    },
+                ));
+            });
+        });
     });
 }
 
@@ -396,10 +450,16 @@ fn ui_update_system(
 
     // Update totals display
     if let Ok(mut text) = totals_query.get_single_mut() {
-        let totals = hand_state.calculate_totals();
+        // Only include current round cards after Flip (when cards are revealed)
+        let include_current_round = matches!(
+            hand_state.current_state,
+            State::Flip | State::DecisionPoint | State::Resolve | State::Bust
+        );
+        let totals = hand_state.calculate_totals(include_current_round);
         text.sections[0].value = format!(
-            "Evidence: {} | Cover: {} | Heat: {} | Profit: ${}",
-            totals.evidence, totals.cover, totals.heat, totals.profit
+            "Evidence: {} | Cover: {} | Heat: {} | Profit: ${}\nCash: ${} | Total Heat: {}",
+            totals.evidence, totals.cover, totals.heat, totals.profit,
+            hand_state.cash, hand_state.current_heat
         );
     }
 
@@ -412,7 +472,7 @@ fn ui_update_system(
             String::new()
         };
 
-        let status = match hand_state.current_state {
+        let mut status = match hand_state.current_state {
             State::Draw => format!("Status: Round {}/3 - Drawing Cards...", hand_state.current_round),
             State::Betting => format!("Status: Round {}/3 - Betting Phase{}", hand_state.current_round, turn_info),
             State::Flip => format!("Status: Round {}/3 - Flipping Cards...", hand_state.current_round),
@@ -428,6 +488,26 @@ fn ui_update_system(
             State::CustomerPlay => "Status: Customer's Turn".to_string(),
             State::PlayerPlay => "Status: YOUR TURN - Click a card to play".to_string(),
         };
+
+        // SOW-003 Phase 5: Add Insurance/Conviction status info
+        if let Some(insurance) = hand_state.active_insurance(true) {
+            if let CardType::Insurance { cost, heat_penalty, .. } = insurance.card_type {
+                status.push_str(&format!("\nInsurance: {} (Cost: ${}, Heat: +{})", insurance.name, cost, heat_penalty));
+            }
+        }
+
+        if let Some(conviction) = hand_state.active_conviction(true) {
+            if let CardType::Conviction { heat_threshold } = conviction.card_type {
+                let at_risk = hand_state.current_heat >= heat_threshold;
+                if at_risk {
+                    status.push_str(&format!("\n⚠️ CONVICTION ACTIVE: {} - Threshold: {} (Heat: {}) - INSURANCE WON'T WORK!",
+                        conviction.name, heat_threshold, hand_state.current_heat));
+                } else {
+                    status.push_str(&format!("\nConviction: {} - Threshold: {} (Heat: {})",
+                        conviction.name, heat_threshold, hand_state.current_heat));
+                }
+            }
+        }
 
         text.sections[0].value = status;
 
@@ -499,6 +579,8 @@ fn recreate_hand_display_system(
                     CardType::Evidence { .. } => Color::srgb(0.8, 0.3, 0.3),
                     CardType::Cover { .. } => Color::srgb(0.3, 0.8, 0.3),
                     CardType::DealModifier { .. } => Color::srgb(0.7, 0.5, 0.9), // Purple for modifiers
+                    CardType::Insurance { .. } => Color::srgb(0.2, 0.8, 0.8), // Cyan for insurance
+                    CardType::Conviction { .. } => Color::srgb(0.9, 0.2, 0.2), // Red for conviction
                 };
 
                 let card_info = match &card.card_type {
@@ -512,6 +594,10 @@ fn recreate_hand_display_system(
                         format!("{}\nCover: {} | Heat: {}", card.name, cover, heat),
                     CardType::DealModifier { price_multiplier, evidence, cover, heat } =>
                         format!("{}\n×{:.1} | E:{} C:{} H:{}", card.name, price_multiplier, evidence, cover, heat),
+                    CardType::Insurance { cover, cost, heat_penalty } =>
+                        format!("{}\nCover: {} | Cost: ${} | Heat: {}", card.name, cover, cost, heat_penalty),
+                    CardType::Conviction { heat_threshold } =>
+                        format!("{}\nThreshold: {}", card.name, heat_threshold),
                 };
 
                 parent.spawn((
@@ -627,7 +713,7 @@ fn betting_button_system(
     // Check button (only works when not facing a raise)
     for interaction in check_query.iter() {
         if *interaction == Interaction::Pressed {
-            let result = betting_state.handle_action(Owner::Player, BettingAction::Check, &mut hand_state);
+            let result = betting_state.handle_action(Owner::Player, BettingAction::Check, &mut hand_state, None);
 
             if result.is_ok() {
                 // Check if betting is complete
@@ -636,15 +722,18 @@ fn betting_button_system(
                     betting_state.reset_for_round();
                 }
             }
-            // If error (facing raise), button click is ignored (button should be disabled anyway)
+            // If error (facing raise), button click is ignored (button should be disabled)
         }
     }
 
     // Fold button
     for interaction in fold_query.iter() {
         if *interaction == Interaction::Pressed {
-            // Fold during betting = exit hand immediately
-            hand_state.fold_at_decision_point();
+            // Fold during betting phase
+            let _result = betting_state.handle_action(Owner::Player, BettingAction::Fold, &mut hand_state, None);
+            // Fold always succeeds and ends the hand immediately
+            hand_state.outcome = Some(HandOutcome::Safe); // Folding is "safe" (not busted)
+            hand_state.current_state = State::Bust; // End hand
         }
     }
 }
@@ -716,13 +805,93 @@ fn decision_point_button_system(
 }
 
 // ============================================================================
+// RESTART BUTTON SYSTEM - Restart hand after bust/safe
+// ============================================================================
+
+fn restart_button_system(
+    restart_query: Query<&Interaction, (Changed<Interaction>, With<RestartButton>)>,
+    mut hand_state_query: Query<&mut HandState>,
+    mut betting_state_query: Query<&mut BettingState>,
+) {
+    let Ok(mut hand_state) = hand_state_query.get_single_mut() else {
+        return;
+    };
+
+    // Only at Bust state
+    if hand_state.current_state != State::Bust {
+        return;
+    }
+
+    // Restart button behavior depends on outcome
+    for interaction in restart_query.iter() {
+        if *interaction == Interaction::Pressed {
+            match hand_state.outcome {
+                Some(HandOutcome::Safe) => {
+                    // Safe outcome: Start next hand (preserve cash/heat for the run)
+                    hand_state.start_next_hand();
+                }
+                Some(HandOutcome::Busted) => {
+                    // Busted: New run (reset everything)
+                    hand_state.reset();
+                }
+                None => {
+                    // Shouldn't happen, but reset everything
+                    hand_state.reset();
+                }
+            }
+
+            // Reset betting state for new hand
+            if let Ok(mut betting_state) = betting_state_query.get_single_mut() {
+                *betting_state = BettingState::default();
+            }
+        }
+    }
+}
+
+// ============================================================================
+// UPDATE RESTART BUTTON TEXT - Show "NEXT HAND" or "NEW RUN" based on outcome
+// ============================================================================
+
+fn update_restart_button_text(
+    hand_state_query: Query<&HandState>,
+    restart_button_query: Query<Entity, With<RestartButton>>,
+    children_query: Query<&Children>,
+    mut text_query: Query<&mut Text>,
+) {
+    let Ok(hand_state) = hand_state_query.get_single() else {
+        return;
+    };
+
+    // Only at Bust state
+    if hand_state.current_state != State::Bust {
+        return;
+    }
+
+    // Update restart button text based on outcome
+    if let Ok(button_entity) = restart_button_query.get_single() {
+        if let Ok(children) = children_query.get(button_entity) {
+            for &child in children.iter() {
+                if let Ok(mut text) = text_query.get_mut(child) {
+                    text.sections[0].value = match hand_state.outcome {
+                        Some(HandOutcome::Safe) => "NEXT HAND".to_string(),
+                        Some(HandOutcome::Busted) => "NEW RUN".to_string(),
+                        None => "RESTART".to_string(),
+                    };
+                }
+            }
+        }
+    }
+}
+
+// ============================================================================
 // UI VISIBILITY TOGGLE SYSTEM - SOW-002 Phase 5
 // ============================================================================
 
 fn toggle_ui_visibility_system(
     hand_state_query: Query<&HandState>,
-    mut betting_container_query: Query<&mut Style, (With<BettingActionsContainer>, Without<DecisionPointContainer>)>,
-    mut decision_container_query: Query<&mut Style, (With<DecisionPointContainer>, Without<BettingActionsContainer>)>,
+    mut betting_container_query: Query<&mut Style, (With<BettingActionsContainer>, Without<DecisionPointContainer>, Without<BustContainer>)>,
+    mut decision_container_query: Query<&mut Style, (With<DecisionPointContainer>, Without<BettingActionsContainer>, Without<BustContainer>)>,
+    mut bust_container_query: Query<&mut Style, (With<BustContainer>, Without<BettingActionsContainer>, Without<DecisionPointContainer>)>,
 ) {
     let Ok(hand_state) = hand_state_query.get_single() else {
         return;
@@ -740,6 +909,15 @@ fn toggle_ui_visibility_system(
     // Show/hide decision point modal
     if let Ok(mut style) = decision_container_query.get_single_mut() {
         style.display = if hand_state.current_state == State::DecisionPoint {
+            Display::Flex
+        } else {
+            Display::None
+        };
+    }
+
+    // Show/hide restart button (at Bust state)
+    if let Ok(mut style) = bust_container_query.get_single_mut() {
+        style.display = if hand_state.current_state == State::Bust {
             Display::Flex
         } else {
             Display::None
@@ -891,8 +1069,8 @@ fn card_click_system(
                         if card_button.card_index < hand_state.player_hand.len() {
                             println!("Player clicking card {}, awaiting: {:?}", card_button.card_index, betting_state.players_awaiting_action);
 
-                            // Use handle_action which properly detects Call vs Raise
-                            let result = betting_state.handle_action(Owner::Player, BettingAction::Raise, &mut hand_state);
+                            // Use handle_action which properly detects Call vs Raise, passing the clicked card index
+                            let result = betting_state.handle_action(Owner::Player, BettingAction::Raise, &mut hand_state, Some(card_button.card_index));
 
                             if result.is_ok() {
                                 // Check if betting complete
@@ -932,7 +1110,7 @@ enum Owner {
     Player,
 }
 
-/// Card types with their specific values (Extended in SOW-002 Phase 4)
+/// Card types with their specific values (Extended in SOW-002/003)
 #[derive(Debug, Clone)]
 enum CardType {
     Product { price: u32, heat: i32 },
@@ -941,6 +1119,10 @@ enum CardType {
     Cover { cover: u32, heat: i32 },
     // SOW-002 Phase 4: Deal Modifiers (multiplicative price, additive Evidence/Cover/Heat)
     DealModifier { price_multiplier: f32, evidence: i32, cover: i32, heat: i32 },
+    // SOW-003 Phase 1: Insurance (Cover + bust activation)
+    Insurance { cover: u32, cost: u32, heat_penalty: i32 },
+    // SOW-003 Phase 2: Conviction (Heat threshold, overrides insurance)
+    Conviction { heat_threshold: u32 },
 }
 
 /// Card instance
@@ -982,7 +1164,7 @@ enum HandOutcome {
     Busted,
 }
 
-/// Hand state tracking (Extended for SOW-002)
+/// Hand state tracking (Extended for SOW-002/003)
 #[derive(Component)]
 struct HandState {
     pub current_state: State,
@@ -996,6 +1178,9 @@ struct HandState {
     pub customer_hand: Vec<Card>,
     pub player_hand: Vec<Card>,
     pub outcome: Option<HandOutcome>,
+    // SOW-003: Cash and Heat tracking
+    pub cash: u32,           // Cumulative profit for insurance affordability
+    pub current_heat: u32,   // Cumulative Heat for conviction thresholds
 }
 
 impl Default for HandState {
@@ -1012,6 +1197,8 @@ impl Default for HandState {
             customer_hand: Vec::new(),
             player_hand: Vec::new(),
             outcome: None,
+            cash: 0,          // SOW-003: Start with no cash
+            current_heat: 0,  // SOW-003: Start with no Heat
         }
     }
 }
@@ -1020,6 +1207,18 @@ impl HandState {
     /// Reset hand state for replay testing
     fn reset(&mut self) {
         *self = Self::default();
+    }
+
+    /// Start next hand in the run (preserve cash/heat, reset decks)
+    /// Used after Safe outcome to continue the run
+    fn start_next_hand(&mut self) {
+        let preserved_cash = self.cash;
+        let preserved_heat = self.current_heat;
+
+        *self = Self::default();
+
+        self.cash = preserved_cash;
+        self.current_heat = preserved_heat;
     }
 
     /// Draw cards from decks to hands (initial draw phase)
@@ -1235,7 +1434,8 @@ impl BettingState {
     }
 
     /// Handle a betting action per ADR-005 rules
-    fn handle_action(&mut self, player: Owner, action: BettingAction, hand_state: &mut HandState) -> Result<(), String> {
+    /// card_index: Optional card index for Raise/Call (None = use index 0)
+    fn handle_action(&mut self, player: Owner, action: BettingAction, hand_state: &mut HandState, card_index: Option<usize>) -> Result<(), String> {
         // Verify it's this player's turn
         if self.current_player != player {
             return Err(format!("Not your turn! Current player: {:?}", self.current_player));
@@ -1304,8 +1504,12 @@ impl BettingState {
                     return Err("No cards to raise/call with".to_string());
                 }
 
-                // Remove first card from hand and play it face-down
-                let card = hand.remove(0);
+                // Remove clicked card from hand and play it face-down
+                let index = card_index.unwrap_or(0); // Default to first card if no index specified
+                if index >= hand.len() {
+                    return Err(format!("Invalid card index: {}", index));
+                }
+                let card = hand.remove(index);
                 hand_state.cards_played_this_round.push(card);
 
                 // Record action for visual feedback
@@ -1449,8 +1653,8 @@ fn ai_betting_system(
 
     println!("AI decision: {:?} -> {:?}", current_player, action);
 
-    // Execute action
-    let _ = betting_state.handle_action(current_player, action, &mut hand_state);
+    // Execute action (AI uses None for card_index, plays first card)
+    let _ = betting_state.handle_action(current_player, action, &mut hand_state, None);
 
     // Check if betting is complete after action
     if betting_state.is_complete() {
@@ -1524,7 +1728,7 @@ fn customer_ai_decision(round: u8, betting_state: &BettingState, hand_state: &Ha
     }
 
     // Round 3: Calculate current Evidence
-    let totals = hand_state.calculate_totals();
+    let totals = hand_state.calculate_totals(true);
 
     if totals.evidence > 60 {
         // High Evidence → 30% Fold, 70% Raise
@@ -1552,27 +1756,105 @@ fn customer_ai_decision(round: u8, betting_state: &BettingState, hand_state: &Ha
 // ============================================================================
 
 impl HandState {
-    /// Resolve the hand by checking if player gets busted
+    /// Resolve hand outcome (bust check with insurance/conviction - SOW-003 Phase 3)
     ///
-    /// Bust check runs at Resolve state (after all cards played)
-    /// - Evidence > Cover → Busted (run ends)
-    /// - Evidence ≤ Cover → Safe (continue possible, but single round so ends)
-    /// - Tie goes to player (Evidence = Cover is Safe)
+    /// Resolution Order (per ADR-003):
+    /// 1. Evidence ≤ Cover → Safe (no insurance/conviction checks needed)
+    /// 2. Evidence > Cover → Check Conviction:
+    ///    - Conviction active AND current_heat >= threshold → Busted (override insurance)
+    /// 3. Check Insurance:
+    ///    - No insurance → Busted
+    ///    - Has insurance, can't afford → Busted
+    ///    - Has insurance, can afford → Pay cost, gain heat_penalty, burn insurance → Safe
     ///
-    /// Extensible: RFC-003 will add insurance check before bust finalization
+    /// Post-resolution:
+    /// - Safe outcome: Bank profit to cash (for future insurance affordability)
+    /// - All outcomes: Accumulate totals.heat to current_heat (for conviction thresholds)
     fn resolve_hand(&mut self) -> HandOutcome {
-        let totals = self.calculate_totals();
+        let totals = self.calculate_totals(true); // Always include all cards at resolution
 
-        let outcome = if totals.evidence > totals.cover {
-            HandOutcome::Busted
-        } else {
-            // Evidence ≤ Cover → Safe (tie goes to player)
+        // Calculate projected heat (current heat + this hand's heat)
+        // This is what heat will be AFTER this hand, used for conviction checks
+        let projected_heat = self.current_heat.saturating_add(totals.heat as u32);
+
+        // Step 1: Evidence ≤ Cover → Safe (tie goes to player)
+        let outcome = if totals.evidence <= totals.cover {
             HandOutcome::Safe
+        } else {
+            // Evidence > Cover → Potential bust, check insurance/conviction
+
+            // Step 2: Check Conviction override (using PROJECTED heat after this hand)
+            if let Some(conviction) = self.active_conviction(true) {
+                if let CardType::Conviction { heat_threshold } = conviction.card_type {
+                    if projected_heat >= heat_threshold {
+                        // Conviction overrides insurance - run ends
+                        HandOutcome::Busted
+                    } else {
+                        // Heat below threshold, conviction doesn't activate
+                        self.try_insurance_activation()
+                    }
+                } else {
+                    self.try_insurance_activation()
+                }
+            } else {
+                // No conviction active
+                self.try_insurance_activation()
+            }
         };
+
+        // Post-resolution: Accumulate cash and heat
+        match outcome {
+            HandOutcome::Safe => {
+                // Bank profit to cash (for future insurance purchases)
+                self.cash += totals.profit;
+            }
+            HandOutcome::Busted => {
+                // No cash gained on bust
+            }
+        }
+
+        // Always accumulate heat (regardless of outcome)
+        self.current_heat = self.current_heat.saturating_add(totals.heat as u32);
 
         self.outcome = Some(outcome);
         self.current_state = State::Bust; // Transition to terminal state
         outcome
+    }
+
+    /// Try to activate insurance (Step 3 of resolution order)
+    ///
+    /// Returns:
+    /// - Safe: Insurance activated (cost paid, heat gained, card burned)
+    /// - Busted: No insurance OR can't afford
+    fn try_insurance_activation(&mut self) -> HandOutcome {
+        // Extract insurance values first to avoid borrow issues
+        let insurance_info = self.active_insurance(true).and_then(|insurance| {
+            if let CardType::Insurance { cost, heat_penalty, .. } = insurance.card_type {
+                Some((insurance.name.clone(), cost, heat_penalty))
+            } else {
+                None
+            }
+        });
+
+        if let Some((insurance_name, cost, heat_penalty)) = insurance_info {
+            // Check affordability
+            if self.cash >= cost {
+                // Activate insurance: pay cost, gain heat penalty
+                self.cash -= cost;
+                self.current_heat = self.current_heat.saturating_add(heat_penalty as u32);
+
+                // Burn insurance card (remove from deck permanently)
+                self.player_deck.retain(|card| card.name != insurance_name);
+
+                HandOutcome::Safe
+            } else {
+                // Can't afford insurance
+                HandOutcome::Busted
+            }
+        } else {
+            // No insurance active
+            HandOutcome::Busted
+        }
     }
 }
 
@@ -1592,20 +1874,54 @@ struct Totals {
 impl HandState {
     /// Get active Product card (last Product played, if any)
     /// Override rule: Only last Product matters
-    fn active_product(&self) -> Option<&Card> {
-        self.cards_played
-            .iter()
-            .rev()
-            .find(|card| matches!(card.card_type, CardType::Product { .. }))
+    /// include_current_round: Whether to include face-down cards from this round
+    fn active_product(&self, include_current_round: bool) -> Option<&Card> {
+        let cards: Vec<&Card> = if include_current_round {
+            self.cards_played.iter().chain(self.cards_played_this_round.iter()).collect()
+        } else {
+            self.cards_played.iter().collect()
+        };
+
+        cards.into_iter().rev().find(|card| matches!(card.card_type, CardType::Product { .. }))
     }
 
     /// Get active Location card (last Location played, required)
     /// Override rule: Only last Location matters
-    fn active_location(&self) -> Option<&Card> {
-        self.cards_played
-            .iter()
-            .rev()
-            .find(|card| matches!(card.card_type, CardType::Location { .. }))
+    /// include_current_round: Whether to include face-down cards from this round
+    fn active_location(&self, include_current_round: bool) -> Option<&Card> {
+        let cards: Vec<&Card> = if include_current_round {
+            self.cards_played.iter().chain(self.cards_played_this_round.iter()).collect()
+        } else {
+            self.cards_played.iter().collect()
+        };
+
+        cards.into_iter().rev().find(|card| matches!(card.card_type, CardType::Location { .. }))
+    }
+
+    /// Get active Insurance card (last Insurance played, if any)
+    /// Override rule: Only last Insurance matters (SOW-003 Phase 1)
+    /// include_current_round: Whether to include face-down cards from this round
+    fn active_insurance(&self, include_current_round: bool) -> Option<&Card> {
+        let cards: Vec<&Card> = if include_current_round {
+            self.cards_played.iter().chain(self.cards_played_this_round.iter()).collect()
+        } else {
+            self.cards_played.iter().collect()
+        };
+
+        cards.into_iter().rev().find(|card| matches!(card.card_type, CardType::Insurance { .. }))
+    }
+
+    /// Get active Conviction card (last Conviction played, if any)
+    /// Override rule: Only last Conviction matters (SOW-003 Phase 2)
+    /// include_current_round: Whether to include face-down cards from this round
+    fn active_conviction(&self, include_current_round: bool) -> Option<&Card> {
+        let cards: Vec<&Card> = if include_current_round {
+            self.cards_played.iter().chain(self.cards_played_this_round.iter()).collect()
+        } else {
+            self.cards_played.iter().collect()
+        };
+
+        cards.into_iter().rev().find(|card| matches!(card.card_type, CardType::Conviction { .. }))
     }
 
     /// Calculate current totals from all played cards
@@ -1613,18 +1929,27 @@ impl HandState {
     /// Override rules:
     /// - Last Product played becomes active (previous discarded)
     /// - Last Location played becomes active (Evidence/Cover base changes)
+    /// - Last Insurance played becomes active (SOW-003)
+    /// - Last Conviction played becomes active (SOW-003)
     ///
     /// Additive rules:
     /// - Evidence = Location base + sum(all Evidence cards + DealModifier evidence)
-    /// - Cover = Location base + sum(all Cover cards + DealModifier cover)
+    /// - Cover = Location base + sum(all Cover cards + Insurance cover + DealModifier cover)
     /// - Heat = sum(all heat modifiers from all cards)
     /// - Profit = Active Product price × product(all DealModifier price_multiplier)
-    fn calculate_totals(&self) -> Totals {
+    ///
+    /// Special rules (SOW-003):
+    /// - Insurance acts as Cover card during totals calculation
+    /// - Conviction has no effect on totals (only affects bust resolution)
+    ///
+    /// Multi-round (SOW-002):
+    /// - include_current_round: Whether to include cards_played_this_round (after Flip) or not (during Betting)
+    fn calculate_totals(&self, include_current_round: bool) -> Totals {
         let mut totals = Totals::default();
         let mut price_multiplier: f32 = 1.0; // SOW-002 Phase 4: multiplicative modifiers
 
         // Get base Evidence/Cover from active Location
-        if let Some(location) = self.active_location() {
+        if let Some(location) = self.active_location(include_current_round) {
             if let CardType::Location { evidence, cover, heat } = location.card_type {
                 totals.evidence = evidence;
                 totals.cover = cover;
@@ -1632,8 +1957,16 @@ impl HandState {
             }
         }
 
-        // Process all played cards
-        for card in &self.cards_played {
+        // Process finalized cards from previous rounds (always included)
+        let cards_to_process: Box<dyn Iterator<Item = &Card>> = if include_current_round {
+            // After Flip: Include both finalized and current round cards
+            Box::new(self.cards_played.iter().chain(self.cards_played_this_round.iter()))
+        } else {
+            // During Betting: Only finalized cards (current round is face-down)
+            Box::new(self.cards_played.iter())
+        };
+
+        for card in cards_to_process {
             match card.card_type {
                 CardType::Evidence { evidence, heat } => {
                     totals.evidence += evidence;
@@ -1650,12 +1983,21 @@ impl HandState {
                     totals.cover = totals.cover.saturating_add_signed(cover); // Additive
                     totals.heat += heat; // Additive
                 }
+                // SOW-003 Phase 1: Insurance acts as Cover (dual function)
+                CardType::Insurance { cover, .. } => {
+                    totals.cover += cover; // Adds to Cover total (like Cover cards)
+                    // Note: heat_penalty only applies when insurance activates on bust
+                }
+                // SOW-003 Phase 2: Conviction has no effect on totals
+                CardType::Conviction { .. } => {
+                    // No effect on totals - only affects bust resolution
+                }
                 _ => {}
             }
         }
 
         // Get profit from active Product (apply multipliers)
-        if let Some(product) = self.active_product() {
+        if let Some(product) = self.active_product(include_current_round) {
             if let CardType::Product { price, heat } = product.card_type {
                 totals.profit = (price as f32 * price_multiplier) as u32;
                 totals.heat += heat;
@@ -1709,6 +2051,8 @@ fn create_narc_deck() -> Vec<Card> {
         id += 1;
     }
 
+    // Shuffle deck for variety
+    deck.shuffle(&mut rand::thread_rng());
     deck
 }
 
@@ -1741,11 +2085,13 @@ fn create_customer_deck() -> Vec<Card> {
         id += 1;
     }
 
+    // Shuffle deck for variety
+    deck.shuffle(&mut rand::thread_rng());
     deck
 }
 
 fn create_player_deck() -> Vec<Card> {
-    vec![
+    let mut deck = vec![
         // 3 Products
         Card {
             id: 10,
@@ -1785,7 +2131,69 @@ fn create_player_deck() -> Vec<Card> {
             owner: Owner::Player,
             card_type: CardType::Cover { cover: 30, heat: -5 },
         },
-    ]
+        // SOW-003 Phase 1: Insurance cards (Cover + bust activation)
+        Card {
+            id: 16,
+            name: "Plea Bargain".to_string(),
+            owner: Owner::Player,
+            card_type: CardType::Insurance { cover: 20, cost: 1000, heat_penalty: 20 },
+        },
+        Card {
+            id: 17,
+            name: "Fake ID".to_string(),
+            owner: Owner::Player,
+            card_type: CardType::Insurance { cover: 15, cost: 0, heat_penalty: 40 },
+        },
+        // SOW-003 Phase 2: Conviction cards (overrides insurance at high Heat)
+        // Note: For MVP, these are in player deck for testing. Production would put in Narc deck.
+        Card {
+            id: 18,
+            name: "Warrant".to_string(),
+            owner: Owner::Player,
+            card_type: CardType::Conviction { heat_threshold: 40 },
+        },
+        Card {
+            id: 19,
+            name: "DA Approval".to_string(),
+            owner: Owner::Player,
+            card_type: CardType::Conviction { heat_threshold: 60 },
+        },
+        // SOW-003 Phase 4: Complete card collection (5 new cards)
+        Card {
+            id: 20,
+            name: "Cocaine".to_string(),
+            owner: Owner::Player,
+            card_type: CardType::Product { price: 120, heat: 35 },
+        },
+        Card {
+            id: 21,
+            name: "Warehouse".to_string(),
+            owner: Owner::Player,
+            card_type: CardType::Location { evidence: 15, cover: 25, heat: -10 },
+        },
+        Card {
+            id: 22,
+            name: "Informant".to_string(),
+            owner: Owner::Player,
+            card_type: CardType::Evidence { evidence: 25, heat: 15 },
+        },
+        Card {
+            id: 23,
+            name: "Bribe".to_string(),
+            owner: Owner::Player,
+            card_type: CardType::Cover { cover: 25, heat: 10 },
+        },
+        Card {
+            id: 24,
+            name: "Disguise".to_string(),
+            owner: Owner::Player,
+            card_type: CardType::DealModifier { price_multiplier: 1.0, evidence: 0, cover: 20, heat: -5 },
+        },
+    ];
+
+    // Shuffle deck for variety
+    deck.shuffle(&mut rand::thread_rng());
+    deck
 }
 
 // ============================================================================
@@ -1801,32 +2209,37 @@ mod tests {
         // SOW-002: Verify expanded deck sizes
         let narc_deck = create_narc_deck();
         assert_eq!(narc_deck.len(), 15); // 10 Donut Break + 3 Patrol + 2 Surveillance
-        assert_eq!(narc_deck[0].name, "Donut Break");
-        assert_eq!(narc_deck[10].name, "Patrol");
-        assert_eq!(narc_deck[13].name, "Surveillance");
+
+        // Verify deck composition (shuffled, so can't check specific positions)
+        let donut_count = narc_deck.iter().filter(|c| c.name == "Donut Break").count();
+        let patrol_count = narc_deck.iter().filter(|c| c.name == "Patrol").count();
+        let surveillance_count = narc_deck.iter().filter(|c| c.name == "Surveillance").count();
+        assert_eq!(donut_count, 10);
+        assert_eq!(patrol_count, 3);
+        assert_eq!(surveillance_count, 2);
 
         let customer_deck = create_customer_deck();
         assert_eq!(customer_deck.len(), 10); // SOW-002: Customer has cards now
 
         let player_deck = create_player_deck();
-        assert_eq!(player_deck.len(), 6);
+        assert_eq!(player_deck.len(), 15); // SOW-003: 6 base + 2 Insurance + 2 Conviction + 5 Phase 4 cards
 
-        // Verify Product cards
-        if let CardType::Product { price, heat } = player_deck[0].card_type {
-            assert_eq!(price, 30);
-            assert_eq!(heat, 5);
-        } else {
-            panic!("Expected Product card");
-        }
+        // Verify deck has expected card types (can't check positions due to shuffling)
+        let product_count = player_deck.iter().filter(|c| matches!(c.card_type, CardType::Product { .. })).count();
+        let location_count = player_deck.iter().filter(|c| matches!(c.card_type, CardType::Location { .. })).count();
+        let cover_count = player_deck.iter().filter(|c| matches!(c.card_type, CardType::Cover { .. })).count();
+        let insurance_count = player_deck.iter().filter(|c| matches!(c.card_type, CardType::Insurance { .. })).count();
+        let conviction_count = player_deck.iter().filter(|c| matches!(c.card_type, CardType::Conviction { .. })).count();
+        let modifier_count = player_deck.iter().filter(|c| matches!(c.card_type, CardType::DealModifier { .. })).count();
+        let evidence_count = player_deck.iter().filter(|c| matches!(c.card_type, CardType::Evidence { .. })).count();
 
-        // Verify Location cards
-        if let CardType::Location { evidence, cover, heat } = player_deck[3].card_type {
-            assert_eq!(evidence, 10);
-            assert_eq!(cover, 30);
-            assert_eq!(heat, -5);
-        } else {
-            panic!("Expected Location card");
-        }
+        assert_eq!(product_count, 4); // Weed, Meth, Heroin, Cocaine
+        assert_eq!(location_count, 3); // Safe House, School Zone, Warehouse
+        assert_eq!(cover_count, 2); // Alibi, Bribe
+        assert_eq!(insurance_count, 2); // Plea Bargain, Fake ID
+        assert_eq!(conviction_count, 2); // Warrant, DA Approval
+        assert_eq!(modifier_count, 1); // Disguise
+        assert_eq!(evidence_count, 1); // Informant
     }
 
     #[test]
@@ -1935,12 +2348,12 @@ mod tests {
         hand_state.cards_played.push(meth.clone());
 
         // Active product should be Meth (last played)
-        let active = hand_state.active_product();
+        let active = hand_state.active_product(true);
         assert!(active.is_some());
         assert_eq!(active.unwrap().name, "Meth");
 
         // Totals should reflect Meth price (100), not Weed price (30)
-        let totals = hand_state.calculate_totals();
+        let totals = hand_state.calculate_totals(true);
         assert_eq!(totals.profit, 100);
     }
 
@@ -1966,12 +2379,12 @@ mod tests {
         hand_state.cards_played.push(safe_house.clone());
 
         // Active location should be Safe House (last played)
-        let active = hand_state.active_location();
+        let active = hand_state.active_location(true);
         assert!(active.is_some());
         assert_eq!(active.unwrap().name, "Safe House");
 
         // Totals should reflect Safe House base (Evidence 10, Cover 30)
-        let totals = hand_state.calculate_totals();
+        let totals = hand_state.calculate_totals(true);
         assert_eq!(totals.evidence, 10);
         assert_eq!(totals.cover, 30);
     }
@@ -2006,7 +2419,7 @@ mod tests {
         hand_state.cards_played.push(surveillance);
 
         // Evidence should stack: 10 (location) + 5 (patrol) + 20 (surveillance) = 35
-        let totals = hand_state.calculate_totals();
+        let totals = hand_state.calculate_totals(true);
         assert_eq!(totals.evidence, 35);
     }
 
@@ -2033,7 +2446,7 @@ mod tests {
         hand_state.cards_played.push(alibi);
 
         // Cover should stack: 30 (location) + 30 (alibi) = 60
-        let totals = hand_state.calculate_totals();
+        let totals = hand_state.calculate_totals(true);
         assert_eq!(totals.cover, 60);
     }
 
@@ -2066,7 +2479,7 @@ mod tests {
         hand_state.cards_played.push(surveillance);
 
         // Heat should accumulate: 30 + 20 + 5 = 55
-        let totals = hand_state.calculate_totals();
+        let totals = hand_state.calculate_totals(true);
         assert_eq!(totals.heat, 55);
     }
 
@@ -2084,7 +2497,7 @@ mod tests {
         hand_state.cards_played.push(location);
 
         // Profit should be 0 (no Product played)
-        let totals = hand_state.calculate_totals();
+        let totals = hand_state.calculate_totals(true);
         assert_eq!(totals.profit, 0);
     }
 
@@ -2129,7 +2542,7 @@ mod tests {
         };
         hand_state.cards_played.push(evidence);
 
-        let totals = hand_state.calculate_totals();
+        let totals = hand_state.calculate_totals(true);
 
         // Verify totals:
         // Evidence: 10 (location) + 20 (surveillance) = 30
@@ -2425,7 +2838,7 @@ mod tests {
         assert_eq!(hand_state.narc_hand.len(), 3); // Draw to 3 cards
 
         // Narc raises (first raise)
-        let result = betting_state.handle_action(Owner::Narc, BettingAction::Raise, &mut hand_state);
+        let result = betting_state.handle_action(Owner::Narc, BettingAction::Raise, &mut hand_state, None);
         assert!(result.is_ok());
 
         // Narc should have initiative
@@ -2441,7 +2854,7 @@ mod tests {
         hand_state.draw_cards();
 
         // Narc raises first (gains initiative)
-        betting_state.handle_action(Owner::Narc, BettingAction::Raise, &mut hand_state).unwrap();
+        betting_state.handle_action(Owner::Narc, BettingAction::Raise, &mut hand_state, None).unwrap();
         assert_eq!(betting_state.initiative_player, Some(Owner::Narc));
         assert_eq!(hand_state.narc_hand.len(), 2); // Drew 3, played 1, now 2
         assert_eq!(betting_state.raises_this_round, 1);
@@ -2449,7 +2862,7 @@ mod tests {
         // Player calls in response (not a raise - is awaiting action)
         betting_state.current_player = Owner::Player;
         assert!(betting_state.players_awaiting_action.contains(&Owner::Player));
-        betting_state.handle_action(Owner::Player, BettingAction::Raise, &mut hand_state).unwrap();
+        betting_state.handle_action(Owner::Player, BettingAction::Raise, &mut hand_state, None).unwrap();
 
         // Narc should STILL have initiative (Player called, didn't raise)
         assert_eq!(betting_state.initiative_player, Some(Owner::Narc));
@@ -2464,12 +2877,12 @@ mod tests {
         hand_state.draw_cards();
 
         // Narc raises (gains initiative)
-        betting_state.handle_action(Owner::Narc, BettingAction::Raise, &mut hand_state).unwrap();
+        betting_state.handle_action(Owner::Narc, BettingAction::Raise, &mut hand_state, None).unwrap();
         assert_eq!(betting_state.initiative_player, Some(Owner::Narc));
 
         // Narc Checks later (loses initiative)
         betting_state.current_player = Owner::Narc;
-        betting_state.handle_action(Owner::Narc, BettingAction::Check, &mut hand_state).unwrap();
+        betting_state.handle_action(Owner::Narc, BettingAction::Check, &mut hand_state, None).unwrap();
 
         assert_eq!(betting_state.initiative_player, None);
     }
@@ -2532,5 +2945,429 @@ mod tests {
 
         // Can't raise with empty hand
         assert!(!betting_state.can_raise(Owner::Player, &hand_state));
+    }
+
+    // ========================================================================
+    // TESTS - SOW-003 (Insurance and Conviction Mechanics)
+    // ========================================================================
+
+    #[test]
+    fn test_insurance_acts_as_cover() {
+        let mut hand_state = HandState::default();
+
+        // Location: E:20 C:20
+        hand_state.cards_played.push(Card {
+            id: 1,
+            name: "Location".to_string(),
+            owner: Owner::Player,
+            card_type: CardType::Location { evidence: 20, cover: 20, heat: 0 },
+        });
+
+        // Insurance: +15 Cover
+        hand_state.cards_played.push(Card {
+            id: 2,
+            name: "Fake ID".to_string(),
+            owner: Owner::Player,
+            card_type: CardType::Insurance { cover: 15, cost: 0, heat_penalty: 40 },
+        });
+
+        // Totals: E:20 C:35 (20 + 15 from insurance)
+        let totals = hand_state.calculate_totals(true);
+        assert_eq!(totals.evidence, 20);
+        assert_eq!(totals.cover, 35); // Insurance adds to cover
+        assert_eq!(totals.heat, 0); // Insurance heat penalty only applies on activation, not in totals
+    }
+
+    #[test]
+    fn test_conviction_no_effect_on_totals() {
+        let mut hand_state = HandState::default();
+
+        // Location: E:20 C:20
+        hand_state.cards_played.push(Card {
+            id: 1,
+            name: "Location".to_string(),
+            owner: Owner::Player,
+            card_type: CardType::Location { evidence: 20, cover: 20, heat: 0 },
+        });
+
+        // Conviction: No effect on totals
+        hand_state.cards_played.push(Card {
+            id: 2,
+            name: "Warrant".to_string(),
+            owner: Owner::Player,
+            card_type: CardType::Conviction { heat_threshold: 40 },
+        });
+
+        // Totals: E:20 C:20 (conviction doesn't change anything)
+        let totals = hand_state.calculate_totals(true);
+        assert_eq!(totals.evidence, 20);
+        assert_eq!(totals.cover, 20);
+        assert_eq!(totals.heat, 0);
+    }
+
+    #[test]
+    fn test_insurance_activation_affordable() {
+        let mut hand_state = HandState::default();
+        hand_state.cash = 1500; // Have enough cash
+
+        // Bust scenario: E:30 C:20
+        hand_state.cards_played.push(Card {
+            id: 1,
+            name: "Location".to_string(),
+            owner: Owner::Player,
+            card_type: CardType::Location { evidence: 30, cover: 20, heat: 0 },
+        });
+
+        // Insurance: Cost $1000, Heat +20
+        hand_state.cards_played.push(Card {
+            id: 2,
+            name: "Plea Bargain".to_string(),
+            owner: Owner::Player,
+            card_type: CardType::Insurance { cover: 5, cost: 1000, heat_penalty: 20 },
+        });
+
+        // Evidence > Cover, but insurance should save us
+        let outcome = hand_state.resolve_hand();
+        assert_eq!(outcome, HandOutcome::Safe);
+        assert_eq!(hand_state.cash, 500); // 1500 - 1000
+        assert_eq!(hand_state.current_heat, 20); // Heat penalty applied
+    }
+
+    #[test]
+    fn test_insurance_activation_unaffordable() {
+        let mut hand_state = HandState::default();
+        hand_state.cash = 500; // Not enough cash
+
+        // Bust scenario: E:30 C:20
+        hand_state.cards_played.push(Card {
+            id: 1,
+            name: "Location".to_string(),
+            owner: Owner::Player,
+            card_type: CardType::Location { evidence: 30, cover: 20, heat: 0 },
+        });
+
+        // Insurance: Cost $1000 (too expensive)
+        hand_state.cards_played.push(Card {
+            id: 2,
+            name: "Plea Bargain".to_string(),
+            owner: Owner::Player,
+            card_type: CardType::Insurance { cover: 5, cost: 1000, heat_penalty: 20 },
+        });
+
+        // Evidence > Cover, can't afford insurance → Busted
+        let outcome = hand_state.resolve_hand();
+        assert_eq!(outcome, HandOutcome::Busted);
+        assert_eq!(hand_state.cash, 500); // Cash unchanged (didn't pay)
+    }
+
+    #[test]
+    fn test_insurance_no_insurance_busts() {
+        let mut hand_state = HandState::default();
+        hand_state.cash = 2000; // Have cash, but no insurance
+
+        // Bust scenario: E:30 C:20, no insurance card
+        hand_state.cards_played.push(Card {
+            id: 1,
+            name: "Location".to_string(),
+            owner: Owner::Player,
+            card_type: CardType::Location { evidence: 30, cover: 20, heat: 0 },
+        });
+
+        // Evidence > Cover, no insurance → Busted
+        let outcome = hand_state.resolve_hand();
+        assert_eq!(outcome, HandOutcome::Busted);
+    }
+
+    #[test]
+    fn test_conviction_overrides_insurance() {
+        let mut hand_state = HandState::default();
+        hand_state.cash = 2000; // Can afford insurance
+        hand_state.current_heat = 50; // Heat above threshold
+
+        // Bust scenario: E:30 C:20
+        hand_state.cards_played.push(Card {
+            id: 1,
+            name: "Location".to_string(),
+            owner: Owner::Player,
+            card_type: CardType::Location { evidence: 30, cover: 20, heat: 0 },
+        });
+
+        // Insurance: Available and affordable
+        hand_state.cards_played.push(Card {
+            id: 2,
+            name: "Plea Bargain".to_string(),
+            owner: Owner::Player,
+            card_type: CardType::Insurance { cover: 5, cost: 1000, heat_penalty: 20 },
+        });
+
+        // Conviction: Threshold 40 (we're at 50, so it activates)
+        hand_state.cards_played.push(Card {
+            id: 3,
+            name: "Warrant".to_string(),
+            owner: Owner::Player,
+            card_type: CardType::Conviction { heat_threshold: 40 },
+        });
+
+        // Evidence > Cover, conviction overrides insurance → Busted
+        let outcome = hand_state.resolve_hand();
+        assert_eq!(outcome, HandOutcome::Busted);
+        assert_eq!(hand_state.cash, 2000); // Cash unchanged (conviction blocked insurance)
+    }
+
+    #[test]
+    fn test_conviction_below_threshold_insurance_works() {
+        let mut hand_state = HandState::default();
+        hand_state.cash = 2000; // Can afford insurance
+        hand_state.current_heat = 30; // Heat below threshold
+
+        // Bust scenario: E:30 C:20
+        hand_state.cards_played.push(Card {
+            id: 1,
+            name: "Location".to_string(),
+            owner: Owner::Player,
+            card_type: CardType::Location { evidence: 30, cover: 20, heat: 0 },
+        });
+
+        // Insurance: Available and affordable
+        hand_state.cards_played.push(Card {
+            id: 2,
+            name: "Plea Bargain".to_string(),
+            owner: Owner::Player,
+            card_type: CardType::Insurance { cover: 5, cost: 1000, heat_penalty: 20 },
+        });
+
+        // Conviction: Threshold 40 (we're at 30, so it doesn't activate)
+        hand_state.cards_played.push(Card {
+            id: 3,
+            name: "Warrant".to_string(),
+            owner: Owner::Player,
+            card_type: CardType::Conviction { heat_threshold: 40 },
+        });
+
+        // Evidence > Cover, heat < threshold, insurance works → Safe
+        let outcome = hand_state.resolve_hand();
+        assert_eq!(outcome, HandOutcome::Safe);
+        assert_eq!(hand_state.cash, 1000); // Paid insurance
+        assert_eq!(hand_state.current_heat, 50); // 30 + 20 penalty
+    }
+
+    #[test]
+    fn test_conviction_at_threshold_activates() {
+        let mut hand_state = HandState::default();
+        hand_state.cash = 2000;
+        hand_state.current_heat = 40; // Exactly at threshold
+
+        // Bust scenario
+        hand_state.cards_played.push(Card {
+            id: 1,
+            name: "Location".to_string(),
+            owner: Owner::Player,
+            card_type: CardType::Location { evidence: 30, cover: 20, heat: 0 },
+        });
+
+        hand_state.cards_played.push(Card {
+            id: 2,
+            name: "Plea Bargain".to_string(),
+            owner: Owner::Player,
+            card_type: CardType::Insurance { cover: 5, cost: 1000, heat_penalty: 20 },
+        });
+
+        hand_state.cards_played.push(Card {
+            id: 3,
+            name: "Warrant".to_string(),
+            owner: Owner::Player,
+            card_type: CardType::Conviction { heat_threshold: 40 },
+        });
+
+        // Heat >= threshold, conviction activates (boundary test)
+        let outcome = hand_state.resolve_hand();
+        assert_eq!(outcome, HandOutcome::Busted);
+    }
+
+    #[test]
+    fn test_cash_accumulation_safe_hands() {
+        let mut hand_state = HandState::default();
+        hand_state.cash = 100; // Starting cash
+
+        // Safe scenario with profit
+        hand_state.cards_played.push(Card {
+            id: 1,
+            name: "Location".to_string(),
+            owner: Owner::Player,
+            card_type: CardType::Location { evidence: 20, cover: 30, heat: 0 },
+        });
+
+        hand_state.cards_played.push(Card {
+            id: 2,
+            name: "Weed".to_string(),
+            owner: Owner::Player,
+            card_type: CardType::Product { price: 50, heat: 5 },
+        });
+
+        // Safe outcome, profit should be banked
+        let outcome = hand_state.resolve_hand();
+        assert_eq!(outcome, HandOutcome::Safe);
+        assert_eq!(hand_state.cash, 150); // 100 + 50 profit
+    }
+
+    #[test]
+    fn test_cash_not_gained_on_bust() {
+        let mut hand_state = HandState::default();
+        hand_state.cash = 100;
+
+        // Bust scenario with profit (but won't get it)
+        hand_state.cards_played.push(Card {
+            id: 1,
+            name: "Location".to_string(),
+            owner: Owner::Player,
+            card_type: CardType::Location { evidence: 30, cover: 20, heat: 0 },
+        });
+
+        hand_state.cards_played.push(Card {
+            id: 2,
+            name: "Weed".to_string(),
+            owner: Owner::Player,
+            card_type: CardType::Product { price: 50, heat: 5 },
+        });
+
+        // Bust outcome, no profit gained
+        let outcome = hand_state.resolve_hand();
+        assert_eq!(outcome, HandOutcome::Busted);
+        assert_eq!(hand_state.cash, 100); // Cash unchanged
+    }
+
+    #[test]
+    fn test_heat_accumulation_across_hands() {
+        let mut hand_state = HandState::default();
+        hand_state.current_heat = 10; // Starting heat
+
+        // Safe hand with heat
+        hand_state.cards_played.push(Card {
+            id: 1,
+            name: "Location".to_string(),
+            owner: Owner::Player,
+            card_type: CardType::Location { evidence: 20, cover: 30, heat: 15 },
+        });
+
+        hand_state.cards_played.push(Card {
+            id: 2,
+            name: "Weed".to_string(),
+            owner: Owner::Player,
+            card_type: CardType::Product { price: 50, heat: 5 },
+        });
+
+        hand_state.resolve_hand();
+
+        // Heat should accumulate: 10 + 15 + 5 = 30
+        assert_eq!(hand_state.current_heat, 30);
+    }
+
+    #[test]
+    fn test_active_insurance_override() {
+        let mut hand_state = HandState::default();
+
+        // First insurance
+        hand_state.cards_played.push(Card {
+            id: 1,
+            name: "Fake ID".to_string(),
+            owner: Owner::Player,
+            card_type: CardType::Insurance { cover: 15, cost: 0, heat_penalty: 40 },
+        });
+
+        // Second insurance (should override first)
+        hand_state.cards_played.push(Card {
+            id: 2,
+            name: "Plea Bargain".to_string(),
+            owner: Owner::Player,
+            card_type: CardType::Insurance { cover: 20, cost: 1000, heat_penalty: 20 },
+        });
+
+        // Active insurance should be Plea Bargain (last one)
+        let active = hand_state.active_insurance(true);
+        assert!(active.is_some());
+        assert_eq!(active.unwrap().name, "Plea Bargain");
+    }
+
+    #[test]
+    fn test_active_conviction_override() {
+        let mut hand_state = HandState::default();
+
+        // First conviction
+        hand_state.cards_played.push(Card {
+            id: 1,
+            name: "Warrant".to_string(),
+            owner: Owner::Player,
+            card_type: CardType::Conviction { heat_threshold: 40 },
+        });
+
+        // Second conviction (should override first)
+        hand_state.cards_played.push(Card {
+            id: 2,
+            name: "DA Approval".to_string(),
+            owner: Owner::Player,
+            card_type: CardType::Conviction { heat_threshold: 60 },
+        });
+
+        // Active conviction should be DA Approval (last one)
+        let active = hand_state.active_conviction(true);
+        assert!(active.is_some());
+        assert_eq!(active.unwrap().name, "DA Approval");
+    }
+
+    #[test]
+    fn test_conviction_uses_projected_heat() {
+        let mut hand_state = HandState::default();
+        hand_state.cash = 2000;
+        hand_state.current_heat = 40; // Heat BEFORE this hand
+
+        // Bust scenario: E:30 C:20, this hand adds +30 heat
+        hand_state.cards_played.push(Card {
+            id: 1,
+            name: "Location".to_string(),
+            owner: Owner::Player,
+            card_type: CardType::Location { evidence: 30, cover: 20, heat: 30 }, // +30 heat
+        });
+
+        hand_state.cards_played.push(Card {
+            id: 2,
+            name: "Plea Bargain".to_string(),
+            owner: Owner::Player,
+            card_type: CardType::Insurance { cover: 5, cost: 1000, heat_penalty: 20 },
+        });
+
+        hand_state.cards_played.push(Card {
+            id: 3,
+            name: "DA Approval".to_string(),
+            owner: Owner::Player,
+            card_type: CardType::Conviction { heat_threshold: 60 },
+        });
+
+        // Projected heat: 40 + 30 = 70, which is >= 60, so conviction should activate
+        let outcome = hand_state.resolve_hand();
+        assert_eq!(outcome, HandOutcome::Busted); // Conviction blocks insurance
+        assert_eq!(hand_state.cash, 2000); // Cash unchanged (conviction blocked insurance)
+        assert_eq!(hand_state.current_heat, 70); // Heat accumulated correctly
+    }
+
+    #[test]
+    fn test_start_next_hand_preserves_cash_and_heat() {
+        let mut hand_state = HandState::default();
+
+        // Simulate some cash and heat
+        hand_state.cash = 1500;
+        hand_state.current_heat = 45;
+
+        // Start next hand
+        hand_state.start_next_hand();
+
+        // Cash and heat should be preserved
+        assert_eq!(hand_state.cash, 1500);
+        assert_eq!(hand_state.current_heat, 45);
+
+        // Everything else should be reset
+        assert_eq!(hand_state.current_state, State::Draw);
+        assert_eq!(hand_state.current_round, 1);
+        assert_eq!(hand_state.cards_played.len(), 0);
+        assert!(hand_state.outcome.is_none());
     }
 }
