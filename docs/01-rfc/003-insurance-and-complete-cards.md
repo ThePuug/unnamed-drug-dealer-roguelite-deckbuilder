@@ -2,9 +2,9 @@
 
 ## Status
 
-**Draft** - 2025-11-09
+**Approved** - 2025-11-09 (Ready for SOW-003 Creation)
 
-**Depends On:** RFC-002 (must complete SOW-002 first)
+**Depends On:** ✅ RFC-002 (SOW-002 completed and merged)
 
 ## Feature Request
 
@@ -165,19 +165,250 @@ DA Approval
 
 ## Feasibility Analysis
 
-*[ARCHITECT to complete]*
+**Analyst:** ARCHITECT Role
+**Date:** 2025-11-09
+**Based On:** SOW-001 and SOW-002 completion (foundation validated)
 
 ### Technical Assessment
 
-*To be added by ARCHITECT*
+**Verdict:** ✅ **FEASIBLE** (12-14 hours estimated)
+
+**Foundation Ready from SOW-001/002:**
+- ✅ Card type system extensible (add Insurance and Conviction card types)
+- ✅ Bust resolution logic exists (`resolve_hand()` - extend for insurance check)
+- ✅ Totals calculation handles additive Cover (insurance adds Cover like other Cover cards)
+- ✅ Override rules implemented (last insurance/conviction = active)
+- ✅ UI framework established (can add insurance status, warnings)
+
+**New Systems Required:**
+
+**1. Insurance Card Type & Logic (~3-4 hours)**
+- New card type: `Insurance { cover: u32, cost: u32, heat_penalty: i32 }`
+- Track active insurance (last Insurance card played)
+- Extend `calculate_totals`: Insurance adds to Cover total
+- Track cash/profit for affordability check
+- Single-use tracking (burn card after activation)
+
+**Implementation Approach:**
+- Extend `CardType` enum with `Insurance` variant
+- Add `active_insurance()` method (similar to `active_product()`)
+- Add `cash: u32` field to HandState (tracks cumulative profit)
+- Insurance acts as Cover card during totals calculation
+- At bust resolution, if bust → check insurance
+
+**2. Conviction Card Type & Logic (~2-3 hours)**
+- New card type: `Conviction { heat_threshold: u32 }`
+- Track active conviction (last Conviction card played)
+- Heat tracking (cumulative across hands - for MVP, use hand Heat only)
+- Threshold check in bust resolution (current_heat >= threshold?)
+
+**Implementation Approach:**
+- Extend `CardType` enum with `Conviction` variant
+- Add `active_conviction()` method
+- Conviction doesn't affect totals (only bust resolution)
+- At bust resolution, check conviction before insurance
+
+**3. Extended Bust Resolution (~2-3 hours)**
+- Update `resolve_hand()` with insurance + conviction logic
+- Cost affordability check (cash >= insurance.cost?)
+- Conviction threshold check (heat >= threshold?)
+- Card burn logic (remove insurance from deck after use)
+- Heat penalty application (add heat_penalty to cumulative Heat)
+
+**Implementation Approach:**
+```rust
+fn resolve_hand(&mut self) -> HandOutcome {
+    let totals = self.calculate_totals();
+
+    if totals.evidence > totals.cover {
+        // Check conviction first
+        if let Some(conviction) = self.active_conviction() {
+            if self.current_heat >= conviction.heat_threshold {
+                return HandOutcome::Busted; // Conviction overrides insurance
+            }
+        }
+
+        // Check insurance
+        if let Some(insurance) = self.active_insurance() {
+            if self.cash >= insurance.cost {
+                // Activate insurance
+                self.cash -= insurance.cost;
+                self.current_heat += insurance.heat_penalty;
+                // Burn insurance card (remove from deck)
+                return HandOutcome::Safe; // Insurance saves you
+            } else {
+                return HandOutcome::Busted; // Can't afford insurance
+            }
+        }
+
+        return HandOutcome::Busted; // No insurance
+    }
+
+    HandOutcome::Safe // Evidence ≤ Cover
+}
+```
+
+**4. Card Collection Completion (~2-3 hours)**
+- Create 5 new cards (1 Product, 1 Location, 1 Evidence, 1 Cover, 1 Deal Modifier)
+- Add to appropriate decks (distribute across Narc/Customer/Player)
+- Balance values (price, Evidence, Cover, Heat)
+
+**Implementation Approach:**
+- Extend `create_*_deck()` functions
+- Hardcode for MVP (RON extraction still deferred)
+
+**5. Insurance/Conviction UI (~3-4 hours)**
+- Insurance status display (active, cost, Heat penalty)
+- Conviction warning (threshold status, big red warning if active)
+- Bust resolution messages (insurance activated, conviction override, failure)
+- Heat display (cumulative Heat tracking)
+
+**Implementation Approach:**
+- Add UI components: `InsuranceStatusDisplay`, `ConvictionWarningDisplay`
+- Update `ui_update_system` to show insurance/conviction status
+- Add bust resolution message overlay (modal with large text)
+- Color-code warnings (green = safe, red = conviction active)
+
+**Total Estimate:** 12-14 hours (fits within ≤20 hour SOW constraint)
+
+---
 
 ### System Integration
 
-*To be added by ARCHITECT*
+**Integration Points:**
+
+**From SOW-001/002 (Reuse):**
+1. **Card Type System** → Extend with Insurance and Conviction types (trivial enum additions)
+2. **Override Rules** → Reuse for active insurance/conviction (same pattern as Product/Location)
+3. **Bust Resolution** → Extend `resolve_hand()` with insurance + conviction checks
+4. **Totals Calculation** → Insurance adds to Cover (additive like other Cover cards)
+5. **UI Framework** → Add insurance/conviction status components
+
+**New Dependencies:**
+- None (all logic uses existing Bevy/Rust patterns)
+
+**Data Flow:**
+```
+Bust Check (Evidence > Cover):
+  ↓
+Check Conviction (Heat >= threshold?) → YES: Busted (override)
+  ↓ NO
+Check Insurance (afford cost?) → YES: Pay, gain Heat, continue
+  ↓ NO                        → NO: Busted (can't afford)
+Safe (Evidence ≤ Cover)
+```
+
+**No Breaking Changes:**
+- SOW-001/002 code untouched (all additions)
+- Tests remain valid
+- Backward compatible (insurance/conviction optional)
+
+---
 
 ### Alternatives Considered
 
-*To be added by ARCHITECT*
+**Alternative 1: Complex Insurance Economy**
+- **Pros:** More strategic depth (multiple uses, varying costs)
+- **Cons:** 10-15 extra hours, not needed for MVP validation
+- **Verdict:** ❌ Deferred - Single-use sufficient for stakes validation
+
+**Alternative 2: Progressive Heat System**
+- **Pros:** Heat accumulates across hands (long-term consequences)
+- **Cons:** Requires persistence, Heat decay, multiple hands implementation
+- **Verdict:** ⏸️ Deferred to Phase 2 - For MVP, use hand-level Heat only
+
+**Alternative 3: No Conviction Cards**
+- **Pros:** Simpler (just insurance)
+- **Cons:** Insurance always reliable (no threat, no Heat management)
+- **Verdict:** ❌ Rejected - Conviction creates Heat importance
+
+**Alternative 4: More Insurance Types (8-10 cards)**
+- **Pros:** More variety, deck building options
+- **Cons:** 5-8 extra hours to design/balance
+- **Verdict:** ⏸️ Deferred to Phase 2 - 2 types sufficient for MVP validation
+
+**Chosen Approach:**
+- 2 insurance types (cost vs Heat trade-off)
+- 2 conviction types (different Heat thresholds)
+- Single-use insurance (simplest for MVP)
+- Hand-level Heat only (no persistence yet)
+- **Rationale:** Fastest path to "does insurance feel clutch?" answer
+
+---
+
+### Risks & Mitigation
+
+**Technical Risks:**
+
+**Risk 1: Insurance Balance**
+- **Concern:** Cost too high (never use) or too low (always use)
+- **Mitigation:** Tune based on SOW-002 average profits, playtest iteratively
+- **Likelihood:** Medium
+- **Impact:** Medium (but easy to retune)
+
+**Risk 2: Make It Stick Too Common**
+- **Concern:** Every hand has conviction → insurance useless
+- **Mitigation:** For MVP, Narc deck has 0 conviction cards (rare occurrence)
+- **Likelihood:** Low (controlled via deck composition)
+- **Impact:** High if present (breaks insurance value)
+
+**Risk 3: Heat Tracking Without Persistence**
+- **Concern:** Hand-level Heat doesn't create long-term consequences
+- **Mitigation:** Acceptable for MVP (validates mechanic, persistence in Phase 2)
+- **Likelihood:** Low (design decision, not bug)
+- **Impact:** Low (MVP scope acceptable)
+
+**Risk 4: Insurance UX Clarity**
+- **Concern:** Player doesn't understand why insurance failed (conviction override unclear)
+- **Mitigation:** BIG visual warnings (red text, modal messages, threshold display)
+- **Likelihood:** Medium
+- **Impact:** High (confusing = not fun)
+
+**Process Risks:**
+
+**Risk 5: Scope Creep**
+- **Concern:** "Just add one more insurance type" expands past 20 hours
+- **Mitigation:** Strict 2 insurance, 2 conviction limit for MVP
+- **Likelihood:** Medium
+- **Impact:** High (delays complete MVP)
+
+**Risk 6: Not Fun After All**
+- **Concern:** Insurance/conviction don't add enjoyment (just complexity)
+- **Mitigation:** Immediate playtest after implementation
+- **Likelihood:** Low (insurance is core to game concept)
+- **Impact:** Critical (might need redesign)
+
+---
+
+### Recommendations
+
+**Approve RFC-003 with conditions:**
+
+✅ **Approve IF:**
+1. Scope stays within 12-14 hours (2 insurance, 2 conviction, 5 cards only)
+2. MVP uses hand-level Heat (no persistence yet)
+3. Narc deck has 0 conviction cards (prevents insurance from being useless)
+4. Immediate playtest after implementation (validate stakes feel)
+
+❌ **Reject IF:**
+- Scope expands beyond 20 hours (must stay tight for fast validation)
+- Player adds multiple insurance types before validating 2 types work
+
+**Post-Implementation:**
+- If insurance feels clutch → MVP complete, success!
+- If insurance feels mandatory → Retune Heat/cost balance
+- If conviction creates dread → Success!
+- If too complex → Simplify or reconsider mechanic
+
+---
+
+### Conclusion
+
+**RFC-003 is technically feasible** and completes the MVP validation loop (mechanics → fun → stakes). Estimated 12-14 hours fits within ≤20 hour constraint. Foundation from SOW-001/002 provides all needed extension points.
+
+**Key Success Metric:** After implementation, answer "Does insurance create clutch moments and does Make It Stick create dread?"
+
+**This RFC completes MVP.** After RFC-003, we have full playable prototype for external validation.
 
 ---
 
@@ -230,22 +461,28 @@ DA Approval
 
 ## Approval
 
-**Status:** Awaiting ARCHITECT feasibility analysis
+**Status:** ✅ **APPROVED** - Ready for SOW-003 Creation
 
 **Approvers:**
-- ARCHITECT: [Pending]
+- ARCHITECT: ✅ Approved (12-14 hours estimated, technically feasible, completes MVP loop)
 - PLAYER: ✅ Approved (player need defined, stakes validation goals clear, completes MVP loop)
 
-**Scope Constraint:** [ARCHITECT to estimate - target ≤20 hours]
+**Scope Constraint:** 12-14 hours (fits within ≤20 hour SOW limit)
 
 **Dependencies:**
-- RFC-002: Must complete SOW-002 first (betting, AI, 3-round structure)
+- RFC-002: ✅ SOW-002 completed and merged (foundation validated)
+
+**Conditions:**
+1. Scope must stay within 12-14 hours (2 insurance, 2 conviction only)
+2. MVP uses hand-level Heat (no persistence system)
+3. Narc deck has 0 conviction cards (keeps insurance valuable)
+4. Immediate playtest after implementation (validate stakes feel)
 
 **Next Steps:**
-1. **Wait for RFC-002 completion** (SOW-002 implementation, 15-18 hours)
-2. **ARCHITECT:** Add feasibility analysis
-3. **If Approved:** ARCHITECT creates SOW-003
-4. **DEVELOPER:** Implements per SOW-003
-5. **Critical:** After RFC-003, have COMPLETE playable MVP for validation
+1. ✅ **SOW-002 Complete** (foundation validated)
+2. ✅ **ARCHITECT:** Feasibility analysis complete (12-14 hours estimated)
+3. ➡️ **ARCHITECT:** Create SOW-003 (define phases, deliverables, acceptance criteria)
+4. **DEVELOPER:** Implement per SOW-003
+5. **Critical:** After RFC-003, have COMPLETE playable MVP for external validation
 
 **Date:** 2025-11-09
