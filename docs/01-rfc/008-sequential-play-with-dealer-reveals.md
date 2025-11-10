@@ -2,7 +2,7 @@
 
 ## Status
 
-**Draft** - 2025-11-10
+**Under Review** - 2025-11-10
 
 **Supersedes:** RFC-002 betting mechanics (simultaneous face-down play)
 
@@ -606,11 +606,11 @@ After 5 test hands, I should be able to answer YES to:
 
 ## Approval
 
-**Status:** Draft → Pending Approval
+**Status:** Draft → Under Review
 
 **Approvers:**
-- ARCHITECT: [Pending]
-- PLAYER: [Pending]
+- PLAYER: ✅ **APPROVED** - Solves core "rounds feel meaningless" problem, creates progressive decision-making
+- ARCHITECT: [Pending Review] - Needs validation of 6-8 hour estimate and integration with existing features (RFC-003/004/005/006)
 
 **Scope Constraint:** 6-8 hours (fits within ≤10 hour SOW limit for critical fixes)
 
