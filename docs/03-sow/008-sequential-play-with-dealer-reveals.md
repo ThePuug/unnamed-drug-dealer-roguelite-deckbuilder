@@ -2,14 +2,14 @@
 
 ## Status
 
-**Review** - 2025-11-10
+**Merged** - 2025-11-10
 
 ## References
 
 - **RFC-008:** [Sequential Play with Progressive Dealer Reveals](../01-rfc/008-sequential-play-with-dealer-reveals.md)
 - **ADR-006:** [Sequential Play and Progressive Dealer Reveals](../02-adr/006-sequential-play-and-dealer-reveals.md)
-- **Branch:** sow-008-sequential-play
-- **Implementation Time:** 8-12 hours (estimated) / ~4 hours (actual)
+- **Branch:** sow-008-sequential-play (merged, deleted)
+- **Implementation Time:** 8-12 hours (estimated) / ~5 hours (actual)
 
 ---
 
