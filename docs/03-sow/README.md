@@ -9,6 +9,7 @@ SOWs are work orders for developers. Each SOW defines what needs to be built, wh
 | 001 | Minimal Playable Hand | 🛠️ Foundation | ✅ Merged | 2025-11-09 | 12-16 hours | 4 hours |
 | 002 | Betting System and AI | 🃏 Cards | ✅ Merged | 2025-11-09 | 15-18 hours | 4 hours |
 | 003 | Insurance and Complete Cards | 🃏 Cards | ✅ Merged | 2025-11-09 | 12-14 hours | ~8 hours |
+| 004 | Card Retention Between Hands | 🃏 Cards | 🔄 Review | 2025-11-09 | 4-6 hours | ~3 hours |
 
 **Legend:**
 - **Status:** ✅ Accepted/Merged | 🔄 In Progress/Review | 📝 Planned/Proposed
