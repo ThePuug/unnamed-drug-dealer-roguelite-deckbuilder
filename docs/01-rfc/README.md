@@ -11,6 +11,7 @@ RFCs bridge player needs and technical reality. Each RFC starts with a player-fa
 | 002 | Betting System and AI Opponents | 🎲 Roguelite | ✅ Implemented (SOW-002 merged) | 2025-11-09 | ADR-002/004/005 |
 | 003 | Insurance and Complete Cards | 🃏 Cards | ✅ Implemented (SOW-003 merged) | 2025-11-09 | ADR-001/003 |
 | 004 | Card Retention Between Hands | 🃏 Cards | ✅ Implemented (SOW-004 merged) | 2025-11-09 | N/A |
+| 005 | Deck Balance and Card Distribution | 🃏 Cards | ✅ Implemented (SOW-005 merged) | 2025-11-09 | N/A |
 
 **Legend:**
 - **Status:** ✅ Implemented (merged to main) | ✅ Approved (ready for implementation) | 🔄 Under Review | 📝 Draft/Proposed
