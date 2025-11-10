@@ -226,7 +226,11 @@ None - all phases completed as specified.
 
 ## Acceptance Review
 
-See [005-acceptance.md](005-acceptance.md) for detailed architectural review.
+**All Phases Complete:** ✅ Player (20 cards), Narc (25 cards), Customer (25 cards) rebalanced
+**Critical Bugs Fixed:** All-in (hand+deck empty, persists), heat overflow (signed math), AI never folds, conviction warnings persist, busted button logic
+**Test Coverage:** 52/52 tests passing
+**Strategic Impact:** No self-harming cards, all decks last 6-8 hands, Customer strategic
+**Code Size:** 3,804 lines - recommend module extraction SOW-007 (after deck building)
 
 ---
 

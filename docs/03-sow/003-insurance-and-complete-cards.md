@@ -335,7 +335,11 @@
 
 ## Acceptance Review
 
-See [003-acceptance.md](003-acceptance.md) for detailed architectural review.
+**All Phases Complete:** ✅ Phases 1-5 implemented and tested
+**Critical Bugs Fixed:** Conviction projected heat, face-down cards, card click indexing, FOLD button, cash/heat persistence, deck shuffling
+**Test Coverage:** 46/46 tests passing (15 new for insurance/conviction)
+**Code Quality:** Follows ADR-003, pure functions, clean integration
+**Strategic Impact:** Insurance clutch saves, conviction creates dread, 20-card collection provides variety
 
 ---
 

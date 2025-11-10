@@ -248,7 +248,11 @@
 
 ## Acceptance Review
 
-See [004-acceptance.md](004-acceptance.md) for detailed architectural review.
+**All Phases Complete:** ✅ Shuffle-back, fold penalty, deck exhaustion implemented
+**Key Deviations:** DecisionPoint repurposed (not removed) for round resolution pause, played cards discarded (not returned) for stronger tension
+**Bug Fixes:** All-in mechanics, AI fold handling, deck persistence
+**Test Coverage:** 52/52 tests passing (6 new for card retention)
+**Strategic Impact:** Card retention meaningful, folding has cost, natural run length 4-6 hands
 
 ---
 
