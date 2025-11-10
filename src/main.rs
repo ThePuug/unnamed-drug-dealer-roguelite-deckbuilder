@@ -17,8 +17,9 @@ fn main() {
             betting_button_system,
             decision_point_button_system,
             restart_button_system,
+            go_home_button_system,
             update_betting_button_states,
-            update_restart_button_text,
+            update_restart_button_states,
             toggle_ui_visibility_system,
             update_played_cards_display_system,
             recreate_hand_display_system,
@@ -100,9 +101,12 @@ struct ContinueButton;
 #[derive(Component)]
 struct FoldDecisionButton;
 
-// Restart button (appears at end of hand)
+// Restart buttons (appear at end of hand) - SOW-004
 #[derive(Component)]
-struct RestartButton;
+struct RestartButton; // "NEW DEAL" button
+
+#[derive(Component)]
+struct GoHomeButton; // "GO HOME" button
 
 #[derive(Component)]
 struct PlayedCardDisplay;
@@ -289,7 +293,7 @@ fn create_ui(commands: &mut Commands) {
         ))
         .with_children(|parent| {
             parent.spawn(TextBundle::from_section(
-                "Continue to next round or fold?",
+                "Round complete - Review cards played",
                 TextStyle {
                     font_size: 18.0,
                     color: Color::WHITE,
@@ -297,77 +301,44 @@ fn create_ui(commands: &mut Commands) {
                 },
             ));
 
-            parent.spawn(NodeBundle {
-                style: Style {
-                    flex_direction: FlexDirection::Row,
-                    column_gap: Val::Px(20.0),
+            // Continue button only (no fold - SOW-004)
+            parent.spawn((
+                ButtonBundle {
+                    style: Style {
+                        width: Val::Px(200.0),
+                        height: Val::Px(60.0),
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
+                        margin: UiRect::top(Val::Px(10.0)),
+                        ..default()
+                    },
+                    background_color: Color::srgb(0.3, 0.8, 0.3).into(),
                     ..default()
                 },
-                ..default()
-            })
+                ContinueButton,
+            ))
             .with_children(|parent| {
-                // Continue button
-                parent.spawn((
-                    ButtonBundle {
-                        style: Style {
-                            width: Val::Px(120.0),
-                            height: Val::Px(50.0),
-                            justify_content: JustifyContent::Center,
-                            align_items: AlignItems::Center,
-                            ..default()
-                        },
-                        background_color: Color::srgb(0.3, 0.8, 0.3).into(),
+                parent.spawn(TextBundle::from_section(
+                    "CONTINUE",
+                    TextStyle {
+                        font_size: 24.0,
+                        color: Color::WHITE,
                         ..default()
                     },
-                    ContinueButton,
-                ))
-                .with_children(|parent| {
-                    parent.spawn(TextBundle::from_section(
-                        "CONTINUE",
-                        TextStyle {
-                            font_size: 20.0,
-                            color: Color::WHITE,
-                            ..default()
-                        },
-                    ));
-                });
-
-                // Fold decision button
-                parent.spawn((
-                    ButtonBundle {
-                        style: Style {
-                            width: Val::Px(120.0),
-                            height: Val::Px(50.0),
-                            justify_content: JustifyContent::Center,
-                            align_items: AlignItems::Center,
-                            ..default()
-                        },
-                        background_color: Color::srgb(0.8, 0.3, 0.3).into(),
-                        ..default()
-                    },
-                    FoldDecisionButton,
-                ))
-                .with_children(|parent| {
-                    parent.spawn(TextBundle::from_section(
-                        "FOLD",
-                        TextStyle {
-                            font_size: 20.0,
-                            color: Color::WHITE,
-                            ..default()
-                        },
-                    ));
-                });
+                ));
             });
         });
 
-        // Restart UI (appears at Bust state)
+        // Restart UI (appears at Bust state) - SOW-004: NEW DEAL / GO HOME
         parent.spawn((
             NodeBundle {
                 style: Style {
                     width: Val::Percent(100.0),
                     height: Val::Px(100.0),
+                    flex_direction: FlexDirection::Row,
                     justify_content: JustifyContent::Center,
                     align_items: AlignItems::Center,
+                    column_gap: Val::Px(20.0),
                     margin: UiRect::top(Val::Px(20.0)),
                     display: Display::None, // Hidden by default
                     ..default()
@@ -377,24 +348,50 @@ fn create_ui(commands: &mut Commands) {
             BustContainer,
         ))
         .with_children(|parent| {
-            // Restart button
+            // New Deal button (continue run)
             parent.spawn((
                 ButtonBundle {
                     style: Style {
-                        width: Val::Px(200.0),
+                        width: Val::Px(180.0),
                         height: Val::Px(60.0),
                         justify_content: JustifyContent::Center,
                         align_items: AlignItems::Center,
                         ..default()
                     },
-                    background_color: Color::srgb(0.3, 0.6, 0.9).into(),
+                    background_color: Color::srgb(0.3, 0.8, 0.3).into(),
                     ..default()
                 },
-                RestartButton,
+                RestartButton, // Reuse RestartButton for "NEW DEAL"
             ))
             .with_children(|parent| {
                 parent.spawn(TextBundle::from_section(
-                    "RESTART HAND",
+                    "NEW DEAL",
+                    TextStyle {
+                        font_size: 24.0,
+                        color: Color::WHITE,
+                        ..default()
+                    },
+                ));
+            });
+
+            // Go Home button (end run, reset everything)
+            parent.spawn((
+                ButtonBundle {
+                    style: Style {
+                        width: Val::Px(180.0),
+                        height: Val::Px(60.0),
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
+                        ..default()
+                    },
+                    background_color: Color::srgb(0.8, 0.3, 0.3).into(),
+                    ..default()
+                },
+                GoHomeButton,
+            ))
+            .with_children(|parent| {
+                parent.spawn(TextBundle::from_section(
+                    "GO HOME",
                     TextStyle {
                         font_size: 24.0,
                         color: Color::WHITE,
@@ -457,9 +454,9 @@ fn ui_update_system(
         );
         let totals = hand_state.calculate_totals(include_current_round);
         text.sections[0].value = format!(
-            "Evidence: {} | Cover: {} | Heat: {} | Profit: ${}\nCash: ${} | Total Heat: {}",
+            "Evidence: {} | Cover: {} | Heat: {} | Profit: ${}\nCash: ${} | Total Heat: {} | Deck: {} cards",
             totals.evidence, totals.cover, totals.heat, totals.profit,
-            hand_state.cash, hand_state.current_heat
+            hand_state.cash, hand_state.current_heat, hand_state.player_deck.len()
         );
     }
 
@@ -479,8 +476,36 @@ fn ui_update_system(
             State::DecisionPoint => format!("Status: Round {}/3 Complete - Continue or Fold?", hand_state.current_round),
             State::Resolve => "Status: Resolving Final Hand...".to_string(),
             State::Bust => match hand_state.outcome {
-                Some(HandOutcome::Safe) => "Status: SAFE! You got away with it!".to_string(),
-                Some(HandOutcome::Busted) => "Status: BUSTED! You got caught!".to_string(),
+                Some(HandOutcome::Safe) => {
+                    // Check if this was deck exhaustion
+                    if hand_state.player_deck.len() < 3 {
+                        format!("Status: Deck Exhausted ({} cards) - Run Ends", hand_state.player_deck.len())
+                    } else {
+                        "Status: SAFE! You got away with it!".to_string()
+                    }
+                }
+                Some(HandOutcome::Busted) => {
+                    // Check if this was deck exhaustion (not a real bust)
+                    if hand_state.player_deck.len() < 3 {
+                        format!("Status: Deck Exhausted ({} cards) - Run Ends", hand_state.player_deck.len())
+                    } else {
+                        "Status: BUSTED! You got caught!".to_string()
+                    }
+                }
+                Some(HandOutcome::Folded) => {
+                    // Show who folded
+                    if let Ok(betting_state) = betting_state_query.get_single() {
+                        if betting_state.last_action_narc == Some(BettingAction::Fold) {
+                            "Status: Hand Ended - Narc Folded".to_string()
+                        } else if betting_state.last_action_customer == Some(BettingAction::Fold) {
+                            "Status: Hand Ended - Customer Folded".to_string()
+                        } else {
+                            "Status: Hand Ended - You Folded".to_string()
+                        }
+                    } else {
+                        "Status: Hand Ended - Fold".to_string()
+                    }
+                }
                 None => "Status: Game Over".to_string(),
             },
             // Legacy states (SOW-001)
@@ -518,6 +543,7 @@ fn ui_update_system(
             State::Bust => match hand_state.outcome {
                 Some(HandOutcome::Safe) => Color::srgb(0.3, 1.0, 0.3),
                 Some(HandOutcome::Busted) => Color::srgb(1.0, 0.3, 0.3),
+                Some(HandOutcome::Folded) => Color::srgb(0.7, 0.7, 0.7), // Gray for fold
                 None => Color::WHITE,
             },
             // Legacy
@@ -729,11 +755,9 @@ fn betting_button_system(
     // Fold button
     for interaction in fold_query.iter() {
         if *interaction == Interaction::Pressed {
-            // Fold during betting phase
+            // SOW-004: Fold penalty now handled in handle_action()
             let _result = betting_state.handle_action(Owner::Player, BettingAction::Fold, &mut hand_state, None);
-            // Fold always succeeds and ends the hand immediately
-            hand_state.outcome = Some(HandOutcome::Safe); // Folding is "safe" (not busted)
-            hand_state.current_state = State::Bust; // End hand
+            // handle_action sets outcome and state to Bust
         }
     }
 }
@@ -777,7 +801,6 @@ fn update_betting_button_states(
 
 fn decision_point_button_system(
     continue_query: Query<&Interaction, (Changed<Interaction>, With<ContinueButton>)>,
-    fold_query: Query<&Interaction, (Changed<Interaction>, With<FoldDecisionButton>)>,
     mut hand_state_query: Query<&mut HandState>,
 ) {
     let Ok(mut hand_state) = hand_state_query.get_single_mut() else {
@@ -789,17 +812,10 @@ fn decision_point_button_system(
         return;
     }
 
-    // Continue button
+    // Continue button - advance to next round
     for interaction in continue_query.iter() {
         if *interaction == Interaction::Pressed {
             hand_state.continue_to_next_round();
-        }
-    }
-
-    // Fold button
-    for interaction in fold_query.iter() {
-        if *interaction == Interaction::Pressed {
-            hand_state.fold_at_decision_point();
         }
     }
 }
@@ -822,25 +838,19 @@ fn restart_button_system(
         return;
     }
 
-    // Restart button behavior depends on outcome
+    // NEW DEAL button - only works if deck has cards
     for interaction in restart_query.iter() {
         if *interaction == Interaction::Pressed {
-            match hand_state.outcome {
-                Some(HandOutcome::Safe) => {
-                    // Safe outcome: Start next hand (preserve cash/heat for the run)
-                    hand_state.start_next_hand();
-                }
-                Some(HandOutcome::Busted) => {
-                    // Busted: New run (reset everything)
-                    hand_state.reset();
-                }
-                None => {
-                    // Shouldn't happen, but reset everything
-                    hand_state.reset();
-                }
+            // Check if deck is exhausted
+            if hand_state.player_deck.len() < 3 {
+                // Button disabled, ignore click
+                return;
             }
 
-            // Reset betting state for new hand
+            // Start next hand (preserve cash/heat)
+            let _can_continue = hand_state.start_next_hand();
+
+            // Reset betting state
             if let Ok(mut betting_state) = betting_state_query.get_single_mut() {
                 *betting_state = BettingState::default();
             }
@@ -849,14 +859,12 @@ fn restart_button_system(
 }
 
 // ============================================================================
-// UPDATE RESTART BUTTON TEXT - Show "NEXT HAND" or "NEW RUN" based on outcome
+// UPDATE RESTART BUTTON STATES - Disable NEW DEAL when deck exhausted
 // ============================================================================
 
-fn update_restart_button_text(
+fn update_restart_button_states(
     hand_state_query: Query<&HandState>,
-    restart_button_query: Query<Entity, With<RestartButton>>,
-    children_query: Query<&Children>,
-    mut text_query: Query<&mut Text>,
+    mut restart_button_query: Query<&mut BackgroundColor, With<RestartButton>>,
 ) {
     let Ok(hand_state) = hand_state_query.get_single() else {
         return;
@@ -867,17 +875,44 @@ fn update_restart_button_text(
         return;
     }
 
-    // Update restart button text based on outcome
-    if let Ok(button_entity) = restart_button_query.get_single() {
-        if let Ok(children) = children_query.get(button_entity) {
-            for &child in children.iter() {
-                if let Ok(mut text) = text_query.get_mut(child) {
-                    text.sections[0].value = match hand_state.outcome {
-                        Some(HandOutcome::Safe) => "NEXT HAND".to_string(),
-                        Some(HandOutcome::Busted) => "NEW RUN".to_string(),
-                        None => "RESTART".to_string(),
-                    };
-                }
+    // Disable NEW DEAL button if deck exhausted
+    if let Ok(mut bg_color) = restart_button_query.get_single_mut() {
+        let can_deal = hand_state.player_deck.len() >= 3;
+        *bg_color = if can_deal {
+            Color::srgb(0.3, 0.8, 0.3).into() // Green (enabled)
+        } else {
+            Color::srgb(0.2, 0.2, 0.2).into() // Dark gray (disabled)
+        };
+    }
+}
+
+// ============================================================================
+// GO HOME BUTTON SYSTEM - Reset run completely
+// ============================================================================
+
+fn go_home_button_system(
+    go_home_query: Query<&Interaction, (Changed<Interaction>, With<GoHomeButton>)>,
+    mut hand_state_query: Query<&mut HandState>,
+    mut betting_state_query: Query<&mut BettingState>,
+) {
+    let Ok(mut hand_state) = hand_state_query.get_single_mut() else {
+        return;
+    };
+
+    // Only at Bust state
+    if hand_state.current_state != State::Bust {
+        return;
+    }
+
+    // Go Home button - always resets everything
+    for interaction in go_home_query.iter() {
+        if *interaction == Interaction::Pressed {
+            // Reset everything (end run)
+            hand_state.reset();
+
+            // Reset betting state
+            if let Ok(mut betting_state) = betting_state_query.get_single_mut() {
+                *betting_state = BettingState::default();
             }
         }
     }
@@ -1162,6 +1197,7 @@ enum State {
 enum HandOutcome {
     Safe,
     Busted,
+    Folded, // SOW-004: Hand ended by fold (not bust, not completed)
 }
 
 /// Hand state tracking (Extended for SOW-002/003)
@@ -1209,16 +1245,62 @@ impl HandState {
         *self = Self::default();
     }
 
-    /// Start next hand in the run (preserve cash/heat, reset decks)
+    /// Shuffle unplayed hand cards back into deck (SOW-004: Card retention)
+    /// Called at end of hand to return ONLY unplayed cards to deck
+    /// Played cards are "spent" and discarded (not returned)
+    fn shuffle_cards_back(&mut self) {
+        // Player: Return only unplayed hand cards to deck
+        self.player_deck.extend(self.player_hand.drain(..));
+        self.player_deck.shuffle(&mut rand::thread_rng());
+
+        // Narc: Return only unplayed hand cards to deck
+        self.narc_deck.extend(self.narc_hand.drain(..));
+        self.narc_deck.shuffle(&mut rand::thread_rng());
+
+        // Customer: Return only unplayed hand cards to deck
+        self.customer_deck.extend(self.customer_hand.drain(..));
+        self.customer_deck.shuffle(&mut rand::thread_rng());
+
+        // Played cards are discarded (not shuffled back)
+        self.cards_played.clear();
+        self.cards_played_this_round.clear();
+    }
+
+    /// Start next hand in the run (preserve cash/heat, shuffle cards back)
     /// Used after Safe outcome to continue the run
-    fn start_next_hand(&mut self) {
+    /// Returns true if hand can start, false if deck exhausted
+    fn start_next_hand(&mut self) -> bool {
         let preserved_cash = self.cash;
         let preserved_heat = self.current_heat;
 
-        *self = Self::default();
+        // SOW-004: Shuffle cards back into deck before resetting
+        self.shuffle_cards_back();
 
+        // SOW-004: Preserve decks (they've been modified by shuffle-back and fold penalties)
+        let preserved_player_deck = self.player_deck.clone();
+        let preserved_narc_deck = self.narc_deck.clone();
+        let preserved_customer_deck = self.customer_deck.clone();
+
+        // SOW-004 Phase 3: Check deck exhaustion before starting new hand
+        if preserved_player_deck.len() < 3 {
+            // Deck exhausted - cannot start new hand
+            self.outcome = Some(HandOutcome::Busted);
+            self.current_state = State::Bust;
+            // Don't reset - keep preserved decks to show deck size in UI
+            self.player_deck = preserved_player_deck;
+            self.narc_deck = preserved_narc_deck;
+            self.customer_deck = preserved_customer_deck;
+            return false;
+        }
+
+        // Reset state but preserve cash/heat/decks
+        *self = Self::default();
         self.cash = preserved_cash;
         self.current_heat = preserved_heat;
+        self.player_deck = preserved_player_deck;
+        self.narc_deck = preserved_narc_deck;
+        self.customer_deck = preserved_customer_deck;
+        true
     }
 
     /// Draw cards from decks to hands (initial draw phase)
@@ -1246,22 +1328,22 @@ impl HandState {
     /// Transition to next state (ADR-004: Multi-round state machine)
     pub fn transition_state(&mut self) {
         self.current_state = match self.current_state {
-            // Multi-round flow (SOW-002)
+            // Multi-round flow (SOW-002/004)
             State::Draw => State::Betting,
             State::Betting => State::Flip,
             State::Flip => {
-                // After Round 3: Go to Resolution
-                // After Rounds 1-2: Go to DecisionPoint
+                // SOW-004: Show round resolution at DecisionPoint
                 if self.current_round >= 3 {
+                    // After Round 3: Go to Resolution
                     State::Resolve
                 } else {
+                    // After Rounds 1-2: Go to DecisionPoint to show round results
                     State::DecisionPoint
                 }
             },
             State::DecisionPoint => {
-                // Player chose Continue (handled by continue_to_next_round)
-                // If we reach this, something is wrong
-                State::DecisionPoint // Stay here until explicit Continue/Fold
+                // SOW-004: DecisionPoint removed, but keep for backwards compatibility
+                State::DecisionPoint
             },
             State::Resolve => State::Bust, // Will be refined (Safe vs Busted)
             State::Bust => State::Bust, // Terminal state
@@ -1273,7 +1355,7 @@ impl HandState {
         };
     }
 
-    /// Continue to next round (called from DecisionPoint when player chooses Continue)
+    /// Continue to next round (called from DecisionPoint after reviewing round results)
     pub fn continue_to_next_round(&mut self) {
         if self.current_state != State::DecisionPoint {
             return; // Only valid at DecisionPoint
@@ -1566,9 +1648,20 @@ impl BettingState {
                     Owner::Player => self.last_action_player = Some(BettingAction::Fold),
                 }
 
-                // Player exits hand (handled by betting_button_system calling fold_at_decision_point())
-                // For MVP: Only Player folds during betting (AI never folds mid-betting)
-                // No turn advancement needed (hand ends)
+                // SOW-004: Apply fold penalty (remove 1 random card from folder's deck)
+                let deck = match player {
+                    Owner::Narc => &mut hand_state.narc_deck,
+                    Owner::Customer => &mut hand_state.customer_deck,
+                    Owner::Player => &mut hand_state.player_deck,
+                };
+                if !deck.is_empty() {
+                    let idx = rand::thread_rng().gen_range(0..deck.len());
+                    deck.remove(idx);
+                }
+
+                // SOW-004: Fold ends hand with Folded outcome
+                hand_state.outcome = Some(HandOutcome::Folded);
+                hand_state.current_state = State::Bust; // Terminal state
             },
         }
 
@@ -1577,8 +1670,8 @@ impl BettingState {
 
     /// Check if player can raise (has cards and under limit)
     fn can_raise(&self, player: Owner, hand_state: &HandState) -> bool {
-        // All-in check
-        if self.players_all_in.contains(&player) {
+        // SOW-004: If anyone is all-in, no more raises allowed (betting locked)
+        if !self.players_all_in.is_empty() {
             return false;
         }
 
@@ -1675,21 +1768,22 @@ fn ai_betting_system(
 /// Round 1: 60% Check, 40% Raise
 /// Round 2: 40% Check, 60% Raise
 /// Round 3: 20% Check, 80% Raise
-/// Never folds UNLESS out of cards
+/// SOW-004: Goes all-in when out of cards (can only Check)
 fn narc_ai_decision(round: u8, betting_state: &BettingState, hand_state: &HandState) -> BettingAction {
     // If facing a raise, try to call
     if betting_state.players_awaiting_action.contains(&Owner::Narc) {
         if betting_state.can_raise(Owner::Narc, hand_state) {
             return BettingAction::Raise; // Will be interpreted as Call
         } else {
-            // No cards left - must fold (can't call or check)
+            // No cards left - must fold when facing a raise (can't call)
             return BettingAction::Fold;
         }
     }
 
     // Not facing a raise - decide whether to raise or check
+    // SOW-004: If no cards, can only Check (all-in)
     if !betting_state.can_raise(Owner::Narc, hand_state) {
-        return BettingAction::Check;
+        return BettingAction::Check; // All-in
     }
 
     // Weighted randomness by round
@@ -1710,18 +1804,24 @@ fn narc_ai_decision(round: u8, betting_state: &BettingState, hand_state: &HandSt
 /// Customer AI decision per RFC-002 strategy
 /// Rounds 1-2: Check if no raises, Call if facing raise
 /// Round 3: If Evidence > 60, 30% Fold / 70% Raise; else 70% Raise / 30% Check
+/// SOW-004: Goes all-in when out of cards (can only Check, or Fold if facing raise)
 fn customer_ai_decision(round: u8, betting_state: &BettingState, hand_state: &HandState) -> BettingAction {
+    // If facing a raise and no cards, must fold (can't call)
+    if betting_state.players_awaiting_action.contains(&Owner::Customer)
+        && !betting_state.can_raise(Owner::Customer, hand_state) {
+        return BettingAction::Fold;
+    }
+
+    // If no cards and not facing raise, can only Check (all-in)
+    if !betting_state.can_raise(Owner::Customer, hand_state) {
+        return BettingAction::Check;
+    }
+
     // Rounds 1-2: Passive strategy (check/call, don't raise)
     if round < 3 {
-        // If facing a raise, must call or fold
+        // If facing a raise, must call
         if betting_state.players_awaiting_action.contains(&Owner::Customer) {
-            // Facing a raise - call it if we have cards
-            if betting_state.can_raise(Owner::Customer, hand_state) {
-                return BettingAction::Raise; // Will be interpreted as Call
-            } else {
-                // No cards left - must fold
-                return BettingAction::Fold;
-            }
+            return BettingAction::Raise; // Will be interpreted as Call
         }
         // No raise active - just check
         return BettingAction::Check;
@@ -1810,6 +1910,10 @@ impl HandState {
             }
             HandOutcome::Busted => {
                 // No cash gained on bust
+            }
+            HandOutcome::Folded => {
+                // Unreachable - folding handled in handle_action(), not resolve_hand()
+                // But added for exhaustive matching
             }
         }
 
@@ -2249,7 +2353,7 @@ mod tests {
         // Initial state should be Draw
         assert_eq!(hand_state.current_state, State::Draw);
 
-        // New state flow (SOW-002): Draw → Betting → Flip → DecisionPoint
+        // New state flow (SOW-004): Draw → Betting → Flip → DecisionPoint
         hand_state.transition_state();
         assert_eq!(hand_state.current_state, State::Betting);
 
@@ -2257,6 +2361,7 @@ mod tests {
         assert_eq!(hand_state.current_state, State::Flip);
 
         hand_state.transition_state();
+        // SOW-004: DecisionPoint shows round results (with Continue button only)
         assert_eq!(hand_state.current_state, State::DecisionPoint);
 
         // Continue to Round 2
@@ -2710,8 +2815,9 @@ mod tests {
         assert_eq!(hand_state.current_state, State::Flip);
 
         hand_state.transition_state();
+        // SOW-004: DecisionPoint shows round results
         assert_eq!(hand_state.current_state, State::DecisionPoint);
-        assert_eq!(hand_state.current_round, 1); // Still Round 1
+        assert_eq!(hand_state.current_round, 1); // Still Round 1 until Continue
     }
 
     #[test]
@@ -2785,7 +2891,7 @@ mod tests {
         hand_state.current_state = State::Flip;
         hand_state.current_round = 1;
 
-        // Transition should go to DecisionPoint (not Resolve)
+        // SOW-004: Transition goes to DecisionPoint to show round results
         hand_state.transition_state();
         assert_eq!(hand_state.current_state, State::DecisionPoint);
     }
@@ -2813,10 +2919,10 @@ mod tests {
         assert_eq!(hand_state.current_round, 3);
         assert_eq!(hand_state.current_state, State::Draw);
 
-        // Round 3: Draw → Betting → Flip → Resolve (no DecisionPoint)
+        // Round 3: Draw → Betting → Flip → Resolve
         hand_state.transition_state(); // → Betting
         hand_state.transition_state(); // → Flip
-        hand_state.transition_state(); // → Resolve (not DecisionPoint!)
+        hand_state.transition_state(); // → Resolve
 
         assert_eq!(hand_state.current_state, State::Resolve);
         assert_eq!(hand_state.current_round, 3);
@@ -3369,5 +3475,133 @@ mod tests {
         assert_eq!(hand_state.current_round, 1);
         assert_eq!(hand_state.cards_played.len(), 0);
         assert!(hand_state.outcome.is_none());
+    }
+
+    // ========================================================================
+    // TESTS - SOW-004 (Card Retention Between Hands)
+    // ========================================================================
+
+    #[test]
+    fn test_shuffle_cards_back_returns_unplayed_only() {
+        let mut hand_state = HandState::default();
+        let initial_deck_size = hand_state.player_deck.len();
+
+        // Draw 3 cards
+        hand_state.draw_cards();
+
+        // Play 2 cards (1 remains in hand)
+        hand_state.cards_played.push(hand_state.player_hand.remove(0));
+        hand_state.cards_played.push(hand_state.player_hand.remove(0));
+        let unplayed_cards = hand_state.player_hand.len(); // Should be 1
+
+        // Shuffle back
+        hand_state.shuffle_cards_back();
+
+        // Only unplayed cards (1) returned to deck
+        // Deck: initial - 3 (drawn) + 1 (unplayed) = initial - 2
+        assert_eq!(hand_state.player_deck.len(), initial_deck_size - 2);
+        assert_eq!(hand_state.player_hand.len(), 0);
+        assert_eq!(hand_state.cards_played.len(), 0); // Cleared
+    }
+
+    #[test]
+    fn test_shuffle_cards_back_handles_all_players() {
+        let mut hand_state = HandState::default();
+        let initial_narc = hand_state.narc_deck.len();
+        let initial_customer = hand_state.customer_deck.len();
+        let initial_player = hand_state.player_deck.len();
+
+        // Draw cards for all players
+        hand_state.draw_cards();
+
+        // Shuffle back
+        hand_state.shuffle_cards_back();
+
+        // All decks should be restored
+        assert_eq!(hand_state.narc_deck.len(), initial_narc);
+        assert_eq!(hand_state.customer_deck.len(), initial_customer);
+        assert_eq!(hand_state.player_deck.len(), initial_player);
+    }
+
+    #[test]
+    fn test_start_next_hand_only_returns_unplayed() {
+        let mut hand_state = HandState::default();
+        hand_state.cash = 500;
+        hand_state.current_heat = 30;
+
+        let initial_deck_size = hand_state.player_deck.len();
+
+        // Draw 3 cards, play 1 (2 remain in hand)
+        hand_state.draw_cards();
+        hand_state.cards_played.push(hand_state.player_hand.remove(0));
+
+        // Start next hand (should shuffle back only the 2 unplayed)
+        hand_state.start_next_hand();
+
+        // Deck should be reduced: initial - 3 (drawn) + 2 (unplayed returned) = initial - 1
+        assert_eq!(hand_state.player_deck.len(), initial_deck_size - 1);
+        assert_eq!(hand_state.cash, 500); // Cash preserved
+        assert_eq!(hand_state.current_heat, 30); // Heat preserved
+    }
+
+    #[test]
+    fn test_fold_penalty_removes_card() {
+        let mut hand_state = HandState::default();
+        let initial_deck_size = hand_state.player_deck.len();
+
+        // Draw cards
+        hand_state.draw_cards();
+
+        // Simulate fold (remove 1 random card)
+        if !hand_state.player_deck.is_empty() {
+            let idx = rand::thread_rng().gen_range(0..hand_state.player_deck.len());
+            hand_state.player_deck.remove(idx);
+        }
+
+        // Deck should be 1 smaller
+        assert_eq!(hand_state.player_deck.len(), initial_deck_size - 3 - 1); // Drew 3, removed 1
+    }
+
+    #[test]
+    fn test_deck_exhaustion_ends_run() {
+        let mut hand_state = HandState::default();
+        hand_state.cash = 1000;
+        hand_state.current_heat = 50;
+
+        // Deplete deck to 2 cards
+        while hand_state.player_deck.len() > 2 {
+            hand_state.player_deck.pop();
+        }
+
+        // Try to start next hand with < 3 cards
+        let can_continue = hand_state.start_next_hand();
+
+        assert_eq!(can_continue, false); // Cannot continue
+        assert_eq!(hand_state.outcome, Some(HandOutcome::Busted)); // Run ends
+        assert_eq!(hand_state.current_state, State::Bust); // Terminal state
+    }
+
+    #[test]
+    fn test_fold_penalty_persists_across_hands() {
+        let mut hand_state = HandState::default();
+        let initial_deck_size = hand_state.player_deck.len();
+
+        // Draw cards
+        hand_state.draw_cards();
+
+        // Simulate fold penalty (remove 1 card)
+        if !hand_state.player_deck.is_empty() {
+            hand_state.player_deck.remove(0);
+        }
+
+        // Deck is now initial_deck_size - 3 (drawn) - 1 (fold penalty) = initial_deck_size - 4
+        let deck_after_fold = hand_state.player_deck.len();
+        assert_eq!(deck_after_fold, initial_deck_size - 4);
+
+        // Start next hand (should preserve the smaller deck)
+        hand_state.start_next_hand();
+
+        // Deck should still be reduced (fold penalty persists)
+        assert_eq!(hand_state.player_deck.len(), initial_deck_size - 1); // Only 1 card lost (shuffled back 3 drawn)
     }
 }

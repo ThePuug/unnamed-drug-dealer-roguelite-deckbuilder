@@ -2,7 +2,7 @@
 
 ## Status
 
-**Planned** - 2025-11-09
+**Complete** - 2025-11-09 (All Phases Complete, Ready for Review)
 
 ## References
 
@@ -179,7 +179,70 @@
 
 ## Discussion
 
-*This section will be populated during implementation with questions, decisions, and deviations.*
+### Implementation Decisions
+
+**Shuffle-Back Scope Change (Phase 1):**
+- **Original SOW:** "Return played and unplayed cards to deck"
+- **Implemented:** Only unplayed hand cards return to deck, played cards discarded
+- **Rationale:** Played cards represent "spent" cards in the deal - they should be consumed, not returned. This creates natural deck depletion as intended by RFC-004's strategic goal.
+- **Impact:** Deck depletes faster (~3 cards per hand instead of 0), creating stronger strategic tension
+- **User Validation:** Confirmed during playtesting - feels correct that played cards are spent
+
+**DecisionPoint Repurposed (Phase 2 Deviation):**
+- **Original SOW:** "Remove DecisionPoint state from State enum"
+- **Implemented:** Kept DecisionPoint, repurposed as round resolution pause
+- **Rationale:** During playtesting, when AI folded it was unclear what happened (hand jumped to "NEXT HAND" instantly). DecisionPoint provides natural pause to show:
+  - Who folded/raised/checked/called
+  - Round results before continuing
+  - Betting actions visible
+- **Changes Made:**
+  - UI updated: "Round complete - Review cards played"
+  - FOLD button removed (only CONTINUE)
+  - Automatic pause after each round's Flip
+- **Impact:** Better UX, addresses playtesting feedback about fold clarity
+
+**Fold Outcome Type Added:**
+- **Addition:** New `HandOutcome::Folded` enum variant
+- **Rationale:** Need to distinguish between:
+  - `Safe` - Completed hand successfully (Evidence ≤ Cover)
+  - `Busted` - Caught (Evidence > Cover) or deck exhausted
+  - `Folded` - Hand ended by fold (someone gave up)
+- **Impact:** Clear status messaging ("Hand Ended - Narc Folded" vs "BUSTED!")
+
+**All-In Mechanics Enhancement:**
+- **Issue:** AI with empty hand tried invalid actions (Check while awaiting raise)
+- **Root Cause:** All-in only prevented that player from raising, not ALL players
+- **Fix:** `can_raise()` returns false for EVERYONE when anyone is all-in
+- **Rationale:** All-in is a round state (no more raises), not player state
+- **Impact:** Prevents stuck states when decks run low, matches poker semantics
+
+**Button UX Improvements:**
+- **Original:** "NEXT HAND" / "NEW RUN"
+- **Implemented:** "NEW DEAL" / "GO HOME"
+- **Rationale:** Clearer terminology, thematic fit (poker/drug dealer theme)
+- **Enhancement:** NEW DEAL disabled (grayed) when deck exhausted
+- **Impact:** Player instantly understands their options
+
+**AI Fold Behavior:**
+- **Implementation:** AI folds when out of cards AND facing a raise (can't call)
+- **Implementation:** AI checks (all-in) when out of cards and NOT facing raise
+- **Rationale:** Matches poker all-in semantics (can check through, can't call raises)
+- **Impact:** Natural behavior, prevents stuck states
+
+### Deviations from SOW
+
+**DecisionPoint Not Removed:**
+- **SOW Phase 2:** "Remove DecisionPoint state from State enum"
+- **Actual:** DecisionPoint kept and repurposed for round resolution
+- **Justification:** Playtesting revealed need for pause to show fold actions
+- **Backward Compatibility:** DecisionPoint state kept in enum, flow unchanged for tests
+- **Code Impact:** Minimal - one line change in `transition_state()`, UI updated
+
+**Played Cards Not Returned:**
+- **SOW Phase 1:** "Return played and unplayed cards to deck"
+- **Actual:** Only unplayed cards returned, played cards discarded
+- **Justification:** Stronger strategic tension, matches RFC-004 goal
+- **Balance Impact:** Deck depletes ~3 cards/hand, natural run length 4-6 hands
 
 ---
 
