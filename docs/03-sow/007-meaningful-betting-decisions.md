@@ -2,7 +2,9 @@
 
 ## Status
 
-**Planned** - 2025-11-10
+**Rejected** - 2025-11-10
+
+**Rejection Reason:** Implementation felt bad in practice. The mechanic didn't create the desired meaningful decisions and fun gameplay. RFC-007 has been rejected and needs to be revisited with alternative approaches.
 
 ## References
 

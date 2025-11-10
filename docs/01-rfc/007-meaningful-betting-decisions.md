@@ -2,7 +2,9 @@
 
 ## Status
 
-**Approved** - 2025-11-10
+**Rejected** - 2025-11-10
+
+**Rejection Reason:** Implementation felt bad in practice. Discarding cards to match raises created poor UX and didn't achieve the desired gameplay tension. Need to revisit core problem and explore alternative solutions.
 
 ## Feature Request
 

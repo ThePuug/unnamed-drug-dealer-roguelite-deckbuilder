@@ -11,9 +11,11 @@ SOWs are work orders for developers. Each SOW defines what needs to be built, wh
 | 003 | Insurance and Complete Cards | 🃏 Cards | ✅ Merged | 2025-11-09 | 12-14 hours | ~8 hours |
 | 004 | Card Retention Between Hands | 🃏 Cards | ✅ Merged | 2025-11-09 | 4-6 hours | ~3 hours |
 | 005 | Deck Balance and Card Distribution | 🃏 Cards | ✅ Merged | 2025-11-09 | 4-6 hours | ~4 hours |
+| 006 | Run Progression and Meta Systems | 🎲 Roguelite | ✅ Merged | 2025-11-09 | 8-10 hours | ~6 hours |
+| 007 | Meaningful Betting Decisions | 🎲 Roguelite | ❌ Rejected | 2025-11-10 | 6-8 hours | N/A |
 
 **Legend:**
-- **Status:** ✅ Accepted/Merged | 🔄 In Progress/Review | 📝 Planned/Proposed
+- **Status:** ✅ Accepted/Merged | 🔄 In Progress/Review | 📝 Planned/Proposed | ❌ Rejected
 - **Category:** 🃏 Cards | 💰 Economy | 🎲 Roguelite | 🗺️ Map/Events | 🧪 Substances | ⚔️ Combat | 🎨 UI | 🛠️ Dev Tools
 
 ---

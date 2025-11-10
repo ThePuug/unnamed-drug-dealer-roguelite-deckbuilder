@@ -12,9 +12,11 @@ RFCs bridge player needs and technical reality. Each RFC starts with a player-fa
 | 003 | Insurance and Complete Cards | 🃏 Cards | ✅ Implemented (SOW-003 merged) | 2025-11-09 | ADR-001/003 |
 | 004 | Card Retention Between Hands | 🃏 Cards | ✅ Implemented (SOW-004 merged) | 2025-11-09 | N/A |
 | 005 | Deck Balance and Card Distribution | 🃏 Cards | ✅ Implemented (SOW-005 merged) | 2025-11-09 | N/A |
+| 006 | Run Progression and Meta Systems | 🎲 Roguelite | ✅ Implemented (SOW-006 merged) | 2025-11-09 | N/A |
+| 007 | Meaningful Betting Decisions | 🎲 Roguelite | ❌ Rejected | 2025-11-10 | N/A |
 
 **Legend:**
-- **Status:** ✅ Implemented (merged to main) | ✅ Approved (ready for implementation) | 🔄 Under Review | 📝 Draft/Proposed
+- **Status:** ✅ Implemented (merged to main) | ✅ Approved (ready for implementation) | 🔄 Under Review | 📝 Draft/Proposed | ❌ Rejected
 - **Category:** 🃏 Cards | 💰 Economy | 🎲 Roguelite | 🗺️ Map/Events | 🧪 Substances | ⚔️ Combat | 🎨 UI | 🛠️ Dev Tools
 
 ---
