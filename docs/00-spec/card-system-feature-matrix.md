@@ -4,7 +4,23 @@ Implementation tracking for Card System specification.
 
 **Spec:** [card-system.md](card-system.md)
 
-**Last Updated:** 2025-11-09
+**Last Updated:** 2025-11-10 (Updated to reflect RFC-005, RFC-008 implementations)
+
+---
+
+## Major Changes from Spec to Implementation
+
+**RFC-005 (Deck Balance and Card Distribution):**
+- ✅ Player deck: 20 cards total, NO Evidence cards, NO Conviction cards
+- ✅ Narc deck: 25 cards (17 Evidence, 8 Conviction)
+- ✅ Customer deck: 25 cards (5 Products, 5 Locations, 15 Deal Modifiers)
+- ✅ Conviction cards moved from player deck to Narc deck
+
+**RFC-008 (Sequential Play - NEW DEALER CARDS):**
+- ✅ **Dealer deck: 20 cards** (8 Locations, 8 Modifiers, 4 Wild)
+- ✅ Dealer cards revealed progressively (one per round)
+- ✅ Dealer Locations can be overridden by player Locations
+- ✅ Dealer Modifiers cannot be overridden
 
 ---
 
@@ -20,20 +36,21 @@ Implementation tracking for Card System specification.
 
 ## Summary
 
-**Overall Completion:** 29/51 features (57%)
+**Overall Completion:** Updated to reflect recent RFC implementations
 
 | Category | Complete | Not Started | Deferred |
 |----------|----------|-------------|----------|
 | Product Cards | 5 | 0 | 0 |
 | Location Cards | 6 | 0 | 0 |
 | Deal Modifier Cards | 3 | 3 | 0 |
-| Evidence Cards | 4 | 1 | 0 |
+| Evidence Cards | 5 | 0 | 0 |
 | Cover Cards | 5 | 0 | 0 |
-| Get Out of Jail Cards | 0 | 6 | 0 |
-| Make It Stick Cards | 0 | 4 | 0 |
-| Card Interactions | 5 | 3 | 0 |
-| Edge Cases | 1 | 5 | 0 |
-| **Total** | **29** | **22** | **0** |
+| Get Out of Jail Cards | 2 | 4 | 0 |
+| Make It Stick Cards | 3 | 1 | 0 |
+| **Dealer Cards (NEW)** | **3** | **0** | **0** |
+| Card Interactions | 6 | 2 | 0 |
+| Edge Cases | 4 | 2 | 0 |
+| **Total** | **42** | **12** | **0** |
 
 ---
 
@@ -112,14 +129,31 @@ Implementation tracking for Card System specification.
 
 ---
 
-## Make It Stick Cards: 0/4 complete (0%)
+## Make It Stick Cards: 3/4 complete (75%) - **Updated per RFC-005**
 
 | Feature | Status | RFC/ADR | Notes |
 |---------|:------:|---------|-------|
-| Conviction override system | ❌ | - | Last Make It Stick played = active |
-| Heat threshold check | ❌ | - | Only applies if current_heat >= threshold |
-| Override Get Out of Jail | ❌ | - | Insurance fails if threshold met |
-| Warrant/DA Approval (MVP) | ❌ | - | 2 Conviction cards for MVP |
+| Conviction override system | ✅ | RFC-005, SOW-005 | Last Make It Stick played = active |
+| Heat threshold check | ✅ | RFC-005, SOW-005 | Only applies if current_heat >= threshold |
+| Override Get Out of Jail | ✅ | RFC-005, SOW-005 | Insurance fails if threshold met |
+| Warrant/DA Approval/RICO Case | ✅ | RFC-005, SOW-005 | **Moved to Narc deck (was in player deck)** - 8 Conviction cards total |
+
+**Note:** Per RFC-005, Conviction cards moved from player deck to Narc deck for thematic consistency
+
+---
+
+## Dealer Cards (NEW in RFC-008): 3/3 complete (100%)
+
+| Feature | Status | RFC/ADR | Notes |
+|---------|:------:|---------|-------|
+| Dealer deck system (20 cards) | ✅ | RFC-008, SOW-008 | Separate deck, 3 cards drawn per hand |
+| Dealer Location cards (8) | ✅ | RFC-008, SOW-008 | Base Evidence/Cover, can be overridden |
+| Dealer Modifier cards (8) | ✅ | RFC-008, SOW-008 | Adjust totals additively, cannot be overridden |
+| Dealer Wild cards (4) | ✅ | RFC-008, SOW-008 | High-impact swings (Lucky Break, Bad Intel) |
+| Progressive reveal (one per round) | ✅ | RFC-008, SOW-008 | Dealer reveals after Player Phase |
+| Integration with override system | ✅ | RFC-008, SOW-008 | Dealer Locations subject to override, Modifiers are not |
+
+**Note:** Dealer cards are a completely new mechanic introduced in RFC-008 to create "river tension" and progressive information revelation
 
 ---
 

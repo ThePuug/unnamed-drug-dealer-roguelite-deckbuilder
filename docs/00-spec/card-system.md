@@ -2,9 +2,11 @@
 
 ## Overview
 
-The game uses 7 distinct card types that interact to create drug deals. Cards affect four key values: **Evidence** (risk of arrest), **Cover** (defense against arrest), **Heat** (persistent difficulty), and **Profit** (money earned). Players, AI opponents (Narc, Customer), all play from their own decks, creating a three-way negotiation where everyone's cards matter.
+The game uses **7+ distinct card types** that interact to create drug deals. Cards affect four key values: **Evidence** (risk of arrest), **Cover** (defense against arrest), **Heat** (persistent difficulty), and **Profit** (money earned). Players, AI opponents (Narc, Customer), and the **Dealer** (community cards) all contribute cards, creating dynamic situations where everyone's cards matter.
 
 **Core Mechanic:** Override system for Products and Locations (last played wins) + additive/multiplicative modifiers for everything else.
+
+**Updated:** 2025-11-10 (Reflects RFC-005 deck distributions, RFC-008 Dealer cards)
 
 ---
 
@@ -18,6 +20,36 @@ Players should feel:
 - **Clear cause and effect** - Understand exactly why totals changed
 
 This is NOT about memorizing combos or hidden interactions - it's about **transparent mechanics with meaningful choices**.
+
+---
+
+## Deck Distributions (Per RFC-005)
+
+**Player Deck (20 cards - Dealer Theme):**
+- ❌ **NO Evidence cards** (removed per RFC-005 - was creating anti-fun)
+- ❌ **NO Conviction cards** (moved to Narc deck per RFC-005)
+- Products: 4 cards (Weed, Meth, Heroin, Cocaine, etc.)
+- Locations: 3 cards (Safe House, Warehouse, Apartment, etc.)
+- Cover: 10 cards (Alibi, Bribe, various defensive cards)
+- Insurance: 2 cards (Plea Bargain, Fake ID)
+- Deal Modifiers: 1 card (Disguise, etc.)
+
+**Narc Deck (25 cards - Law Enforcement Theme):**
+- Evidence: 17 cards (variety of threat levels from Donut Break to Raid)
+- Conviction: 8 cards (Warrant, DA Approval, RICO Case - prevent insurance)
+- ✅ **Conviction moved here** from player deck
+
+**Customer Deck (25 cards - Deal Dynamics Theme):**
+- Products: 5 cards (customer requests specific products)
+- Locations: 5 cards (customer suggests venues)
+- Deal Modifiers: 15 cards (Bulk Order, Haggling, Cash Upfront, etc.)
+- ✅ **Customer now strategic** (was placeholder Evidence before)
+
+**Dealer Deck (20 cards - Community/Scenario Cards per RFC-008):**
+- Location cards: 8 (set base Evidence/Cover, can be overridden)
+- Modifier cards: 8 (adjust totals additively, cannot be overridden)
+- Wild cards: 4 (high-impact swings)
+- ✅ **NEW in RFC-008** - Progressive revelation creates "river tension"
 
 ---
 
@@ -340,6 +372,57 @@ Caught Red-Handed
 
 ---
 
+### 8. Dealer Cards (Community/Scenario Cards) - NEW in RFC-008
+
+**Player Experience:**
+"The Dealer just revealed Police Checkpoint - Evidence jumped by 30! Do I fold now or push through? This is like the river card in poker - changes everything."
+
+**Mechanics:**
+- Dealer has separate 20-card deck
+- 3 cards drawn per hand (face-down)
+- One card revealed per round (after Player Phase)
+- Affects ALL players (community cards)
+- Dealer cards integrate into override system and totals
+
+**Dealer Card Types:**
+
+**Dealer Location Cards (8 cards):**
+- Set base Evidence and Cover values
+- Can be overridden by player Location cards (last played wins)
+- Examples:
+  - Private Residence (10 Evidence, 25 Cover, -10 Heat) [SAFE]
+  - Parking Lot (25 Evidence, 15 Cover, 0 Heat) [NEUTRAL]
+  - Police Checkpoint (30 Evidence, 0 Cover, +15 Heat) [DANGEROUS]
+  - School Zone (35 Evidence, 5 Cover, +25 Heat) [VERY DANGEROUS]
+
+**Dealer Modifier Cards (8 cards):**
+- Adjust Evidence/Cover/Heat additively
+- Cannot be overridden
+- Examples:
+  - Quiet Night (+5 Evidence, +10 Cover, -5 Heat) [HELPFUL]
+  - Heat Wave (+15 Evidence, +0 Cover, +10 Heat) [HARMFUL]
+  - Rival Dealer (if win: +30 Heat) [CONDITIONAL]
+
+**Dealer Wild Cards (4 cards):**
+- High-impact swings
+- Examples:
+  - Lucky Break (-20 Evidence) [VERY HELPFUL]
+  - Bad Intel (+25 Evidence) [VERY HARMFUL]
+
+**Strategic Use:**
+- Dealer reveals create uncertainty (can't predict outcome)
+- Can override Dealer Locations with player Locations
+- Cannot counter Dealer Modifiers (must adapt)
+- Creates "river tension" (final reveal can save or doom you)
+
+**Player Feedback:**
+- "Dealer reveals Police Checkpoint" (dramatic reveal)
+- "Evidence: 45 → 75 (+30 from Police Checkpoint)"
+- "Dealer has 2 cards remaining" (unrevealed count)
+- Visual emphasis on Dealer reveals (different from player cards)
+
+---
+
 ## Card Interaction Rules
 
 ### Override System (Products, Locations, Insurance, Conviction)
@@ -502,44 +585,52 @@ Total: +65 Heat this hand
 
 ---
 
-## Deck Building Implications
+## Deck Building Implications (Per RFC-006)
+
+**Deck Building System:**
+- Players choose **10-20 cards** from the 20-card pool before each run
+- Constraints: Minimum 10 cards, maximum 20 cards, must include at least 1 Product and 1 Location
+- Presets available: Default (all 20), Aggro, Control, Balanced
 
 ### Aggressive Deck (High Risk/Reward)
 ```
-5× High-value Products (Pills, Meth, Heroin)
-2× Risky Locations (School Zone, Street Corner)
-3× Deal Modifiers (Bulk Sale Pressure, ...)
-3× Cover (light defense)
-2× Get Out of Jail
+10-12 cards total:
+3× High-value Products (Meth, Heroin, Cocaine)
+1× Risky Location (School Zone)
+3× Cover (minimal defense)
+2× Insurance (Plea Bargain, Fake ID)
+2× Deal Modifiers
 ```
 
-**Strategy:** High profit per hand, accept high Heat, rely on insurance.
+**Strategy:** High profit per hand, accept high Heat, rely on insurance. Small deck = see cards more frequently.
 
 ---
 
 ### Balanced Deck
 ```
-4× Mixed Products (Weed, Pills, Meth)
-3× Mixed Locations (Safe House, Parking Lot, School Zone)
+15-16 cards total:
+3× Mixed Products (Weed, Pills, Meth)
+2× Mixed Locations (Safe House, Parking Lot)
+5× Cover (moderate defense)
+2× Insurance
 3× Deal Modifiers
-3× Cover (moderate defense)
-2× Get Out of Jail
 ```
 
-**Strategy:** Flexible, can pivot between aggressive and defensive.
+**Strategy:** Flexible, can pivot between aggressive and defensive. Medium deck = variety.
 
 ---
 
 ### Conservative Deck (Grind)
 ```
-3× Low-value Products (Weed, Pills)
-3× Safe Locations (Safe House, Warehouse)
-2× Deal Modifiers
-5× Cover + Heat reduction (Lay Low, Alibi, ...)
-2× Get Out of Jail
+18-20 cards total:
+2× Low-value Products (Weed, Pills)
+3× Safe Locations (Safe House, Warehouse, Apartment)
+8× Cover + Heat reduction (heavy defense)
+2× Insurance
+5× Deal Modifiers
 ```
 
-**Strategy:** Low profit per hand, minimize Heat, survive longer.
+**Strategy:** Low profit per hand, minimize Heat, survive longer. Large deck = more defensive options.
 
 ---
 
@@ -639,25 +730,40 @@ Total: +65 Heat this hand
 
 ## MVP Scope
 
-### Phase 1 (Core Cards)
-- 5 Products (Weed, Pills, Meth, Heroin, + 1 more)
-- 3 Locations (Safe House, Parking Lot, School Zone)
-- 8 Support cards (2 Deal Mod, 3 Evidence, 3 Cover)
-- 4 Insurance cards (2 Get Out of Jail, 2 Make It Stick)
-- **Total: 20 cards**
+### Phase 1 (Core Cards) - ✅ Implemented per RFC-005
+**Player Pool (20 cards):**
+- 4 Products (Weed, Meth, Heroin, Cocaine)
+- 3 Locations (Safe House, Warehouse, Apartment)
+- 10 Cover cards (Alibi, Bribe, various defensive)
+- 2 Insurance (Plea Bargain, Fake ID)
+- 1 Deal Modifier (Disguise)
+
+**Narc Pool (25 cards):**
+- 17 Evidence (Donut Break, Patrol, Surveillance, Stakeout, Raid, etc.)
+- 8 Conviction (Warrant, DA Approval, RICO Case)
+
+**Customer Pool (25 cards):**
+- 5 Products (customer requests)
+- 5 Locations (customer suggests)
+- 15 Deal Modifiers (Bulk Order, Haggling, etc.)
+
+**Dealer Pool (20 cards) - ✅ Implemented per RFC-008:**
+- 8 Location cards (community cards)
+- 8 Modifier cards
+- 4 Wild cards
+
+**Total: 90 cards across 4 decks**
 
 ### Phase 2 (Expanded Collection)
-- 15+ Products (various tiers, different Heat/Profit ratios)
-- 10+ Locations (variety of risk profiles)
-- 30+ Support cards (diverse modifiers)
-- 10+ Insurance cards (different costs/effects)
-- **Total: 80-100 cards**
+- More card variety within each deck
+- Unlock system tied to progression
+- Card synergies and combos
 
 ### Future Enhancements
 - Card rarity tiers (Common, Rare, Legendary)
-- Card synergies (combos)
 - Animated card effects
 - Card cosmetics/art variants
+- Player deck customization (unlock more cards over time)
 
 ---
 

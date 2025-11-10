@@ -2,10 +2,12 @@
 
 ## Overview
 
-Players build 15-card decks and play hands in a betting game structure reminiscent of poker. Each session (deck) consists of 3-5 hands, each hand has 3 rounds of betting, and players must constantly weigh risk versus reward: stay in for profit or fold to preserve cards and minimize Heat.
+Players build 10-20 card decks (choosing from a 20-card pool) and play hands in a sequential reveal structure with progressive information. Each session (deck) consists of 3-5 hands, each hand has 3 rounds where players play cards one-at-a-time (face-up), followed by a Dealer card reveal. Players must constantly weigh risk versus reward: stay in for profit or fold to preserve cards and minimize Heat.
 
 **Target Session Length:** 15 minutes per deck (3-5 hands)
-**Core Tension:** Push your luck vs. fold early and bank safety
+**Core Tension:** Progressive information reveals force reactive decisions each round
+
+**Updated:** 2025-11-10 (Reflects RFC-005 deck sizes, RFC-006 deck building, RFC-008 sequential play)
 
 ---
 
@@ -67,144 +69,151 @@ This is NOT about twitch reflexes or hidden information - it's about **knowing t
 
 ---
 
-#### HAND (Like Poker)
+#### HAND (Sequential Reveal Structure)
 **Player Experience:**
-- 3 rounds of betting against AI opponents (Narc, Customer)
-- Draw 3 cards, play cards face-down during betting
-- Cards flip and resolve after betting closes
-- Can fold anytime to preserve remaining cards
+- 3 rounds against AI opponents (Narc, Customer)
+- Each round: Players play cards one-at-a-time **face-up**, then Dealer reveals community card
+- **Turn order rotates** per round (Round 1: Narc→Customer→Player, Round 2: Customer→Player→Narc, Round 3: Player→Narc→Customer)
+- Can **Check** (skip playing card) or play one card face-up
+- Can fold after Dealer reveal (Rounds 1-2 only)
+- Running totals visible after each card played
 
 **Emotional Flow:**
-- **Round 1:** Establishing position, initial strategy
-- **Round 2:** Escalation, stakes rising, calculating risk
-- **Round 3:** Final commitment, all-in or fold decision
-- **Resolution:** Relief (safe) or panic (busted) or regret (folded)
+- **Round 1:** Information gathering - see what everyone plays, then Dealer reveals first community card
+- **Round 2:** Escalation - react to previous cards, Dealer reveals second community card, fold pressure builds
+- **Round 3:** Final commitment - no fold option, Dealer reveals final card, resolution
+- **Resolution:** Relief (safe) or panic (busted) or regret (folded early)
 
 **Key Decision Points:**
-- Stay in or fold after each round reveal?
-- Play high-value Product now or save for later?
-- Override Location to reduce Evidence?
+- Which card to play when turn order favors me?
+- Fold now after dangerous Dealer reveal, or push to next round?
+- Override opponent's Location to reduce Evidence?
 - Play insurance card preemptively?
+- Check (play no card) or commit another card?
 
 ---
 
-#### ROUND (Betting Phase)
+#### ROUND (Player Phase → Dealer Reveal)
 **Player Experience:**
-- Turn order: Narc → Customer → Player (you go last)
-- See what opponents play before deciding
-- Can Check (stay in without playing), Raise (play card), or Fold (exit hand)
-
-**Betting Mechanics:**
-- First to raise gains **initiative** (can raise again after everyone calls)
-- Maximum **3 raises per round** (across all players)
-- All-in ends betting immediately (if someone plays their last card)
+- Turn order **rotates** per round (gives each player last-mover advantage once)
+  - Round 1: Narc → Customer → Player
+  - Round 2: Customer → Player → Narc
+  - Round 3: Player → Narc → Customer
+- Each player plays **one card face-up** OR checks (plays no card)
+- Cards flip **immediately** when played (everyone sees them)
+- After all players act: **Dealer reveals one community card**
+- Running totals update after each card (Evidence, Cover, Heat, Profit)
 
 **Player Agency:**
-- You see opponent actions before your turn
-- You decide when to escalate vs. when to wait
-- You control pacing (fast hands by checking, slow hands by raising)
+- See what previous players played before your turn
+- React to opponent cards in real-time
+- Can check (play no card) to conserve hand
+- Fold option appears after Dealer reveal (Rounds 1-2 only)
 
 **Tension Sources:**
-- Narc plays Evidence card → Do you play Cover or fold?
-- Customer plays Bulk Order → Big profit, but also big Evidence/Heat
-- Running low on cards → All-in risk or fold early?
+- Narc plays Surveillance (+20 Evidence) → Do you play Cover or override Location?
+- Customer plays Bulk Order (+25 Evidence, ×1.5 profit) → Worth the risk?
+- Dealer reveals Police Checkpoint (+30 Evidence) → Fold now or push through?
+- Override wars → Narc plays School Zone, you counter with Warehouse, Dealer reveals another Location
 
 ---
 
 ### Hand Structure (Detailed)
 
 #### Setup Phase
-1. All players draw 3 cards
-2. Dealer flips Scenario Card (sets theme/context)
-3. Betting begins
+1. Dealer draws 3 community cards (face-down) from Dealer deck
+2. Players draw cards from their hand (carrying over unplayed cards from previous hands per RFC-004)
+3. Round 1 begins
 
-**Scenario Cards** (flavor only, no mechanics in MVP):
-- "Late Night Meet" - Empty parking lot, minimal lighting
-- "Police Nearby" - Patrol car visible one block away
-- "School Zone" - Afternoon, kids getting out of school
-- "Safe House" - Your established meeting spot
+**Dealer Cards** (Community cards affecting all players):
+- **Dealer deck:** 20 scenario cards separate from player decks
+- **3 cards drawn per hand:** Revealed one per round (progressive information)
+- **Card types:**
+  - Location cards (8): Set base Evidence/Cover (can be overridden by player Locations)
+  - Modifier cards (8): Adjust Evidence/Cover/Heat additively (cannot be overridden)
+  - Wild cards (4): High-impact swings (Lucky Break, Bad Intel, etc.)
 
 **Player Feedback:**
-- Clear turn indicators (whose turn?)
-- Card count visible for all players (who's close to all-in?)
-- Running totals visible (Evidence, Cover, Heat, Profit - updated after each round)
+- Clear turn indicators (whose turn, turn order for this round)
+- Card count visible for all players
+- **Running totals visible** (Evidence, Cover, Heat, Profit - **updated after each card played**)
+- Active Location highlighted (shows which Location is in effect)
+- Dealer cards remaining to reveal (Round 1: 2 unrevealed, Round 2: 1 unrevealed, Round 3: all revealed)
 
 ---
 
 #### Round Loop (Repeat 3 Times)
 
-**1. Betting Phase**
+**1. Player Phase (Sequential Play)**
 
-Turn order: Narc → Customer → Player
+Turn order rotates per round (see above).
 
-**Available Actions:**
-- **Check** - Stay in without playing a card (free action)
-- **Raise** - Play a card face-down (commits card)
-- **Fold** - Exit hand immediately (lose all cards played, discard remaining hand)
-
-**Betting Rules:**
-- First to raise gains initiative
-- After all call, player with initiative can raise again
-- Max 3 raises per round (prevents infinite loops)
+**Each Player's Turn:**
+- **Play one card face-up** - Card flips immediately, totals update
+- **Check** - Skip playing a card (conserve hand)
+- Cards visible to all players immediately upon play
 
 **Player Experience:**
-- Narc plays first: Telegraphs threat level (Surveillance? Warrant?)
-- Customer plays second: Shows deal quality (Bulk Order? Haggling?)
-- You play last: React with full information
+- See previous players' cards before your turn
+- React to threats in real-time
+- Running totals update after each card (progressive information)
+- Can check to save cards for later rounds
 
-**Feedback Needed:**
-- Who has initiative? (visual indicator)
-- How many raises left? (3/3 → 2/3 → 1/3 → betting closed)
-- Can I raise? (only if have initiative and raises remaining)
+**Feedback During Player Phase:**
+- Turn indicator (whose turn)
+- Running totals after each card
+- Active Location highlight (if Location override occurred)
+- Cards played so far this round (visible on table)
 
 ---
 
-**2. Cards Flip and Resolve**
+**2. Dealer Reveal**
 
-All cards played this round flip face-up simultaneously.
+After all players act, Dealer reveals one community card.
 
-**Calculate Running Totals:**
-- Evidence = sum(all Evidence cards + Location base + modifiers)
-- Cover = sum(all Cover cards + Location base + modifiers)
-- Heat = sum(all Heat modifiers on cards)
-- Profit = Product base price + all price modifiers
-
-**Display:**
-- All cards on table (grouped by player)
-- Running totals updated
-- Visual indicators: Safe (Evidence < Cover) or Danger (Evidence > Cover)
+**Dealer Card Effects:**
+- **Location cards:** Override previous Location if no player Location played after it
+- **Modifier cards:** Add to Evidence/Cover/Heat (cannot be overridden)
+- **Wild cards:** Large swings in totals
+- Totals update immediately after Dealer reveal
 
 **Player Feedback:**
-- Color-coded totals: Green (safe), Yellow (close), Red (busted)
-- Evidence gap: "Cover +20" or "Evidence +15" (show margin)
-- Heat accumulation: "+45 Heat this hand" (running count)
+- Dealer card flips with visual emphasis
+- Totals update showing impact of Dealer card
+- "Dealer reveals Police Checkpoint (+30 Evidence, 0 Cover, +15 Heat)"
+- Color-coded alert if totals shift to dangerous range
 
 ---
 
-**3. Decision Point: Continue or Fold?**
+**3. Decision Point: Fold or Continue?**
 
-After cards resolve, before next round:
+After Dealer reveal, before next round (Rounds 1-2 only):
 
 **Options:**
-- **Continue** - Draw back to 3 cards, play next round
-- **Fold** - Exit hand, keep Heat accumulated so far, lose all cards played
+- **Continue** - Proceed to next round
+- **Fold** - Exit hand, keep unplayed cards, lose cards played so far, keep Heat accumulated
+
+**Fold Mechanics:**
+- Player can fold Rounds 1-2 (NOT Round 3)
+- Narc CANNOT fold (always plays through)
+- Customer can fold (removes Customer cards from totals, reduces profit multipliers)
 
 **Why Fold?**
-- Evidence climbing too high (can't win)
-- Out of Cover cards (can't defend)
-- Heat too high (not worth the profit)
+- Dealer revealed dangerous card (Police Checkpoint, Bad Intel)
+- Evidence climbing too high after Dealer reveal
+- Customer folded (profit multipliers lost)
 - Preserving cards for next hand
 
 **Why Continue?**
-- Profit is worth the risk
-- Have Cover cards to defend
-- Insurance card in hand (Get Out of Jail)
-- Only 1-2 rounds left (commitment)
+- Totals still manageable
+- Have Cover/Location cards to defend in next round
+- Insurance card in hand
+- Profit worth the risk
 
 **Feedback:**
-- Show projected totals if you fold vs. continue
-- "If you fold: Keep Heat +30, lose 6 cards"
-- "If you continue: Need 25 Cover to stay safe"
+- Show current totals with margin: "Evidence 55, Cover 40 (need 15 more Cover)"
+- "If you fold: Keep Heat +25, lose 4 cards, keep 8 cards in hand"
+- Fold button available Rounds 1-2, disabled Round 3
 
 ---
 

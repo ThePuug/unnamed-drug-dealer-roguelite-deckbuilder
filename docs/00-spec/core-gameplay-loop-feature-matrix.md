@@ -2,9 +2,40 @@
 
 **Companion to:** [core-gameplay-loop.md](core-gameplay-loop.md)
 
-**Last Updated:** 2025-11-09
+**Last Updated:** 2025-11-10 (Updated to reflect RFC-005, RFC-006, RFC-008 implementations)
 
-**Overall Status:** 21/68 features (31% complete)
+**Overall Status:** Updated to reflect recent RFC implementations - significant changes to core loop
+
+---
+
+## Major Changes from Spec to Implementation
+
+**RFC-005 (Deck Balance):**
+- ✅ Player deck expanded to 20 cards (was 15)
+- ✅ Evidence cards removed from player deck (moved to Narc)
+- ✅ Conviction cards moved to Narc deck (was in player deck)
+- ✅ Customer deck now strategic (Products, Locations, Modifiers instead of placeholder Evidence)
+
+**RFC-006 (Deck Building):**
+- ✅ Players now choose 10-20 cards from 20-card pool
+- ✅ Deck builder UI implemented
+- ✅ Presets available (Default, Aggro, Control)
+
+**RFC-007 (Betting):**
+- ❌ Rejected - betting currency mechanic didn't work
+
+**RFC-008 (Sequential Play) - MAJOR CORE LOOP REWORK:**
+- ✅ **Sequential play** (one card at a time, face-up) replaces simultaneous face-down play
+- ✅ **Dealer deck with 3 community cards** revealed progressively (NEW mechanic)
+- ✅ **Rotating turn order** per round (was fixed Narc→Customer→Player)
+- ✅ **Check action** (skip playing card)
+- ✅ **Fold mechanic** after Dealer reveal (Rounds 1-2)
+- ✅ **Customer can fold** (removes cards from totals)
+- ✅ **Narc cannot fold** (always plays through)
+- ✅ **Running totals update after each card** (progressive information)
+- ❌ Initiative/raising mechanics removed (simplified)
+
+**These changes represent a fundamental shift from "poker-style betting" to "progressive information revelation"**
 
 ---
 
@@ -33,16 +64,16 @@
 | Customer Trust persistence | ❌ | Persist between sessions | Phase 2 |
 | Permadeath on bust | ❌ | Character deletion | Phase 2 |
 
-### Deck (Session) - 0/8 complete (0%)
+### Deck (Session) - 2/8 complete (25%)
 
 | Feature | Status | Notes | RFC/ADR/SOW |
 |---------|:------:|-------|-------------|
-| 15-card deck system | ❌ | Player builds before session | RFC-002+ |
-| Deck building UI | ❌ | Card selection interface | RFC-002+ |
-| Session play (3-5 hands) | ❌ | Multiple hands per session | RFC-002 |
-| "Go Home" early option | ❌ | Exit between hands | RFC-002+ |
-| Deck exhaustion handling | ❌ | Can't draw when empty | RFC-002 |
-| Card counter display | ❌ | "X cards remaining" | RFC-002 |
+| 20-card deck pool | ✅ | 20 cards per player deck | RFC-005, SOW-005 |
+| Deck building UI (10-20 cards) | ✅ | Choose cards from pool | RFC-006, SOW-006 |
+| Session play (3-5 hands) | 🚧 | Multiple hands possible, needs polish | SOW-001-008 |
+| "Go Home" early option | ✅ | Exit between hands | Implemented |
+| Deck exhaustion handling | 🚧 | Basic logic present | SOW-004 |
+| Card counter display | ❌ | "X cards remaining" UI | Phase 2 |
 | Post-session summary | ❌ | Profit banked, Heat delta | Phase 2 |
 | Strategic deck building | ❌ | Heat-based recommendations | Phase 2 |
 
@@ -50,38 +81,40 @@
 
 ## Hand Structure
 
-### Hand Flow - 8/12 complete (67%)
+### Hand Flow - 10/14 complete (71%)
 
 | Feature | Status | Notes | RFC/ADR/SOW |
 |---------|:------:|-------|-------------|
-| 3-round hand structure | ✅ | Draw → Bet → Flip × 3 | SOW-002 |
-| Turn order (Narc → Customer → Player) | ✅ | Fixed order | SOW-002 |
-| Draw phase (3 cards) | ✅ | All players draw to 3 | SOW-001, SOW-002 |
-| Betting phase | ✅ | Check/Raise/Fold | SOW-002 |
-| Flip phase (simultaneous reveal) | ✅ | All cards flip together | SOW-001, SOW-002 |
-| Decision point (continue/fold) | ✅ | Between rounds | SOW-002 |
-| Running totals calculation | ✅ | Evidence/Cover/Heat/Profit | SOW-001, SOW-002 |
-| End of hand resolution | ✅ | Calculate finals, bust check | SOW-001, SOW-002 |
-| Scenario card flavor | ⏸️ | Flavor only in MVP | Phase 2 |
-| Scenario card mechanics | ❌ | Mechanical effects | Phase 3 |
+| 3-round hand structure | ✅ | Player Phase → Dealer Reveal × 3 | RFC-008, SOW-008 |
+| Rotating turn order | ✅ | Changes per round | RFC-008, SOW-008 |
+| Sequential card play (face-up) | ✅ | **CHANGED: One at a time, immediate reveal** | RFC-008, SOW-008 |
+| Check action | ✅ | Skip playing card | RFC-008, SOW-008 |
+| Dealer card reveals | ✅ | **NEW: 3 community cards, one per round** | RFC-008, SOW-008 |
+| Player fold after Dealer reveal | ✅ | **NEW: Fold option Rounds 1-2** | RFC-008, SOW-008 |
+| Customer can fold | ✅ | **NEW: Removes cards from totals** | RFC-008, SOW-008 |
+| Narc cannot fold | ✅ | Hardcoded behavior | RFC-008, SOW-008 |
+| Running totals calculation | ✅ | After each card played | RFC-008, SOW-008 |
+| End of hand resolution | ✅ | Calculate finals, bust check | SOW-001-008 |
+| Dealer deck system (20 cards) | ✅ | **NEW: Separate deck with Locations/Modifiers/Wild** | RFC-008, SOW-008 |
+| Card retention between hands | ✅ | Unplayed cards carry over | RFC-004, SOW-004 |
 | Hand history/replay | ❌ | Review previous hands | Phase 3 |
 | Undo last action | ❌ | Take back play | Phase 3 |
 
-### Round Flow - 9/11 complete (82%)
+### Round Flow - 8/9 complete (89%) - **SIGNIFICANTLY CHANGED per RFC-008**
 
 | Feature | Status | Notes | RFC/ADR/SOW |
 |---------|:------:|-------|-------------|
-| Check action | ✅ | Stay in without card | SOW-002 |
-| Raise action | ✅ | Play card face-down | SOW-002 |
-| Fold action | ✅ | Exit hand immediately | SOW-002 |
-| Initiative system | ✅ | First to raise gains control | SOW-002 |
-| Max 3 raises per round | ✅ | Prevent infinite loops | SOW-002 |
-| All-in mechanic | ✅ | Last card ends betting | SOW-002 |
-| Cards flip simultaneously | ✅ | After betting closes | SOW-001, SOW-002 |
-| Running totals update | ✅ | After each round | SOW-001, SOW-002 |
-| Decision point prompt | ✅ | "Continue or Fold?" | SOW-002 |
-| Initiative indicator UI | ❌ | Show who has initiative | Phase 2 polish |
-| Raises remaining UI | ❌ | "2/3 raises left" | Phase 2 polish |
+| Sequential turn-based play | ✅ | **CHANGED: One player at a time** | RFC-008, SOW-008 |
+| Play card face-up | ✅ | **CHANGED: Immediate reveal, no face-down** | RFC-008, SOW-008 |
+| Check action (skip card) | ✅ | Play no card this turn | RFC-008, SOW-008 |
+| Fold action | ✅ | Exit hand (after Dealer reveal) | RFC-008, SOW-008 |
+| Cards visible immediately | ✅ | **CHANGED: No simultaneous flip** | RFC-008, SOW-008 |
+| Running totals update per card | ✅ | **CHANGED: After each card, not per round** | RFC-008, SOW-008 |
+| Dealer reveal after Player Phase | ✅ | **NEW: Community card reveal** | RFC-008, SOW-008 |
+| Decision point after Dealer reveal | ✅ | "Fold or Continue?" | RFC-008, SOW-008 |
+| Turn order indicator UI | ❌ | Show whose turn + order | Phase 2 polish |
+
+**Note:** Initiative and raising mechanics removed in RFC-008 (betting system simplified)
 
 ---
 

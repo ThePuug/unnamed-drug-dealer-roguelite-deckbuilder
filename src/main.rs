@@ -18,6 +18,24 @@ enum GameState {
     InRun,         // Active gameplay
 }
 
+/// SOW-008 Phase 1: AI pacing timers
+#[derive(Resource)]
+struct AiActionTimer {
+    ai_timer: Timer,
+    dealer_timer: Timer,
+    dealer_timer_started: bool, // Track if we've started the dealer timer this state
+}
+
+impl Default for AiActionTimer {
+    fn default() -> Self {
+        Self {
+            ai_timer: Timer::from_seconds(1.0, TimerMode::Repeating), // 1s delay, repeating
+            dealer_timer: Timer::from_seconds(1.0, TimerMode::Repeating), // 1s delay, repeating
+            dealer_timer_started: false,
+        }
+    }
+}
+
 /// Deck builder resource for managing card selection
 #[derive(Resource)]
 struct DeckBuilder {
@@ -60,6 +78,7 @@ fn main() {
         .add_plugins(DefaultPlugins)
         .init_state::<GameState>()  // SOW-006: Add state management
         .insert_resource(DeckBuilder::new())  // SOW-006: Initialize deck builder
+        .insert_resource(AiActionTimer::default())  // SOW-008: AI pacing timer
         .add_systems(Startup, setup)
         .add_systems(Startup, setup_betting_state)
         .add_systems(Startup, setup_deck_builder)  // SOW-006: Setup deck builder UI
@@ -123,7 +142,10 @@ struct PlayAreaNarc;
 struct PlayAreaCustomer;
 
 #[derive(Component)]
-struct PlayAreaPlayer;
+struct PlayAreaDealer; // SOW-008: Repurposed from PlayAreaPlayer to show dealer cards
+
+#[derive(Component)]
+struct CardsContainer; // SOW-008: Container for cards within play area (horizontal layout)
 
 #[derive(Component)]
 struct PlayerHandDisplay;
@@ -261,8 +283,8 @@ fn create_ui(commands: &mut Commands) {
             // Customer zone
             create_play_area(parent, "Customer's Cards", Color::srgb(0.3, 0.6, 0.8), PlayAreaCustomer);
 
-            // Player zone
-            create_play_area(parent, "Your Cards", Color::srgb(0.3, 0.8, 0.3), PlayAreaPlayer);
+            // Dealer zone (SOW-008: Repurposed from player zone)
+            create_play_area(parent, "Dealer Cards", Color::srgb(0.9, 0.9, 0.4), PlayAreaDealer);
         });
 
         // Player hand display
@@ -490,22 +512,19 @@ fn create_ui(commands: &mut Commands) {
 }
 
 fn create_play_area(parent: &mut ChildBuilder, label: &str, color: Color, marker: impl Component) {
-    parent.spawn((
-        NodeBundle {
-            style: Style {
-                width: Val::Percent(30.0),
-                height: Val::Percent(100.0),
-                flex_direction: FlexDirection::Column,
-                padding: UiRect::all(Val::Px(10.0)),
-                ..default()
-            },
-            background_color: color.with_alpha(0.2).into(),
-            border_color: color.into(),
+    parent.spawn(NodeBundle {
+        style: Style {
+            width: Val::Percent(30.0),
+            height: Val::Percent(100.0),
+            flex_direction: FlexDirection::Column,
+            padding: UiRect::all(Val::Px(10.0)),
             ..default()
         },
-        marker,
-    ))
+        background_color: color.with_alpha(0.2).into(),
+        ..default()
+    })
     .with_children(|parent| {
+        // Label at top
         parent.spawn(TextBundle::from_section(
             label,
             TextStyle {
@@ -513,6 +532,21 @@ fn create_play_area(parent: &mut ChildBuilder, label: &str, color: Color, marker
                 color: Color::WHITE,
                 ..default()
             },
+        ));
+
+        // Cards container (horizontal layout) - THIS is the play area entity
+        parent.spawn((
+            NodeBundle {
+                style: Style {
+                    flex_direction: FlexDirection::Row, // SOW-008: Horizontal card layout
+                    flex_wrap: FlexWrap::Wrap,
+                    align_items: AlignItems::FlexStart,
+                    margin: UiRect::top(Val::Px(8.0)),
+                    ..default()
+                },
+                ..default()
+            },
+            marker, // Apply the marker to the cards container
         ));
     });
 }
@@ -533,11 +567,8 @@ fn ui_update_system(
 
     // Update totals display
     if let Ok(mut text) = totals_query.get_single_mut() {
-        // Only include current round cards after Flip (when cards are revealed)
-        let include_current_round = matches!(
-            hand_state.current_state,
-            State::Flip | State::DecisionPoint | State::Resolve | State::Bust
-        );
+        // SOW-008: Cards reveal immediately, so always include current round
+        let include_current_round = true;
         let totals = hand_state.calculate_totals(include_current_round);
         text.sections[0].value = format!(
             "Evidence: {} | Cover: {} | Heat: {} | Profit: ${}\nCash: ${} | Total Heat: {} | Deck: {} cards",
@@ -548,18 +579,18 @@ fn ui_update_system(
 
     // Update status display with debug info
     if let Ok(mut text) = status_query.get_single_mut() {
-        // Get betting state for turn info
-        let turn_info = if let Ok(betting_state) = betting_state_query.get_single() {
-            format!(" - Turn: {:?}", betting_state.current_player)
+        // SOW-008: Get current player info for turn display
+        let turn_info = if hand_state.current_state == State::PlayerPhase {
+            format!(" - Turn: {:?}", hand_state.current_player())
         } else {
             String::new()
         };
 
         let mut status = match hand_state.current_state {
             State::Draw => format!("Status: Round {}/3 - Drawing Cards...", hand_state.current_round),
-            State::Betting => format!("Status: Round {}/3 - Betting Phase{}", hand_state.current_round, turn_info),
-            State::Flip => format!("Status: Round {}/3 - Flipping Cards...", hand_state.current_round),
-            State::DecisionPoint => format!("Status: Round {}/3 Complete - Continue or Fold?", hand_state.current_round),
+            State::PlayerPhase => format!("Status: Round {}/3 - Playing Cards{}", hand_state.current_round, turn_info),
+            State::DealerReveal => format!("Status: Round {}/3 - Dealer Reveal...", hand_state.current_round),
+            State::FoldDecision => format!("Status: Round {}/3 - Fold or Continue?", hand_state.current_round),
             State::Resolve => "Status: Resolving Final Hand...".to_string(),
             State::Bust => match hand_state.outcome {
                 Some(HandOutcome::Safe) => {
@@ -578,33 +609,14 @@ fn ui_update_system(
                         "Status: BUSTED! You got caught!".to_string()
                     }
                 }
-                Some(HandOutcome::Folded) => {
-                    // Show who folded
-                    if let Ok(betting_state) = betting_state_query.get_single() {
-                        if betting_state.last_action_narc == Some(BettingAction::Fold) {
-                            "Status: Hand Ended - Narc Folded".to_string()
-                        } else if betting_state.last_action_customer == Some(BettingAction::Fold) {
-                            "Status: Hand Ended - Customer Folded".to_string()
-                        } else {
-                            "Status: Hand Ended - You Folded".to_string()
-                        }
-                    } else {
-                        "Status: Hand Ended - Fold".to_string()
-                    }
-                }
+                Some(HandOutcome::Folded) => "Status: Hand Ended - Folded".to_string(),
                 None => "Status: Game Over".to_string(),
             },
-            // Legacy states (SOW-001)
-            State::NarcPlay => "Status: Narc's Turn".to_string(),
-            State::CustomerPlay => "Status: Customer's Turn".to_string(),
-            State::PlayerPlay => "Status: YOUR TURN - Click a card to play".to_string(),
         };
 
         // SOW-003 Phase 5: Add Insurance/Conviction status info
-        // SOW-005: Show after first reveal (persists for rest of hand)
-        // Check if any cards have been finalized (moved to cards_played from previous rounds)
-        let cards_ever_revealed = !hand_state.cards_played.is_empty()
-            || matches!(hand_state.current_state, State::Flip | State::DecisionPoint | State::Resolve | State::Bust);
+        // SOW-008: Cards always revealed immediately, so show if any cards played
+        let cards_ever_revealed = !hand_state.cards_played.is_empty();
 
         if cards_ever_revealed {
             // Use include_current_round=true to check all cards (finalized + current)
@@ -630,18 +642,15 @@ fn ui_update_system(
 
         text.sections[0].value = status;
 
-        // Color code status
+        // Color code status (SOW-008)
         text.sections[0].style.color = match hand_state.current_state {
-            State::Betting => Color::srgb(1.0, 1.0, 0.3), // Yellow for betting
-            State::DecisionPoint => Color::srgb(1.0, 0.7, 0.3), // Orange for decision
+            State::PlayerPhase => Color::srgb(1.0, 1.0, 0.3), // Yellow for playing cards
             State::Bust => match hand_state.outcome {
                 Some(HandOutcome::Safe) => Color::srgb(0.3, 1.0, 0.3),
                 Some(HandOutcome::Busted) => Color::srgb(1.0, 0.3, 0.3),
                 Some(HandOutcome::Folded) => Color::srgb(0.7, 0.7, 0.7), // Gray for fold
                 None => Color::WHITE,
             },
-            // Legacy
-            State::PlayerPlay => Color::srgb(0.3, 1.0, 0.3),
             _ => Color::WHITE,
         };
     }
@@ -675,22 +684,142 @@ fn recreate_hand_display_system(
         return;
     };
 
-    // Clear existing card buttons
+    // Clear ALL existing children (card buttons and played card displays)
     if let Ok(children) = children_query.get(hand_entity) {
         for &child in children.iter() {
-            if card_button_query.get(child).is_ok() {
-                commands.entity(child).despawn_recursive();
-            }
+            commands.entity(child).despawn_recursive();
         }
     }
 
     // Add card buttons for current hand
-    // SOW-002: Show cards during Betting phase (not just legacy PlayerPlay)
-    let show_cards = hand_state.current_state == State::PlayerPlay
-                  || hand_state.current_state == State::Betting
-                  || hand_state.current_state == State::DecisionPoint;
+    // SOW-008: Show cards during PlayerPhase and other states
+    let show_cards = hand_state.current_state == State::PlayerPhase ||
+                     hand_state.current_state == State::FoldDecision ||
+                     hand_state.current_state == State::Resolve ||
+                     hand_state.current_state == State::Bust;
 
     if show_cards {
+        // First show player's played cards and checks (grayed out, non-clickable)
+        commands.entity(hand_entity).with_children(|parent| {
+            let player_played: Vec<&Card> = hand_state.cards_played.iter()
+                .filter(|c| c.owner == Owner::Player)
+                .collect();
+
+            let has_played_or_checked = !player_played.is_empty() ||
+                hand_state.checks_this_hand.iter().any(|(o, _)| *o == Owner::Player);
+
+            for card in player_played {
+                // Dimmed color for played cards
+                let base_color = match card.card_type {
+                    CardType::Product { .. } => Color::srgb(0.5, 0.4, 0.1),
+                    CardType::Location { .. } => Color::srgb(0.2, 0.3, 0.5),
+                    CardType::Evidence { .. } => Color::srgb(0.4, 0.2, 0.2),
+                    CardType::Cover { .. } => Color::srgb(0.2, 0.4, 0.2),
+                    CardType::DealModifier { .. } => Color::srgb(0.4, 0.3, 0.5),
+                    CardType::Insurance { .. } => Color::srgb(0.1, 0.4, 0.4),
+                    CardType::Conviction { .. } => Color::srgb(0.5, 0.1, 0.1),
+                    _ => Color::srgb(0.3, 0.3, 0.3),
+                };
+
+                // Format with stats for verification
+                let card_info = match &card.card_type {
+                    CardType::Product { price, heat } =>
+                        format!("{}\n${} | Heat: {}", card.name, price, heat),
+                    CardType::Location { evidence, cover, heat } =>
+                        format!("{}\nE:{} C:{} H:{}", card.name, evidence, cover, heat),
+                    CardType::Evidence { evidence, heat } =>
+                        format!("{}\nEvidence: {}\nHeat: {}", card.name, evidence, heat),
+                    CardType::Cover { cover, heat } =>
+                        format!("{}\nCover: {}\nHeat: {}", card.name, cover, heat),
+                    CardType::DealModifier { price_multiplier, evidence, cover, heat } =>
+                        format!("{}\n×{:.1}\nE:{} C:{} H:{}", card.name, price_multiplier, evidence, cover, heat),
+                    CardType::Insurance { cover, cost, heat_penalty } =>
+                        format!("{}\nCover: {}\nCost: ${}", card.name, cover, cost),
+                    CardType::Conviction { heat_threshold } =>
+                        format!("{}\nThreshold: {}", card.name, heat_threshold),
+                    _ => card.name.clone(),
+                };
+
+                parent.spawn((
+                    NodeBundle {
+                        style: Style {
+                            width: Val::Px(100.0),
+                            height: Val::Px(120.0),
+                            justify_content: JustifyContent::Center,
+                            align_items: AlignItems::Center,
+                            padding: UiRect::all(Val::Px(6.0)),
+                            border: UiRect::all(Val::Px(2.0)),
+                            margin: UiRect::all(Val::Px(2.0)),
+                            ..default()
+                        },
+                        background_color: base_color.into(),
+                        border_color: Color::srgb(0.5, 0.5, 0.5).into(), // Dim border for played
+                        ..default()
+                    },
+                    PlayedCardDisplay,
+                ))
+                .with_children(|parent| {
+                    parent.spawn(TextBundle::from_section(
+                        card_info,
+                        TextStyle {
+                            font_size: 10.0,
+                            color: Color::srgb(0.9, 0.9, 0.9),
+                            ..default()
+                        },
+                    ));
+                });
+            }
+
+            // Show player checks (all rounds)
+            for &(owner, round) in hand_state.checks_this_hand.iter() {
+                if owner == Owner::Player {
+                    parent.spawn((
+                        NodeBundle {
+                            style: Style {
+                                width: Val::Px(100.0),
+                                height: Val::Px(120.0),
+                                justify_content: JustifyContent::Center,
+                                align_items: AlignItems::Center,
+                                padding: UiRect::all(Val::Px(6.0)),
+                                border: UiRect::all(Val::Px(2.0)),
+                                margin: UiRect::all(Val::Px(2.0)),
+                                ..default()
+                            },
+                            background_color: Color::srgb(0.35, 0.35, 0.35).into(),
+                            border_color: Color::srgb(0.5, 0.5, 0.5).into(),
+                            ..default()
+                        },
+                        PlayedCardDisplay,
+                    ))
+                    .with_children(|parent| {
+                        parent.spawn(TextBundle::from_section(
+                            format!("CHECK\n(Round {})", round),
+                            TextStyle {
+                                font_size: 10.0,
+                                color: Color::srgb(0.8, 0.8, 0.8),
+                                ..default()
+                            },
+                        ));
+                    });
+                }
+            }
+
+            // Add separator if there are played cards
+            if has_played_or_checked {
+                parent.spawn(NodeBundle {
+                    style: Style {
+                        width: Val::Px(4.0),
+                        height: Val::Px(120.0),
+                        margin: UiRect::horizontal(Val::Px(8.0)),
+                        ..default()
+                    },
+                    background_color: Color::srgb(0.6, 0.6, 0.6).into(),
+                    ..default()
+                });
+            }
+        });
+
+        // Then show unplayed cards (clickable during player's turn)
         commands.entity(hand_entity).with_children(|parent| {
             for (index, card) in hand_state.player_hand.iter().enumerate() {
                 let card_color = match card.card_type {
@@ -701,6 +830,8 @@ fn recreate_hand_display_system(
                     CardType::DealModifier { .. } => Color::srgb(0.7, 0.5, 0.9), // Purple for modifiers
                     CardType::Insurance { .. } => Color::srgb(0.2, 0.8, 0.8), // Cyan for insurance
                     CardType::Conviction { .. } => Color::srgb(0.9, 0.2, 0.2), // Red for conviction
+                    CardType::DealerLocation { .. } => Color::srgb(0.5, 0.7, 1.0), // Light blue for dealer locations
+                    CardType::DealerModifier { .. } => Color::srgb(0.9, 0.7, 1.0), // Light purple for dealer modifiers
                 };
 
                 let card_info = match &card.card_type {
@@ -718,6 +849,10 @@ fn recreate_hand_display_system(
                         format!("{}\nCover: {} | Cost: ${} | Heat: {}", card.name, cover, cost, heat_penalty),
                     CardType::Conviction { heat_threshold } =>
                         format!("{}\nThreshold: {}", card.name, heat_threshold),
+                    CardType::DealerLocation { evidence, cover, heat } =>
+                        format!("{}\n[DEALER] E:{} C:{} H:{}", card.name, evidence, cover, heat),
+                    CardType::DealerModifier { evidence, cover, heat } =>
+                        format!("{}\n[DEALER] E:{} C:{} H:{}", card.name, evidence, cover, heat),
                 };
 
                 parent.spawn((
@@ -761,21 +896,7 @@ fn auto_play_system(
         return;
     };
 
-    // Legacy SOW-001 auto-play (only runs for old state flow)
-    // Auto-play for Narc (play first available card)
-    if hand_state.current_state == State::NarcPlay && !hand_state.narc_hand.is_empty() {
-        let _ = hand_state.play_card(Owner::Narc, 0);
-    }
-
-    // Auto-play for Customer (skip if no cards - Customer has no cards in 8-card MVP)
-    if hand_state.current_state == State::CustomerPlay {
-        if hand_state.customer_hand.is_empty() {
-            // Skip customer turn
-            hand_state.transition_state();
-        } else {
-            let _ = hand_state.play_card(Owner::Customer, 0);
-        }
-    }
+    // SOW-008: Legacy auto-play removed - sequential play handled by ai_betting_system
 }
 
 // ============================================================================
@@ -784,22 +905,55 @@ fn auto_play_system(
 
 fn auto_flip_system(
     mut hand_state_query: Query<&mut HandState>,
+    mut ai_timer: ResMut<AiActionTimer>,
+    time: Res<Time>,
 ) {
     let Ok(mut hand_state) = hand_state_query.get_single_mut() else {
         return;
     };
 
-    // Auto-draw cards when entering Draw state (Rounds 2-3)
+    // Auto-draw cards when entering Draw state
     if hand_state.current_state == State::Draw {
         // Draw cards for all players
         hand_state.draw_cards();
-        // Note: draw_cards() calls transition_state() → Betting
+        // Note: draw_cards() calls transition_state() → PlayerPhase
     }
 
-    // Auto-advance through Flip state (cards revealed, then transition)
-    if hand_state.current_state == State::Flip {
-        hand_state.transition_state(); // → DecisionPoint or Resolve
+    // SOW-008 Phase 2: Delay before dealer reveal (1s pause)
+    if hand_state.current_state == State::DealerReveal {
+        // On first frame in DealerReveal, reset the timer to start fresh 1s countdown
+        if !ai_timer.dealer_timer_started {
+            ai_timer.dealer_timer.reset();
+            ai_timer.dealer_timer_started = true;
+            if let Some(dealer_card) = hand_state.current_dealer_card() {
+                println!("Dealer reveals: {} (starting 1s timer...)", dealer_card.name);
+            }
+        }
+
+        // Tick dealer timer
+        ai_timer.dealer_timer.tick(time.delta());
+
+        if ai_timer.dealer_timer.just_finished() {
+            // Timer fired - process dealer reveal
+            println!("Dealer timer fired! Advancing...");
+
+            // Check if customer folds after seeing dealer card
+            if !hand_state.customer_folded && hand_state.should_customer_fold() {
+                println!("Customer folds!");
+                hand_state.customer_fold();
+            }
+
+            // Auto-advance to next round or resolve
+            hand_state.transition_state();
+            ai_timer.dealer_timer_started = false; // Reset for next dealer reveal
+        }
+    } else {
+        // Not in DealerReveal - reset the flag
+        ai_timer.dealer_timer_started = false;
     }
+
+    // SOW-008: FoldDecision state no longer used
+    // Fold happens during PlayerPhase (player's turn) via Fold button
 
     // Auto-resolve at Resolution state
     if hand_state.current_state == State::Resolve {
@@ -808,110 +962,85 @@ fn auto_flip_system(
 }
 
 // ============================================================================
-// BETTING BUTTON SYSTEM - SOW-002 Phase 5
+// SOW-008: BETTING BUTTON SYSTEM - DISABLED (Phase 1 stub)
 // ============================================================================
+// TODO Phase 1: Add Check button for skipping card play
+// Old betting system (Check/Raise/Fold with initiative) removed per ADR-006
 
+// SOW-008: Check and Fold buttons during PlayerPhase
 fn betting_button_system(
     check_query: Query<&Interaction, (Changed<Interaction>, With<CheckButton>)>,
     fold_query: Query<&Interaction, (Changed<Interaction>, With<FoldButton>)>,
     mut hand_state_query: Query<&mut HandState>,
-    mut betting_state_query: Query<&mut BettingState>,
+    _betting_state_query: Query<&mut BettingState>,
 ) {
     let Ok(mut hand_state) = hand_state_query.get_single_mut() else {
         return;
     };
 
-    let Ok(mut betting_state) = betting_state_query.get_single_mut() else {
-        return;
-    };
-
-    // Only during Betting phase and when it's Player's turn
-    if hand_state.current_state != State::Betting || betting_state.current_player != Owner::Player {
+    // Only during PlayerPhase and when it's Player's turn
+    if hand_state.current_state != State::PlayerPhase || hand_state.current_player() != Owner::Player {
         return;
     }
 
-    // Check button (only works when not facing a raise)
+    // Check button - skip playing a card this turn
     for interaction in check_query.iter() {
         if *interaction == Interaction::Pressed {
-            let result = betting_state.handle_action(Owner::Player, BettingAction::Check, &mut hand_state, None);
+            let current_round = hand_state.current_round;
+            println!("Player checks (skips card) in Round {}", current_round);
 
-            if result.is_ok() {
-                // Check if betting is complete
-                if betting_state.is_complete() {
-                    hand_state.transition_state(); // → Flip
-                    betting_state.reset_for_round();
-                }
+            // Record that player checked this round
+            hand_state.checks_this_hand.push((Owner::Player, current_round));
+
+            // Advance to next player without playing a card
+            hand_state.current_player_index += 1;
+
+            // If all players have acted, transition to DealerReveal
+            if hand_state.all_players_acted() {
+                hand_state.transition_state();
             }
-            // If error (facing raise), button click is ignored (button should be disabled)
         }
     }
 
-    // Fold button
+    // Fold button - player folds immediately (available during player's turn)
     for interaction in fold_query.iter() {
         if *interaction == Interaction::Pressed {
-            // SOW-004: Fold penalty now handled in handle_action()
-            let _result = betting_state.handle_action(Owner::Player, BettingAction::Fold, &mut hand_state, None);
-            // handle_action sets outcome and state to Bust
+            println!("Player folds during turn!");
+
+            // Fold immediately - discard played cards, keep unplayed, exit hand
+            hand_state.cards_played.clear();
+            hand_state.outcome = Some(HandOutcome::Folded);
+            hand_state.current_state = State::Bust;
         }
     }
 }
 
 // ============================================================================
-// UPDATE BETTING BUTTON STATES - Disable CHECK when facing raise
+// SOW-008: UPDATE BETTING BUTTON STATES - DISABLED (Phase 1 stub)
 // ============================================================================
 
 fn update_betting_button_states(
-    hand_state_query: Query<&HandState>,
-    betting_state_query: Query<&BettingState>,
-    mut check_button_query: Query<&mut BackgroundColor, With<CheckButton>>,
+    _hand_state_query: Query<&HandState>,
+    _betting_state_query: Query<&BettingState>,
+    _check_button_query: Query<&mut BackgroundColor, With<CheckButton>>,
 ) {
-    let Ok(hand_state) = hand_state_query.get_single() else {
-        return;
-    };
-
-    let Ok(betting_state) = betting_state_query.get_single() else {
-        return;
-    };
-
-    // Only during Betting phase
-    if hand_state.current_state != State::Betting {
-        return;
-    };
-
-    // Check button: Disabled if Player awaiting action (facing a raise)
-    if let Ok(mut bg_color) = check_button_query.get_single_mut() {
-        let can_check = !betting_state.players_awaiting_action.contains(&Owner::Player);
-        *bg_color = if can_check {
-            Color::srgb(0.3, 0.6, 0.3).into() // Green (enabled)
-        } else {
-            Color::srgb(0.2, 0.2, 0.2).into() // Dark gray (disabled)
-        };
-    }
+    // SOW-008 Phase 1: Stubbed out - betting system removed
+    return;
 }
 
 // ============================================================================
-// DECISION POINT BUTTON SYSTEM - SOW-002 Phase 5
+// SOW-008: DECISION POINT BUTTON SYSTEM - DISABLED (Phase 1 stub)
 // ============================================================================
+// TODO Phase 3: Replace with fold-after-dealer-reveal logic
 
+// SOW-008: Decision point button system - NOT USED
+// Fold happens during PlayerPhase (player's turn) now, not between rounds
 fn decision_point_button_system(
-    continue_query: Query<&Interaction, (Changed<Interaction>, With<ContinueButton>)>,
-    mut hand_state_query: Query<&mut HandState>,
+    _continue_query: Query<&Interaction, (Changed<Interaction>, With<ContinueButton>)>,
+    _fold_query: Query<&Interaction, (Changed<Interaction>, With<FoldButton>)>,
+    _hand_state_query: Query<&mut HandState>,
 ) {
-    let Ok(mut hand_state) = hand_state_query.get_single_mut() else {
-        return;
-    };
-
-    // Only during DecisionPoint phase
-    if hand_state.current_state != State::DecisionPoint {
-        return;
-    }
-
-    // Continue button - advance to next round
-    for interaction in continue_query.iter() {
-        if *interaction == Interaction::Pressed {
-            hand_state.continue_to_next_round();
-        }
-    }
+    // Not used - fold happens during PlayerPhase via betting_button_system
 }
 
 // ============================================================================
@@ -1479,22 +1608,19 @@ fn toggle_ui_visibility_system(
         return;
     };
 
-    // Show/hide betting buttons
+    // SOW-008: Show Check button during PlayerPhase when it's player's turn
     if let Ok(mut style) = betting_container_query.get_single_mut() {
-        style.display = if hand_state.current_state == State::Betting {
+        style.display = if hand_state.current_state == State::PlayerPhase &&
+                          hand_state.current_player() == Owner::Player {
             Display::Flex
         } else {
             Display::None
         };
     }
 
-    // Show/hide decision point modal
+    // SOW-008: Hide decision point UI (fold happens during PlayerPhase now)
     if let Ok(mut style) = decision_container_query.get_single_mut() {
-        style.display = if hand_state.current_state == State::DecisionPoint {
-            Display::Flex
-        } else {
-            Display::None
-        };
+        style.display = Display::None;
     }
 
     // Show/hide restart button (at Bust state)
@@ -1544,7 +1670,7 @@ fn update_played_cards_display_system(
     betting_state_query: Query<&BettingState>,
     narc_area_query: Query<Entity, With<PlayAreaNarc>>,
     customer_area_query: Query<Entity, With<PlayAreaCustomer>>,
-    player_area_query: Query<Entity, With<PlayAreaPlayer>>,
+    dealer_area_query: Query<Entity, With<PlayAreaDealer>>,
     mut commands: Commands,
     children_query: Query<&Children>,
     card_display_query: Query<Entity, With<PlayedCardDisplay>>,
@@ -1553,10 +1679,10 @@ fn update_played_cards_display_system(
         return;
     };
 
-    let betting_state = betting_state_query.get_single().ok();
+    let _betting_state = betting_state_query.get_single().ok(); // SOW-008: Unused, kept for compatibility
 
     // Clear old card displays
-    for area in [narc_area_query.get_single(), customer_area_query.get_single(), player_area_query.get_single()] {
+    for area in [narc_area_query.get_single(), customer_area_query.get_single(), dealer_area_query.get_single()] {
         if let Ok(area_entity) = area {
             if let Ok(children) = children_query.get(area_entity) {
                 for &child in children.iter() {
@@ -1568,96 +1694,186 @@ fn update_played_cards_display_system(
         }
     }
 
-    // Show action indicators during Betting phase
-    if hand_state.current_state == State::Betting {
-        if let Some(betting) = betting_state {
-            // Show Narc's action
-            if let Some(action) = betting.last_action_narc {
-                if let Ok(area) = narc_area_query.get_single() {
-                    commands.entity(area).with_children(|parent| {
-                        let text = match action {
-                            BettingAction::Check => "✓ CHECKED".to_string(),
-                            BettingAction::Raise => "🂠 RAISED".to_string(),
-                            BettingAction::Call => "🂠 CALLED".to_string(),
-                            BettingAction::Fold => "✗ FOLDED".to_string(),
-                        };
-                        parent.spawn((
-                            TextBundle::from_section(
-                                text,
-                                TextStyle {
-                                    font_size: 16.0,
-                                    color: Color::srgb(1.0, 1.0, 0.5),
-                                    ..default()
-                                },
-                            ),
-                            PlayedCardDisplay,
-                        ));
-                    });
-                }
+    // SOW-008: Show played cards by owner
+    for card in hand_state.cards_played.iter() {
+        let area_entity = match card.owner {
+            Owner::Narc => narc_area_query.get_single(),
+            Owner::Customer => customer_area_query.get_single(),
+            Owner::Player => {
+                // Player cards shown in hand area now, not play area
+                // Skip for now - will be shown with hand display
+                continue;
             }
+        };
 
-            // Show Customer's action
-            if let Some(action) = betting.last_action_customer {
-                if let Ok(area) = customer_area_query.get_single() {
-                    commands.entity(area).with_children(|parent| {
-                        let text = match action {
-                            BettingAction::Check => "✓ CHECKED".to_string(),
-                            BettingAction::Raise => "🂠 RAISED".to_string(),
-                            BettingAction::Call => "🂠 CALLED".to_string(),
-                            BettingAction::Fold => "✗ FOLDED".to_string(),
-                        };
-                        parent.spawn((
-                            TextBundle::from_section(
-                                text,
-                                TextStyle {
-                                    font_size: 16.0,
-                                    color: Color::srgb(0.5, 0.8, 1.0),
-                                    ..default()
-                                },
-                            ),
-                            PlayedCardDisplay,
-                        ));
-                    });
-                }
-            }
+        if let Ok(area) = area_entity {
+            // Get card color
+            let card_color = match card.card_type {
+                CardType::Product { .. } => Color::srgb(0.9, 0.7, 0.2),
+                CardType::Location { .. } => Color::srgb(0.3, 0.6, 0.9),
+                CardType::Evidence { .. } => Color::srgb(0.8, 0.3, 0.3),
+                CardType::Cover { .. } => Color::srgb(0.3, 0.8, 0.3),
+                CardType::DealModifier { .. } => Color::srgb(0.7, 0.5, 0.9),
+                CardType::Insurance { .. } => Color::srgb(0.2, 0.8, 0.8),
+                CardType::Conviction { .. } => Color::srgb(0.9, 0.2, 0.2),
+                _ => Color::srgb(0.5, 0.5, 0.5),
+            };
+
+            // Format card with stats
+            let card_text = match &card.card_type {
+                CardType::Product { price, heat } =>
+                    format!("{}\n${} | Heat: {}", card.name, price, heat),
+                CardType::Location { evidence, cover, heat } =>
+                    format!("{}\nE:{} C:{} H:{}", card.name, evidence, cover, heat),
+                CardType::Evidence { evidence, heat } =>
+                    format!("{}\nEvidence: {}\nHeat: {}", card.name, evidence, heat),
+                CardType::Cover { cover, heat } =>
+                    format!("{}\nCover: {}\nHeat: {}", card.name, cover, heat),
+                CardType::DealModifier { price_multiplier, evidence, cover, heat } =>
+                    format!("{}\n×{:.1}\nE:{} C:{} H:{}", card.name, price_multiplier, evidence, cover, heat),
+                CardType::Insurance { cover, cost, heat_penalty } =>
+                    format!("{}\nCover: {}\nCost: ${}", card.name, cover, cost),
+                CardType::Conviction { heat_threshold } =>
+                    format!("{}\nThreshold: {}", card.name, heat_threshold),
+                _ => card.name.clone(),
+            };
+
+            commands.entity(area).with_children(|parent| {
+                parent.spawn((
+                    NodeBundle {
+                        style: Style {
+                            width: Val::Px(100.0),
+                            height: Val::Px(120.0),
+                            justify_content: JustifyContent::Center,
+                            align_items: AlignItems::Center,
+                            padding: UiRect::all(Val::Px(8.0)),
+                            border: UiRect::all(Val::Px(2.0)),
+                            margin: UiRect::all(Val::Px(4.0)),
+                            ..default()
+                        },
+                        background_color: card_color.into(),
+                        border_color: Color::srgb(0.9, 0.9, 0.9).into(),
+                        ..default()
+                    },
+                    PlayedCardDisplay,
+                ))
+                .with_children(|parent| {
+                    parent.spawn(TextBundle::from_section(
+                        card_text,
+                        TextStyle {
+                            font_size: 11.0,
+                            color: Color::WHITE,
+                            ..default()
+                        },
+                    ));
+                });
+            });
         }
     }
 
-    // Show finalized cards from previous rounds (always visible once flipped)
-    // During Betting: Show cards_played (from previous rounds)
-    // After Flip/DecisionPoint/Bust: Show all cards
-    let show_all_cards = matches!(hand_state.current_state, State::Flip | State::DecisionPoint | State::Resolve | State::Bust);
-
-    if show_all_cards || hand_state.current_state == State::Betting {
-        let cards_to_show: Vec<&Card> = if show_all_cards {
-            // Show both finalized and current round
-            hand_state.cards_played.iter().chain(hand_state.cards_played_this_round.iter()).collect()
-        } else {
-            // During Betting: Only show finalized (previous rounds)
-            hand_state.cards_played.iter().collect()
+    // SOW-008: Show checks (players who skipped playing a card)
+    for &(owner, round) in hand_state.checks_this_hand.iter() {
+        let area_entity = match owner {
+            Owner::Narc => narc_area_query.get_single(),
+            Owner::Customer => customer_area_query.get_single(),
+            Owner::Player => {
+                // Player checks shown in hand area
+                continue;
+            }
         };
 
-        for card in cards_to_show {
+        if let Ok(area) = area_entity {
+            commands.entity(area).with_children(|parent| {
+                parent.spawn((
+                    NodeBundle {
+                        style: Style {
+                            width: Val::Px(100.0),
+                            height: Val::Px(120.0),
+                            justify_content: JustifyContent::Center,
+                            align_items: AlignItems::Center,
+                            padding: UiRect::all(Val::Px(8.0)),
+                            border: UiRect::all(Val::Px(2.0)),
+                            margin: UiRect::all(Val::Px(4.0)),
+                            ..default()
+                        },
+                        background_color: Color::srgb(0.4, 0.4, 0.4).into(),
+                        border_color: Color::srgb(0.6, 0.6, 0.6).into(),
+                        ..default()
+                    },
+                    PlayedCardDisplay,
+                ))
+                .with_children(|parent| {
+                    parent.spawn(TextBundle::from_section(
+                        format!("CHECK\n(Round {})", round),
+                        TextStyle {
+                            font_size: 11.0,
+                            color: Color::srgb(0.8, 0.8, 0.8),
+                            ..default()
+                        },
+                    ));
+                });
+            });
+        }
+    }
 
-            let area_entity = match card.owner {
-                Owner::Narc => narc_area_query.get_single(),
-                Owner::Customer => customer_area_query.get_single(),
-                Owner::Player => player_area_query.get_single(),
-            };
+    // SOW-008 Phase 2: Show revealed dealer cards in dealer area
+    let revealed_count = if hand_state.current_state == State::DealerReveal ||
+                            hand_state.current_state == State::FoldDecision ||
+                            hand_state.current_state == State::Resolve ||
+                            hand_state.current_state == State::Bust {
+        hand_state.current_round as usize
+    } else {
+        hand_state.current_round.saturating_sub(1) as usize
+    };
 
-            if let Ok(area) = area_entity {
-                commands.entity(area).with_children(|parent| {
+    if let Ok(dealer_area) = dealer_area_query.get_single() {
+        for i in 0..revealed_count {
+            if let Some(dealer_card) = hand_state.dealer_hand.get(i) {
+                // Dealer card color
+                let card_color = match dealer_card.card_type {
+                    CardType::DealerLocation { .. } => Color::srgb(0.5, 0.7, 1.0),
+                    CardType::DealerModifier { .. } => Color::srgb(0.9, 0.7, 1.0),
+                    _ => Color::srgb(0.6, 0.6, 0.6),
+                };
+
+                // Format dealer card with stats
+                let dealer_text = match &dealer_card.card_type {
+                    CardType::DealerLocation { evidence, cover, heat } =>
+                        format!("{}\nEvidence: {}\nCover: {}\nHeat: {}", dealer_card.name, evidence, cover, heat),
+                    CardType::DealerModifier { evidence, cover, heat } =>
+                        format!("{}\nE:{} C:{} H:{}", dealer_card.name, evidence, cover, heat),
+                    _ => dealer_card.name.clone(),
+                };
+
+                commands.entity(dealer_area).with_children(|parent| {
                     parent.spawn((
-                        TextBundle::from_section(
-                            &card.name,
+                        NodeBundle {
+                            style: Style {
+                                width: Val::Px(110.0),
+                                height: Val::Px(130.0),
+                                justify_content: JustifyContent::Center,
+                                align_items: AlignItems::Center,
+                                padding: UiRect::all(Val::Px(8.0)),
+                                border: UiRect::all(Val::Px(3.0)),
+                                margin: UiRect::all(Val::Px(4.0)),
+                                ..default()
+                            },
+                            background_color: card_color.into(),
+                            border_color: Color::srgb(1.0, 1.0, 0.8).into(), // Bright border for dealer
+                            ..default()
+                        },
+                        PlayedCardDisplay,
+                    ))
+                    .with_children(|parent| {
+                        parent.spawn(TextBundle::from_section(
+                            dealer_text,
                             TextStyle {
-                                font_size: 14.0,
+                                font_size: 12.0,
                                 color: Color::WHITE,
                                 ..default()
                             },
-                        ),
-                        PlayedCardDisplay,
-                    ));
+                        ));
+                    });
                 });
             }
         }
@@ -1671,7 +1887,7 @@ fn update_played_cards_display_system(
 fn card_click_system(
     mut interaction_query: Query<(&Interaction, &CardButton), Changed<Interaction>>,
     mut hand_state_query: Query<&mut HandState>,
-    mut betting_state_query: Query<&mut BettingState>,
+    _betting_state_query: Query<&mut BettingState>,
 ) {
     let Ok(mut hand_state) = hand_state_query.get_single_mut() else {
         return;
@@ -1681,38 +1897,17 @@ fn card_click_system(
         if *interaction == Interaction::Pressed {
             println!("Card clicked! Index: {}, State: {:?}", card_button.card_index, hand_state.current_state);
 
-            // SOW-002: Clicking card during Betting = Raise/Call with that specific card
-            if hand_state.current_state == State::Betting {
-                if let Ok(mut betting_state) = betting_state_query.get_single_mut() {
-                    // Only if it's Player's turn
-                    if betting_state.current_player == Owner::Player {
-                        // Verify valid card index
-                        if card_button.card_index < hand_state.player_hand.len() {
-                            println!("Player clicking card {}, awaiting: {:?}", card_button.card_index, betting_state.players_awaiting_action);
+            // SOW-008: Clicking card during PlayerPhase plays it immediately
+            if hand_state.current_state == State::PlayerPhase {
+                // Only if it's Player's turn
+                if hand_state.current_player() == Owner::Player {
+                    // Verify valid card index
+                    if card_button.card_index < hand_state.player_hand.len() {
+                        println!("Player playing card {}", card_button.card_index);
 
-                            // Use handle_action which properly detects Call vs Raise, passing the clicked card index
-                            let result = betting_state.handle_action(Owner::Player, BettingAction::Raise, &mut hand_state, Some(card_button.card_index));
-
-                            if result.is_ok() {
-                                // Check if betting complete
-                                if betting_state.is_complete() {
-                                    hand_state.transition_state(); // → Flip
-                                    betting_state.reset_for_round();
-                                }
-                            } else {
-                                println!("Card click failed: {:?}", result);
-                            }
-                        }
+                        // Play the card face-up immediately
+                        let _ = hand_state.play_card(Owner::Player, card_button.card_index);
                     }
-                }
-            }
-
-            // Legacy SOW-001 flow
-            if hand_state.current_state == State::PlayerPlay {
-                let _ = hand_state.play_card(Owner::Player, card_button.card_index);
-
-                if hand_state.current_state == State::Resolve {
-                    hand_state.resolve_hand();
                 }
             }
         }
@@ -1731,7 +1926,7 @@ enum Owner {
     Player,
 }
 
-/// Card types with their specific values (Extended in SOW-002/003)
+/// Card types with their specific values (Extended in SOW-002/003/008)
 #[derive(Debug, Clone)]
 enum CardType {
     Product { price: u32, heat: i32 },
@@ -1744,6 +1939,9 @@ enum CardType {
     Insurance { cover: u32, cost: u32, heat_penalty: i32 },
     // SOW-003 Phase 2: Conviction (Heat threshold, overrides insurance)
     Conviction { heat_threshold: u32 },
+    // SOW-008 Phase 2: Dealer cards (community cards affecting all players)
+    DealerLocation { evidence: u32, cover: u32, heat: i32 }, // Can be overridden
+    DealerModifier { evidence: i32, cover: i32, heat: i32 }, // Cannot be overridden
 }
 
 /// Card instance
@@ -1759,23 +1957,19 @@ struct Card {
 // HAND STATE MACHINE
 // ============================================================================
 
-/// States the hand can be in (ADR-004: Multi-round structure)
+/// States the hand can be in (SOW-008: Sequential play with dealer reveals)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum State {
-    Draw,
-    Betting,        // Phase 2: Betting phase (Check/Raise/Fold)
-    Flip,           // Cards reveal simultaneously
-    DecisionPoint,  // Continue or Fold prompt (Rounds 1-2 only)
+    Draw,           // Draw cards to hand
+    PlayerPhase,    // Sequential turn-based card play (SOW-008 Phase 1)
+    DealerReveal,   // Dealer community card reveals (SOW-008 Phase 2)
+    FoldDecision,   // Player/AI can fold after seeing dealer card (SOW-008 Phase 3, Rounds 1-2 only)
     Resolve,        // Calculate totals, check bust (after Round 3)
     Bust,           // Terminal state
 
-    // Legacy states from SOW-001 (kept for compatibility during migration)
-    #[allow(dead_code)]
-    NarcPlay,
-    #[allow(dead_code)]
-    CustomerPlay,
-    #[allow(dead_code)]
-    PlayerPlay,
+    // REMOVED by SOW-008: Betting, Flip (obsolete betting system from ADR-002/005)
+    // REMOVED by SOW-008: DecisionPoint (replaced by FoldDecision after dealer reveal)
+    // REMOVED: Legacy NarcPlay/CustomerPlay/PlayerPlay states
 }
 
 /// Outcome of hand resolution
@@ -1786,13 +1980,13 @@ enum HandOutcome {
     Folded, // SOW-004: Hand ended by fold (not bust, not completed)
 }
 
-/// Hand state tracking (Extended for SOW-002/003)
+/// Hand state tracking (Extended for SOW-002/003, SOW-008)
 #[derive(Component)]
 struct HandState {
     pub current_state: State,
     pub current_round: u8,           // 1, 2, or 3 (ADR-004)
     pub cards_played: Vec<Card>,
-    pub cards_played_this_round: Vec<Card>, // Cards played in current round (for face-down tracking)
+    pub cards_played_this_round: Vec<Card>, // SOW-008: Repurposed for sequential play tracking
     narc_deck: Vec<Card>,
     customer_deck: Vec<Card>,
     player_deck: Vec<Card>,
@@ -1803,10 +1997,23 @@ struct HandState {
     // SOW-003: Cash and Heat tracking
     pub cash: u32,           // Cumulative profit for insurance affordability
     pub current_heat: u32,   // Cumulative Heat for conviction thresholds
+    // SOW-008 Phase 1: Turn tracking for sequential play
+    pub current_player_index: usize, // Index into turn_order (0, 1, or 2)
+    // SOW-008 Phase 2: Dealer deck system
+    dealer_deck: Vec<Card>,   // 20 scenario cards (shuffled)
+    pub dealer_hand: Vec<Card>,   // 3 cards drawn for this hand (one per round)
+    // SOW-008 Phase 3: Fold tracking
+    pub customer_folded: bool, // Has customer folded this hand?
+    // SOW-008 Phase 1: Check tracking (for display)
+    pub checks_this_hand: Vec<(Owner, u8)>, // Who checked and in which round (persists entire hand)
 }
 
 impl Default for HandState {
     fn default() -> Self {
+        let mut dealer_deck = create_dealer_deck();
+        dealer_deck.shuffle(&mut rand::thread_rng());
+        let dealer_hand: Vec<Card> = dealer_deck.drain(0..3).collect();
+
         Self {
             current_state: State::Draw,
             current_round: 1,
@@ -1821,6 +2028,11 @@ impl Default for HandState {
             outcome: None,
             cash: 0,          // SOW-003: Start with no cash
             current_heat: 0,  // SOW-003: Start with no Heat
+            current_player_index: 0, // SOW-008: Start at first player in turn order
+            dealer_deck,      // SOW-008 Phase 2: Dealer scenario cards
+            dealer_hand,      // SOW-008 Phase 2: 3 cards for this hand
+            customer_folded: false, // SOW-008 Phase 3
+            checks_this_hand: Vec::new(), // SOW-008 Phase 1
         }
     }
 }
@@ -1828,6 +2040,10 @@ impl Default for HandState {
 impl HandState {
     /// Create HandState with a custom player deck (SOW-006)
     fn with_custom_deck(player_deck: Vec<Card>) -> Self {
+        let mut dealer_deck = create_dealer_deck();
+        dealer_deck.shuffle(&mut rand::thread_rng());
+        let dealer_hand: Vec<Card> = dealer_deck.drain(0..3).collect();
+
         Self {
             current_state: State::Draw,
             current_round: 1,
@@ -1842,6 +2058,11 @@ impl HandState {
             outcome: None,
             cash: 0,
             current_heat: 0,
+            current_player_index: 0, // SOW-008
+            dealer_deck,      // SOW-008 Phase 2
+            dealer_hand,      // SOW-008 Phase 2
+            customer_folded: false, // SOW-008 Phase 3
+            checks_this_hand: Vec::new(), // SOW-008 Phase 1
         }
     }
 
@@ -1930,70 +2151,55 @@ impl HandState {
         self.transition_state();
     }
 
-    /// Transition to next state (ADR-004: Multi-round state machine)
+    /// Transition to next state (SOW-008: Sequential play state machine)
     pub fn transition_state(&mut self) {
         self.current_state = match self.current_state {
-            // Multi-round flow (SOW-002/004)
-            State::Draw => State::Betting,
-            State::Betting => State::Flip,
-            State::Flip => {
-                // SOW-004: Show round resolution at DecisionPoint
+            // SOW-008: Sequential play flow
+            State::Draw => State::PlayerPhase,
+            State::PlayerPhase => {
+                // After all players act, go to Dealer Reveal
+                State::DealerReveal
+            },
+            State::DealerReveal => {
+                // After Dealer reveals, check if customer folds, then advance
+                // Player can fold during their turn in PlayerPhase (not here)
                 if self.current_round >= 3 {
-                    // After Round 3: Go to Resolution
+                    // Round 3: Go to Resolution
                     State::Resolve
                 } else {
-                    // After Rounds 1-2: Go to DecisionPoint to show round results
-                    State::DecisionPoint
+                    // Rounds 1-2: Advance to next round
+                    self.current_round += 1;
+                    self.reset_turn_tracking();
+                    // Don't clear checks_this_hand - persist for entire hand
+                    State::Draw
                 }
             },
-            State::DecisionPoint => {
-                // SOW-004: DecisionPoint removed, but keep for backwards compatibility
-                State::DecisionPoint
+            State::FoldDecision => {
+                // Legacy state - should not be used anymore
+                // Fold happens during PlayerPhase now
+                self.current_round += 1;
+                self.reset_turn_tracking();
+                State::Draw
             },
             State::Resolve => State::Bust, // Will be refined (Safe vs Busted)
             State::Bust => State::Bust, // Terminal state
-
-            // Legacy states (SOW-001 compatibility - not used in SOW-002)
-            State::NarcPlay => State::CustomerPlay,
-            State::CustomerPlay => State::PlayerPlay,
-            State::PlayerPlay => State::Resolve,
         };
     }
 
-    /// Continue to next round (called from DecisionPoint after reviewing round results)
-    pub fn continue_to_next_round(&mut self) {
-        if self.current_state != State::DecisionPoint {
-            return; // Only valid at DecisionPoint
-        }
+    // SOW-008 Note: continue_to_next_round and fold_at_decision_point removed
+    // These methods are obsolete - sequential play handles round advancement differently
+    // Fold logic will be added in Phase 3
 
-        // Move cards played this round to overall cards played
-        self.cards_played.extend(self.cards_played_this_round.drain(..));
-
-        // Increment round and transition to Draw
-        self.current_round += 1;
-        self.current_state = State::Draw;
-    }
-
-    /// Fold at DecisionPoint (player exits hand, keeps remaining cards)
-    pub fn fold_at_decision_point(&mut self) {
-        if self.current_state != State::DecisionPoint {
-            return; // Only valid at DecisionPoint
-        }
-
-        // End hand (player keeps remaining cards, loses profit)
-        // Cards played this round are NOT added to cards_played (not finalized)
-        self.outcome = Some(HandOutcome::Safe); // Folding is "safe" (not busted)
-        self.current_state = State::Bust; // Reuse Bust as terminal state
-    }
-
-    /// Play a card from hand to the play area
+    /// Play a card from hand during PlayerPhase (SOW-008: Sequential play)
     fn play_card(&mut self, owner: Owner, card_index: usize) -> Result<(), String> {
-        // Verify it's the correct player's turn
-        match (self.current_state, owner) {
-            (State::NarcPlay, Owner::Narc) => {}
-            (State::CustomerPlay, Owner::Customer) => {}
-            (State::PlayerPlay, Owner::Player) => {}
-            _ => return Err(format!("Wrong turn: state {:?}, owner {:?}", self.current_state, owner)),
+        // Verify we're in PlayerPhase and it's the correct player's turn
+        if self.current_state != State::PlayerPhase {
+            return Err(format!("Not in PlayerPhase: {:?}", self.current_state));
+        }
+
+        let current_player = self.current_player();
+        if owner != current_player {
+            return Err(format!("Wrong turn: expected {:?}, got {:?}", current_player, owner));
         }
 
         // Get the card from the appropriate hand
@@ -2007,18 +2213,121 @@ impl HandState {
             return Err(format!("Card index {} out of bounds", card_index));
         }
 
+        // Remove card from hand and play it face-up immediately (SOW-008)
         let card = hand.remove(card_index);
         self.cards_played.push(card);
 
-        // Transition to next state after playing
-        self.transition_state();
+        // Advance to next player's turn (increments index)
+        self.current_player_index += 1;
+
+        // Check if all players have acted, then transition
+        if self.all_players_acted() {
+            self.transition_state();
+        }
 
         Ok(())
+    }
+
+    // SOW-008 Phase 1: Sequential play helpers
+
+    /// Get whose turn it is in the current round (SOW-008 rotating turn order)
+    pub fn current_player(&self) -> Owner {
+        let turn_order = get_turn_order(self.current_round);
+        turn_order[self.current_player_index]
+    }
+
+    /// Advance to next player in turn order
+    /// Note: Does NOT reset index - caller should check all_players_acted() and transition state
+    pub fn advance_turn(&mut self) {
+        self.current_player_index += 1;
+        // Don't reset - let caller handle transition when all_players_acted()
+    }
+
+    /// Check if all players have acted this round
+    pub fn all_players_acted(&self) -> bool {
+        let turn_order = get_turn_order(self.current_round);
+        self.current_player_index >= turn_order.len()
+    }
+
+    /// Reset turn tracking for new round
+    pub fn reset_turn_tracking(&mut self) {
+        self.current_player_index = 0;
+    }
+
+    // SOW-008 Phase 2: Dealer card reveal
+
+    /// Get the dealer card for the current round (0-indexed)
+    pub fn current_dealer_card(&self) -> Option<&Card> {
+        let index = (self.current_round - 1) as usize;
+        self.dealer_hand.get(index)
+    }
+
+    // SOW-008 Phase 3: Fold mechanics
+
+    /// Player folds after seeing dealer reveal (Rounds 1-2 only)
+    /// Consequences: Discard played cards, keep unplayed cards, keep Heat, lose profit
+    pub fn player_fold(&mut self) {
+        if self.current_state != State::FoldDecision {
+            return; // Only valid at FoldDecision
+        }
+
+        // Discard all played cards (don't shuffle back)
+        self.cards_played.clear();
+
+        // Keep unplayed cards in hand (already there)
+        // Keep accumulated Heat (already tracked in current_heat)
+        // Lose profit (don't bank it)
+
+        // Mark as folded and end hand
+        self.outcome = Some(HandOutcome::Folded);
+        self.current_state = State::Bust; // Terminal state
+    }
+
+    /// Check if customer should fold based on current Evidence total
+    pub fn should_customer_fold(&self) -> bool {
+        let totals = self.calculate_totals(true);
+        let threshold = match self.current_round {
+            1 => 50,
+            2 => 60,
+            _ => 80, // Round 3 (but customer doesn't fold Round 3)
+        };
+
+        totals.evidence > threshold
+    }
+
+    /// Customer folds: Remove customer cards from totals, lose profit multipliers
+    pub fn customer_fold(&mut self) {
+        // Remove all customer cards from played cards
+        self.cards_played.retain(|card| card.owner != Owner::Customer);
+        self.cards_played_this_round.retain(|card| card.owner != Owner::Customer);
+
+        // Mark as folded
+        self.customer_folded = true;
+
+        // Totals will be recalculated automatically
+        // Customer profit multipliers are lost (no DealModifier from customer)
     }
 }
 
 // ============================================================================
-// BETTING PHASE & INITIATIVE - SOW-002 Phase 2
+// SOW-008 PHASE 1: TURN ORDER SYSTEM
+// ============================================================================
+
+/// Get turn order for a given round (SOW-008: Rotating turn order)
+/// Round 1: Narc → Customer → Player (Player has last-mover advantage)
+/// Round 2: Customer → Player → Narc (Narc has last-mover advantage)
+/// Round 3: Player → Narc → Customer (Customer has last-mover advantage)
+fn get_turn_order(round: u8) -> Vec<Owner> {
+    match round {
+        1 => vec![Owner::Narc, Owner::Customer, Owner::Player],
+        2 => vec![Owner::Customer, Owner::Player, Owner::Narc],
+        3 => vec![Owner::Player, Owner::Narc, Owner::Customer],
+        _ => vec![Owner::Narc, Owner::Customer, Owner::Player], // Default to round 1 order
+    }
+}
+
+// ============================================================================
+// BETTING PHASE & INITIATIVE - SOW-002 Phase 2 (OBSOLETE - see ADR-006)
 // ============================================================================
 
 /// Betting actions per ADR-005
@@ -2312,63 +2621,50 @@ impl BettingState {
 // AI BETTING SYSTEM - SOW-002 Phase 3
 // ============================================================================
 
+// SOW-008: AI card play system with pacing delay
 fn ai_betting_system(
     mut hand_state_query: Query<&mut HandState>,
-    mut betting_state_query: Query<&mut BettingState>,
+    _betting_state_query: Query<&mut BettingState>,
+    mut ai_timer: ResMut<AiActionTimer>,
+    time: Res<Time>,
 ) {
     let Ok(mut hand_state) = hand_state_query.get_single_mut() else {
         return;
     };
 
-    let Ok(mut betting_state) = betting_state_query.get_single_mut() else {
-        return;
-    };
-
-    // Only act during Betting phase
-    if hand_state.current_state != State::Betting {
-        return;
-    }
-
-    // Check if betting is already complete BEFORE AI acts
-    if betting_state.is_complete() {
-        println!("Betting complete! Advancing to Flip");
-        // End betting, advance to Flip
-        hand_state.transition_state();
-
-        // Reset betting state for next round
-        betting_state.reset_for_round();
+    // Only act during PlayerPhase
+    if hand_state.current_state != State::PlayerPhase {
         return;
     }
 
     // Only act for AI players (Narc or Customer)
-    let current_player = betting_state.current_player;
+    let current_player = hand_state.current_player();
     if current_player == Owner::Player {
         return; // Player controlled manually
     }
 
-    println!("AI turn: {:?}, Raises: {}, Awaiting: {:?}",
-        current_player, betting_state.raises_this_round, betting_state.players_awaiting_action);
+    // SOW-008 Phase 1: Tick AI timer and act when it fires
+    ai_timer.ai_timer.tick(time.delta());
 
-    // Get AI decision
-    let action = match current_player {
-        Owner::Narc => narc_ai_decision(hand_state.current_round, &betting_state, &hand_state),
-        Owner::Customer => customer_ai_decision(hand_state.current_round, &betting_state, &hand_state),
-        Owner::Player => return, // Unreachable, but compiler needs it
-    };
+    if ai_timer.ai_timer.just_finished() {
+        // Timer fired - AI acts now
+        let hand = match current_player {
+            Owner::Narc => &hand_state.narc_hand,
+            Owner::Customer => &hand_state.customer_hand,
+            Owner::Player => return,
+        };
 
-    println!("AI decision: {:?} -> {:?}", current_player, action);
-
-    // Execute action (AI uses None for card_index, plays first card)
-    let _ = betting_state.handle_action(current_player, action, &mut hand_state, None);
-
-    // Check if betting is complete after action
-    if betting_state.is_complete() {
-        println!("Betting complete after action! Advancing to Flip");
-        // End betting, advance to Flip
-        hand_state.transition_state();
-
-        // Reset betting state for next round
-        betting_state.reset_for_round();
+        if !hand.is_empty() {
+            println!("AI plays card after 1s delay");
+            // Play first card (index 0) - play_card handles turn advance and transition
+            let _ = hand_state.play_card(current_player, 0);
+        } else {
+            // No cards to play - skip turn
+            hand_state.current_player_index += 1;
+            if hand_state.all_players_acted() {
+                hand_state.transition_state();
+            }
+        }
     }
 }
 
@@ -2590,7 +2886,11 @@ impl HandState {
             self.cards_played.iter().collect()
         };
 
+        // Find last player Location
         cards.into_iter().rev().find(|card| matches!(card.card_type, CardType::Location { .. }))
+
+        // SOW-008 Phase 2 TODO: Integrate dealer Location cards with proper override logic
+        // For now, only checking player cards to avoid breaking existing tests
     }
 
     /// Get active Insurance card (last Insurance played, if any)
@@ -2643,12 +2943,20 @@ impl HandState {
         let mut totals = Totals::default();
         let mut price_multiplier: f32 = 1.0; // SOW-002 Phase 4: multiplicative modifiers
 
-        // Get base Evidence/Cover from active Location
+        // Get base Evidence/Cover from active Location (player or dealer)
         if let Some(location) = self.active_location(include_current_round) {
-            if let CardType::Location { evidence, cover, heat } = location.card_type {
-                totals.evidence = evidence;
-                totals.cover = cover;
-                totals.heat += heat;
+            match location.card_type {
+                CardType::Location { evidence, cover, heat } => {
+                    totals.evidence = evidence;
+                    totals.cover = cover;
+                    totals.heat += heat;
+                }
+                CardType::DealerLocation { evidence, cover, heat } => {
+                    totals.evidence = evidence;
+                    totals.cover = cover;
+                    totals.heat += heat;
+                }
+                _ => {} // Shouldn't happen
             }
         }
 
@@ -2687,7 +2995,41 @@ impl HandState {
                 CardType::Conviction { .. } => {
                     // No effect on totals - only affects bust resolution
                 }
+                // SOW-008 Phase 2: Dealer cards handled separately (not in cards_played)
+                CardType::DealerLocation { .. } => {
+                    // Already handled by active_location()
+                }
+                CardType::DealerModifier { .. } => {
+                    // Will be handled below when processing dealer_hand
+                }
                 _ => {}
+            }
+        }
+
+        // SOW-008 Phase 2: Process revealed dealer modifier cards
+        // Dealer cards are revealed AFTER PlayerPhase, so count previous rounds only
+        // Round 1: No dealer cards revealed yet (0 cards)
+        // After Round 1 DealerReveal: 1 dealer card revealed
+        // After Round 2 DealerReveal: 2 dealer cards revealed
+        // After Round 3 DealerReveal: 3 dealer cards revealed
+        let revealed_dealer_cards = if self.current_state == State::DealerReveal ||
+                                        self.current_state == State::Resolve ||
+                                        self.current_state == State::Bust {
+            // After DealerReveal or later: Include dealer card for current round
+            self.current_round as usize
+        } else {
+            // Before DealerReveal: Only include previous rounds
+            self.current_round.saturating_sub(1) as usize
+        };
+
+        for i in 0..revealed_dealer_cards {
+            if i < self.dealer_hand.len() {
+                let dealer_card = &self.dealer_hand[i];
+                if let CardType::DealerModifier { evidence, cover, heat } = dealer_card.card_type {
+                    totals.evidence = totals.evidence.saturating_add_signed(evidence);
+                    totals.cover = totals.cover.saturating_add_signed(cover);
+                    totals.heat += heat;
+                }
             }
         }
 
@@ -3147,6 +3489,151 @@ fn create_control_deck() -> Vec<Card> {
 }
 
 // ============================================================================
+// SOW-008 PHASE 2: DEALER DECK CREATION
+// ============================================================================
+
+/// Create Dealer deck (20 scenario cards: 8 Locations, 8 Modifiers, 4 Wild)
+/// Dealer cards are community cards that affect all players
+fn create_dealer_deck() -> Vec<Card> {
+    let mut cards = Vec::new();
+    let mut id = 1000; // Start at 1000 to avoid conflicts with player cards
+
+    // 8 Location cards (set base Evidence/Cover/Heat, can be overridden)
+    // Balance: 3 safe, 3 neutral, 2 dangerous (50% safe, 30% neutral, 20% dangerous per ADR-006)
+
+    // Safe Locations (3)
+    cards.push(Card {
+        id: id, name: "Private Residence".to_string(), owner: Owner::Player,
+        card_type: CardType::DealerLocation { evidence: 10, cover: 25, heat: -10 }
+    });
+    id += 1;
+
+    cards.push(Card {
+        id: id, name: "Quiet Street".to_string(), owner: Owner::Player,
+        card_type: CardType::DealerLocation { evidence: 15, cover: 20, heat: -5 }
+    });
+    id += 1;
+
+    cards.push(Card {
+        id: id, name: "Rural Area".to_string(), owner: Owner::Player,
+        card_type: CardType::DealerLocation { evidence: 5, cover: 30, heat: -15 }
+    });
+    id += 1;
+
+    // Neutral Locations (3)
+    cards.push(Card {
+        id: id, name: "Parking Lot".to_string(), owner: Owner::Player,
+        card_type: CardType::DealerLocation { evidence: 25, cover: 15, heat: 0 }
+    });
+    id += 1;
+
+    cards.push(Card {
+        id: id, name: "City Park".to_string(), owner: Owner::Player,
+        card_type: CardType::DealerLocation { evidence: 20, cover: 20, heat: 5 }
+    });
+    id += 1;
+
+    cards.push(Card {
+        id: id, name: "Bus Stop".to_string(), owner: Owner::Player,
+        card_type: CardType::DealerLocation { evidence: 30, cover: 10, heat: 0 }
+    });
+    id += 1;
+
+    // Dangerous Locations (2)
+    cards.push(Card {
+        id: id, name: "Police Checkpoint".to_string(), owner: Owner::Player,
+        card_type: CardType::DealerLocation { evidence: 30, cover: 0, heat: 15 }
+    });
+    id += 1;
+
+    cards.push(Card {
+        id: id, name: "School Zone".to_string(), owner: Owner::Player,
+        card_type: CardType::DealerLocation { evidence: 35, cover: 5, heat: 25 }
+    });
+    id += 1;
+
+    // 8 Modifier cards (adjust totals additively, cannot be overridden)
+    // Balance: 4 helpful, 2 neutral, 2 harmful
+
+    // Helpful Modifiers (4)
+    cards.push(Card {
+        id: id, name: "Quiet Night".to_string(), owner: Owner::Player,
+        card_type: CardType::DealerModifier { evidence: 5, cover: 10, heat: -5 }
+    });
+    id += 1;
+
+    cards.push(Card {
+        id: id, name: "Distraction".to_string(), owner: Owner::Player,
+        card_type: CardType::DealerModifier { evidence: -10, cover: 5, heat: 0 }
+    });
+    id += 1;
+
+    cards.push(Card {
+        id: id, name: "Cover Story".to_string(), owner: Owner::Player,
+        card_type: CardType::DealerModifier { evidence: 0, cover: 15, heat: -10 }
+    });
+    id += 1;
+
+    cards.push(Card {
+        id: id, name: "Lucky Break".to_string(), owner: Owner::Player,
+        card_type: CardType::DealerModifier { evidence: -15, cover: 10, heat: -5 }
+    });
+    id += 1;
+
+    // Neutral Modifiers (2)
+    cards.push(Card {
+        id: id, name: "Normal Traffic".to_string(), owner: Owner::Player,
+        card_type: CardType::DealerModifier { evidence: 0, cover: 0, heat: 0 }
+    });
+    id += 1;
+
+    cards.push(Card {
+        id: id, name: "Routine Day".to_string(), owner: Owner::Player,
+        card_type: CardType::DealerModifier { evidence: 5, cover: 5, heat: 0 }
+    });
+    id += 1;
+
+    // Harmful Modifiers (2)
+    cards.push(Card {
+        id: id, name: "Heat Wave".to_string(), owner: Owner::Player,
+        card_type: CardType::DealerModifier { evidence: 15, cover: 0, heat: 10 }
+    });
+    id += 1;
+
+    cards.push(Card {
+        id: id, name: "Rival Dealer".to_string(), owner: Owner::Player,
+        card_type: CardType::DealerModifier { evidence: 10, cover: -5, heat: 15 }
+    });
+    id += 1;
+
+    // 4 Wild cards (high-impact swings)
+    cards.push(Card {
+        id: id, name: "Police Raid".to_string(), owner: Owner::Player,
+        card_type: CardType::DealerModifier { evidence: 25, cover: 0, heat: 20 }
+    });
+    id += 1;
+
+    cards.push(Card {
+        id: id, name: "Perfect Timing".to_string(), owner: Owner::Player,
+        card_type: CardType::DealerModifier { evidence: -20, cover: 15, heat: -10 }
+    });
+    id += 1;
+
+    cards.push(Card {
+        id: id, name: "Bad Intel".to_string(), owner: Owner::Player,
+        card_type: CardType::DealerModifier { evidence: 20, cover: -10, heat: 15 }
+    });
+    id += 1;
+
+    cards.push(Card {
+        id: id, name: "Clean Getaway".to_string(), owner: Owner::Player,
+        card_type: CardType::DealerModifier { evidence: -15, cover: 20, heat: -15 }
+    });
+
+    cards
+}
+
+// ============================================================================
 // TESTS - Phase 1
 // ============================================================================
 
@@ -3206,19 +3693,16 @@ mod tests {
         // Initial state should be Draw
         assert_eq!(hand_state.current_state, State::Draw);
 
-        // New state flow (SOW-004): Draw → Betting → Flip → DecisionPoint
+        // SOW-008: Draw → PlayerPhase → DealerReveal → Draw (next round)
         hand_state.transition_state();
-        assert_eq!(hand_state.current_state, State::Betting);
+        assert_eq!(hand_state.current_state, State::PlayerPhase);
 
+        // After PlayerPhase completes
         hand_state.transition_state();
-        assert_eq!(hand_state.current_state, State::Flip);
+        assert_eq!(hand_state.current_state, State::DealerReveal);
 
+        // After DealerReveal (Round 1), auto-advance to next round
         hand_state.transition_state();
-        // SOW-004: DecisionPoint shows round results (with Continue button only)
-        assert_eq!(hand_state.current_state, State::DecisionPoint);
-
-        // Continue to Round 2
-        hand_state.continue_to_next_round();
         assert_eq!(hand_state.current_state, State::Draw);
         assert_eq!(hand_state.current_round, 2);
     }
@@ -3227,10 +3711,9 @@ mod tests {
     fn test_reset() {
         let mut hand_state = HandState::default();
 
-        // Modify state (new flow: Draw → Betting → Flip)
+        // Modify state (SOW-008: Draw → PlayerPhase)
         hand_state.transition_state();
-        hand_state.transition_state();
-        assert_eq!(hand_state.current_state, State::Flip);
+        assert_eq!(hand_state.current_state, State::PlayerPhase);
 
         // Reset should return to initial state
         hand_state.reset();
@@ -3252,8 +3735,8 @@ mod tests {
         assert_eq!(hand_state.customer_hand.len(), 3);
         assert_eq!(hand_state.player_hand.len(), 3);
 
-        // State should advance to Betting (new flow)
-        assert_eq!(hand_state.current_state, State::Betting);
+        // State should advance to PlayerPhase (SOW-008)
+        assert_eq!(hand_state.current_state, State::PlayerPhase);
     }
 
     #[test]
@@ -3271,8 +3754,8 @@ mod tests {
         let mut hand_state = HandState::default();
         hand_state.draw_cards();
 
-        // State is Betting after draw (new flow)
-        assert_eq!(hand_state.current_state, State::Betting);
+        // State is PlayerPhase after draw (SOW-008)
+        assert_eq!(hand_state.current_state, State::PlayerPhase);
         assert_eq!(hand_state.narc_hand.len(), 3); // SOW-002: draw to hand size 3
 
         // Note: play_card logic is legacy (SOW-001)
@@ -3660,123 +4143,200 @@ mod tests {
         assert_eq!(hand_state.current_state, State::Draw);
         assert_eq!(hand_state.current_round, 1);
 
-        // Round 1: Draw → Betting → Flip → DecisionPoint
+        // SOW-008: Draw → PlayerPhase → DealerReveal → Draw (next round)
         hand_state.transition_state();
-        assert_eq!(hand_state.current_state, State::Betting);
+        assert_eq!(hand_state.current_state, State::PlayerPhase);
+        assert_eq!(hand_state.current_round, 1);
 
+        // After all players act, go to DealerReveal
         hand_state.transition_state();
-        assert_eq!(hand_state.current_state, State::Flip);
+        assert_eq!(hand_state.current_state, State::DealerReveal);
 
+        // After DealerReveal (Round 1), auto-advance to next round
         hand_state.transition_state();
-        // SOW-004: DecisionPoint shows round results
-        assert_eq!(hand_state.current_state, State::DecisionPoint);
-        assert_eq!(hand_state.current_round, 1); // Still Round 1 until Continue
-    }
-
-    #[test]
-    fn test_continue_to_next_round() {
-        let mut hand_state = HandState::default();
-
-        // Advance to DecisionPoint after Round 1
-        hand_state.current_state = State::DecisionPoint;
-        hand_state.current_round = 1;
-
-        // Add some cards to this round
-        hand_state.cards_played_this_round.push(Card {
-            id: 1,
-            name: "Test".to_string(),
-            owner: Owner::Player,
-            card_type: CardType::Evidence { evidence: 5, heat: 0 },
-        });
-
-        // Continue to Round 2
-        hand_state.continue_to_next_round();
-
         assert_eq!(hand_state.current_state, State::Draw);
-        assert_eq!(hand_state.current_round, 2);
-        assert_eq!(hand_state.cards_played_this_round.len(), 0); // Moved to cards_played
-        assert_eq!(hand_state.cards_played.len(), 1); // Card finalized
+        assert_eq!(hand_state.current_round, 2); // Round advances
+    }
+
+    // SOW-008: test_continue_to_next_round and test_fold_at_decision_point removed
+    // These methods don't exist in sequential play - rounds advance automatically
+
+    // SOW-008 Phase 3: Fold mechanic tests
+
+    #[test]
+    fn test_player_fold() {
+        let mut hand_state = HandState::default();
+        hand_state.current_state = State::PlayerPhase;
+        hand_state.current_round = 1;
+
+        // Play some cards
+        hand_state.cards_played.push(Card {
+            id: 1, name: "Test".to_string(), owner: Owner::Player,
+            card_type: CardType::Evidence { evidence: 10, heat: 5 },
+        });
+        hand_state.player_hand.push(Card {
+            id: 2, name: "Unplayed".to_string(), owner: Owner::Player,
+            card_type: CardType::Cover { cover: 20, heat: 0 },
+        });
+
+        let initial_played_count = hand_state.cards_played.len();
+        let initial_hand_count = hand_state.player_hand.len();
+
+        // Simulate fold during PlayerPhase (like clicking Fold button)
+        hand_state.cards_played.clear();
+        hand_state.outcome = Some(HandOutcome::Folded);
+        hand_state.current_state = State::Bust;
+
+        // Verify fold consequences
+        assert_eq!(hand_state.outcome, Some(HandOutcome::Folded));
+        assert_eq!(hand_state.current_state, State::Bust); // Terminal
+        assert_eq!(hand_state.cards_played.len(), 0); // Played cards discarded
+        assert_eq!(hand_state.player_hand.len(), initial_hand_count); // Unplayed cards kept
     }
 
     #[test]
-    fn test_fold_at_decision_point() {
+    fn test_customer_fold_removes_cards() {
         let mut hand_state = HandState::default();
 
-        // Advance to DecisionPoint
-        hand_state.current_state = State::DecisionPoint;
-        hand_state.current_round = 1;
-
-        // Add cards to this round (should NOT be finalized on fold)
-        hand_state.cards_played_this_round.push(Card {
-            id: 1,
-            name: "Test".to_string(),
-            owner: Owner::Player,
-            card_type: CardType::Evidence { evidence: 5, heat: 0 },
+        // Add customer cards
+        hand_state.cards_played.push(Card {
+            id: 1, name: "Customer Card".to_string(), owner: Owner::Customer,
+            card_type: CardType::DealModifier { price_multiplier: 1.5, evidence: 10, cover: 0, heat: 5 },
+        });
+        hand_state.cards_played.push(Card {
+            id: 2, name: "Player Card".to_string(), owner: Owner::Player,
+            card_type: CardType::Evidence { evidence: 20, heat: 0 },
         });
 
-        // Fold
-        hand_state.fold_at_decision_point();
+        assert_eq!(hand_state.cards_played.len(), 2);
 
-        assert_eq!(hand_state.current_state, State::Bust); // Terminal
-        assert_eq!(hand_state.outcome, Some(HandOutcome::Safe)); // Folding is "safe"
-        assert_eq!(hand_state.cards_played_this_round.len(), 1); // NOT moved to cards_played
-        assert_eq!(hand_state.cards_played.len(), 0); // Cards not finalized
+        // Customer folds
+        hand_state.customer_fold();
+
+        // Customer cards removed
+        assert_eq!(hand_state.cards_played.len(), 1);
+        assert_eq!(hand_state.cards_played[0].owner, Owner::Player);
+    }
+
+    #[test]
+    fn test_dealer_deck_creation() {
+        let dealer_deck = create_dealer_deck();
+        assert_eq!(dealer_deck.len(), 20); // 8 Locations + 8 Modifiers + 4 Wild
+
+        // Count card types
+        let locations = dealer_deck.iter().filter(|c| matches!(c.card_type, CardType::DealerLocation { .. })).count();
+        let modifiers = dealer_deck.iter().filter(|c| matches!(c.card_type, CardType::DealerModifier { .. })).count();
+
+        assert_eq!(locations, 8);
+        assert_eq!(modifiers, 12); // 8 regular + 4 wild (all are modifiers)
+    }
+
+    #[test]
+    fn test_dealer_hand_initialization() {
+        let hand_state = HandState::default();
+
+        // Dealer hand should have 3 cards drawn
+        assert_eq!(hand_state.dealer_hand.len(), 3);
+
+        // Dealer deck should have 17 cards remaining (20 - 3)
+        assert_eq!(hand_state.dealer_deck.len(), 17);
+    }
+
+    #[test]
+    fn test_turn_order_rotation() {
+        // Round 1: Narc → Customer → Player
+        let order1 = get_turn_order(1);
+        assert_eq!(order1, vec![Owner::Narc, Owner::Customer, Owner::Player]);
+
+        // Round 2: Customer → Player → Narc
+        let order2 = get_turn_order(2);
+        assert_eq!(order2, vec![Owner::Customer, Owner::Player, Owner::Narc]);
+
+        // Round 3: Player → Narc → Customer
+        let order3 = get_turn_order(3);
+        assert_eq!(order3, vec![Owner::Player, Owner::Narc, Owner::Customer]);
+    }
+
+    #[test]
+    fn test_current_player_tracking() {
+        let mut hand_state = HandState::default();
+        hand_state.current_state = State::PlayerPhase;
+        hand_state.current_round = 1;
+
+        // Round 1 starts with Narc
+        assert_eq!(hand_state.current_player(), Owner::Narc);
+        assert!(!hand_state.all_players_acted()); // 0/3 acted
+
+        // Advance to Customer
+        hand_state.advance_turn();
+        assert_eq!(hand_state.current_player(), Owner::Customer);
+        assert!(!hand_state.all_players_acted()); // 1/3 acted
+
+        // Advance to Player
+        hand_state.advance_turn();
+        assert_eq!(hand_state.current_player(), Owner::Player);
+        assert!(!hand_state.all_players_acted()); // 2/3 acted
+
+        // Advance past Player
+        hand_state.advance_turn();
+        // current_player_index is now 3 (>= 3)
+        assert!(hand_state.all_players_acted()); // 3/3 acted
     }
 
     #[test]
     fn test_round_3_goes_to_resolve() {
         let mut hand_state = HandState::default();
 
-        // Set to Round 3 Flip
-        hand_state.current_state = State::Flip;
+        // Set to Round 3 DealerReveal
+        hand_state.current_state = State::DealerReveal;
         hand_state.current_round = 3;
 
-        // Transition should go to Resolve (no DecisionPoint after Round 3)
+        // Transition should go to Resolve (no next round after Round 3)
         hand_state.transition_state();
         assert_eq!(hand_state.current_state, State::Resolve);
     }
 
     #[test]
-    fn test_round_1_goes_to_decision_point() {
+    fn test_round_1_advances_to_round_2() {
         let mut hand_state = HandState::default();
 
-        // Set to Round 1 Flip
-        hand_state.current_state = State::Flip;
+        // Set to Round 1 DealerReveal
+        hand_state.current_state = State::DealerReveal;
         hand_state.current_round = 1;
 
-        // SOW-004: Transition goes to DecisionPoint to show round results
+        // SOW-008: DealerReveal auto-advances to next round
         hand_state.transition_state();
-        assert_eq!(hand_state.current_state, State::DecisionPoint);
+        assert_eq!(hand_state.current_state, State::Draw);
+        assert_eq!(hand_state.current_round, 2);
     }
 
     #[test]
     fn test_full_three_round_flow() {
         let mut hand_state = HandState::default();
 
-        // Round 1: Draw → Betting → Flip → DecisionPoint → Continue
+        // SOW-008: Round 1: Draw → PlayerPhase → DealerReveal → Draw (R2)
         assert_eq!(hand_state.current_round, 1);
-        hand_state.transition_state(); // → Betting
-        hand_state.transition_state(); // → Flip
-        hand_state.transition_state(); // → DecisionPoint
-        hand_state.continue_to_next_round(); // → Draw (Round 2)
+        hand_state.transition_state(); // → PlayerPhase
+        assert_eq!(hand_state.current_state, State::PlayerPhase);
 
+        hand_state.transition_state(); // → DealerReveal
+        assert_eq!(hand_state.current_state, State::DealerReveal);
+
+        hand_state.transition_state(); // → Draw (Round 2)
         assert_eq!(hand_state.current_round, 2);
         assert_eq!(hand_state.current_state, State::Draw);
 
-        // Round 2: Draw → Betting → Flip → DecisionPoint → Continue
-        hand_state.transition_state(); // → Betting
-        hand_state.transition_state(); // → Flip
-        hand_state.transition_state(); // → DecisionPoint
-        hand_state.continue_to_next_round(); // → Draw (Round 3)
-
+        // Round 2: Draw → PlayerPhase → DealerReveal → Draw (R3)
+        hand_state.transition_state(); // → PlayerPhase
+        hand_state.transition_state(); // → DealerReveal
+        hand_state.transition_state(); // → Draw (Round 3)
         assert_eq!(hand_state.current_round, 3);
         assert_eq!(hand_state.current_state, State::Draw);
 
-        // Round 3: Draw → Betting → Flip → Resolve
-        hand_state.transition_state(); // → Betting
-        hand_state.transition_state(); // → Flip
+        // Round 3: Draw → PlayerPhase → DealerReveal → Resolve
+        hand_state.transition_state(); // → PlayerPhase
+        hand_state.transition_state(); // → DealerReveal
         hand_state.transition_state(); // → Resolve
-
         assert_eq!(hand_state.current_state, State::Resolve);
         assert_eq!(hand_state.current_round, 3);
     }
