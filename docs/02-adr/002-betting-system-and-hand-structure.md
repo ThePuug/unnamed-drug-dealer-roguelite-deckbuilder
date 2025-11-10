@@ -2,13 +2,28 @@
 
 ## Status
 
-**Proposed** - 2025-11-09
+**Partially Superseded** - 2025-11-10
 
-**Related RFC:** RFC-002 (Betting System and AI Opponents)
+**Superseded By:** ADR-006 (Sequential Play and Progressive Dealer Reveals) - Betting phase, initiative system, turn order
 
-**Note:** This ADR provides an overview of the betting system. Detailed architectural decisions extracted to:
-- **ADR-004:** Hand State Machine and Round Structure
-- **ADR-005:** Initiative System and Raise Control
+**Still Relevant:** 3-round structure, hand pacing principles, player-last advantage concept
+
+**Related RFC:** RFC-002 (Betting System and AI Opponents) - Original design | RFC-008 (Sequential Play) - New design
+
+**Note:** This ADR provides an overview of the original betting system. Sections superseded by ADR-006:
+- **Betting Phase:** Replaced with sequential turn-based card play (ADR-006)
+- **Initiative System:** Obsolete, see ADR-005 (marked obsolete) and ADR-006
+- **Turn Order:** Fixed order replaced with rotating turn order (ADR-006)
+
+**Still relevant sections:**
+- 3-round structure (preserved in ADR-006)
+- Round pacing rationale (poker parallels, escalation)
+- Player advantage philosophy (going last = information)
+
+Detailed architectural decisions:
+- **ADR-004:** Hand State Machine and Round Structure (modified by ADR-006)
+- **ADR-005:** Initiative System and Raise Control (obsolete as of ADR-006)
+- **ADR-006:** Sequential Play and Progressive Dealer Reveals (current architecture)
 
 ## Context
 

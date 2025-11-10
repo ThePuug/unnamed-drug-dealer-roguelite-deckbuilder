@@ -2,11 +2,15 @@
 
 ## Status
 
-**Proposed** - 2025-11-09
+**Obsolete** - 2025-11-10
 
-**Related RFC:** RFC-002 (Betting System and AI Opponents)
+**Superseded By:** ADR-006 (Sequential Play and Progressive Dealer Reveals)
 
-**Related ADRs:** ADR-002 (parent document), ADR-004 (Hand State Machine)
+**Reason:** RFC-008 removes the entire betting phase (Check/Raise/Fold) and initiative system. The game now uses sequential turn-based card play with immediate reveals, making this initiative architecture obsolete.
+
+**Related RFC:** RFC-002 (Betting System and AI Opponents) - Original design
+
+**Related ADRs:** ADR-002 (parent document), ADR-004 (Hand State Machine), ADR-006 (replacement architecture)
 
 ## Context
 
