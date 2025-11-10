@@ -10,7 +10,7 @@ RFCs bridge player needs and technical reality. Each RFC starts with a player-fa
 | 001-revised | Minimal Playable Hand | 🛠️ Foundation | ✅ Implemented (SOW-001 merged) | 2025-11-09 | ADR-001 |
 | 002 | Betting System and AI Opponents | 🎲 Roguelite | ✅ Implemented (SOW-002 merged) | 2025-11-09 | ADR-002/004/005 |
 | 003 | Insurance and Complete Cards | 🃏 Cards | ✅ Implemented (SOW-003 merged) | 2025-11-09 | ADR-001/003 |
-| 004 | Card Retention Between Hands | 🃏 Cards | ✅ Approved → SOW-004 Ready | 2025-11-09 | N/A |
+| 004 | Card Retention Between Hands | 🃏 Cards | ✅ Implemented (SOW-004 merged) | 2025-11-09 | N/A |
 
 **Legend:**
 - **Status:** ✅ Implemented (merged to main) | ✅ Approved (ready for implementation) | 🔄 Under Review | 📝 Draft/Proposed
