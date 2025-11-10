@@ -1,15 +1,69 @@
 // SOW-001: Minimal Playable Hand
 // SOW-002: Betting System and AI Opponents
+// SOW-006: Deck Building
 
 use bevy::prelude::*;
 use rand::Rng;
 use rand::seq::SliceRandom;
 
+// ============================================================================
+// SOW-006: GAME STATE AND DECK BUILDER
+// ============================================================================
+
+/// Game states for deck building vs gameplay
+#[derive(States, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+enum GameState {
+    #[default]
+    DeckBuilding,  // Pre-run deck selection
+    InRun,         // Active gameplay
+}
+
+/// Deck builder resource for managing card selection
+#[derive(Resource)]
+struct DeckBuilder {
+    available_cards: Vec<Card>,  // All 20 player cards
+    selected_cards: Vec<Card>,   // Chosen cards (10-20)
+}
+
+impl DeckBuilder {
+    fn new() -> Self {
+        let available = create_player_deck();
+        let selected = available.clone(); // Default: all 20 cards
+        Self {
+            available_cards: available,
+            selected_cards: selected,
+        }
+    }
+
+    fn is_valid(&self) -> bool {
+        validate_deck(&self.selected_cards).is_ok()
+    }
+
+    fn load_preset(&mut self, preset: DeckPreset) {
+        self.selected_cards = match preset {
+            DeckPreset::Default => self.available_cards.clone(),
+            DeckPreset::Aggro => create_aggro_deck(),
+            DeckPreset::Control => create_control_deck(),
+        };
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum DeckPreset {
+    Default,
+    Aggro,
+    Control,
+}
+
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
+        .init_state::<GameState>()  // SOW-006: Add state management
+        .insert_resource(DeckBuilder::new())  // SOW-006: Initialize deck builder
         .add_systems(Startup, setup)
         .add_systems(Startup, setup_betting_state)
+        .add_systems(Startup, setup_deck_builder)  // SOW-006: Setup deck builder UI
+        .add_systems(Update, toggle_game_state_ui_system)  // SOW-006: Show/hide UI based on state (separate to avoid type conflicts)
         .add_systems(Update, (
             auto_play_system,
             ai_betting_system,
@@ -25,6 +79,11 @@ fn main() {
             recreate_hand_display_system,
             ui_update_system,
             card_click_system,
+            deck_builder_card_click_system,  // SOW-006: Card selection
+            preset_button_system,  // SOW-006: Preset buttons
+            start_run_button_system,  // SOW-006: Start run button
+            update_deck_builder_ui_system,  // SOW-006: Update deck stats
+            populate_deck_builder_cards_system,  // SOW-006: Populate card displays
         ).chain())
         .run();
 }
@@ -32,12 +91,10 @@ fn main() {
 fn setup(mut commands: Commands) {
     commands.spawn(Camera2dBundle::default());
 
-    // Initialize hand state
-    let mut hand_state = HandState::default();
-    hand_state.draw_cards();
-    commands.spawn(hand_state);
+    // SOW-006: Don't spawn HandState at startup - only when START RUN is pressed
+    // HandState will be created when transitioning from DeckBuilding to InRun
 
-    // Create UI root
+    // Create gameplay UI root (initially hidden)
     create_ui(&mut commands);
 }
 
@@ -110,6 +167,33 @@ struct GoHomeButton; // "GO HOME" button
 
 #[derive(Component)]
 struct PlayedCardDisplay;
+
+// SOW-006: Deck Builder UI components
+#[derive(Component)]
+struct DeckBuilderRoot;
+
+#[derive(Component)]
+struct CardPoolContainer;
+
+#[derive(Component)]
+struct SelectedDeckContainer;
+
+#[derive(Component)]
+struct DeckStatsDisplay;
+
+#[derive(Component)]
+struct DeckBuilderCardButton {
+    card_id: u32,
+    in_pool: bool,  // true = in available pool, false = in selected deck
+}
+
+#[derive(Component)]
+struct PresetButton {
+    preset: DeckPreset,
+}
+
+#[derive(Component)]
+struct StartRunButton;
 
 fn create_ui(commands: &mut Commands) {
     // UI Root container
@@ -930,11 +1014,14 @@ fn update_restart_button_states(
 // ============================================================================
 
 fn go_home_button_system(
+    mut commands: Commands,
     go_home_query: Query<&Interaction, (Changed<Interaction>, With<GoHomeButton>)>,
-    mut hand_state_query: Query<&mut HandState>,
+    hand_state_query: Query<(Entity, &HandState)>,
     mut betting_state_query: Query<&mut BettingState>,
+    mut deck_builder: ResMut<DeckBuilder>,
+    mut next_state: ResMut<NextState<GameState>>,
 ) {
-    let Ok(mut hand_state) = hand_state_query.get_single_mut() else {
+    let Ok((entity, hand_state)) = hand_state_query.get_single() else {
         return;
     };
 
@@ -943,17 +1030,438 @@ fn go_home_button_system(
         return;
     }
 
-    // Go Home button - always resets everything
+    // Go Home button - return to deck builder
     for interaction in go_home_query.iter() {
         if *interaction == Interaction::Pressed {
-            // Reset everything (end run)
-            hand_state.reset();
+            // Despawn HandState
+            commands.entity(entity).despawn();
 
             // Reset betting state
             if let Ok(mut betting_state) = betting_state_query.get_single_mut() {
                 *betting_state = BettingState::default();
             }
+
+            // Reset deck builder to Default preset
+            deck_builder.load_preset(DeckPreset::Default);
+
+            // Transition back to DeckBuilding state
+            next_state.set(GameState::DeckBuilding);
         }
+    }
+}
+
+// ============================================================================
+// SOW-006: DECK BUILDER SYSTEMS
+// ============================================================================
+
+/// Setup deck builder UI (called at startup)
+fn setup_deck_builder(mut commands: Commands) {
+    // Deck builder root container (initially visible, game starts in DeckBuilding state)
+    commands.spawn((
+        NodeBundle {
+            style: Style {
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
+                flex_direction: FlexDirection::Column,
+                padding: UiRect::all(Val::Px(20.0)),
+                ..default()
+            },
+            background_color: Color::srgb(0.1, 0.1, 0.1).into(),
+            ..default()
+        },
+        DeckBuilderRoot,
+    ))
+    .with_children(|parent| {
+        // Title
+        parent.spawn(TextBundle::from_section(
+            "DECK BUILDER",
+            TextStyle {
+                font_size: 40.0,
+                color: Color::WHITE,
+                ..default()
+            },
+        ));
+
+        // Main content area (horizontal split: pool | selected)
+        parent.spawn(NodeBundle {
+            style: Style {
+                width: Val::Percent(100.0),
+                height: Val::Percent(70.0),
+                flex_direction: FlexDirection::Row,
+                column_gap: Val::Px(20.0),
+                ..default()
+            },
+            ..default()
+        })
+        .with_children(|parent| {
+            // Left: Card pool
+            parent.spawn((
+                NodeBundle {
+                    style: Style {
+                        width: Val::Percent(60.0),
+                        height: Val::Percent(100.0),
+                        flex_direction: FlexDirection::Column,
+                        padding: UiRect::all(Val::Px(10.0)),
+                        ..default()
+                    },
+                    background_color: Color::srgb(0.2, 0.2, 0.2).into(),
+                    ..default()
+                },
+                CardPoolContainer,
+            ))
+            .with_children(|parent| {
+                parent.spawn(TextBundle::from_section(
+                    "Available Cards (click to add to deck)",
+                    TextStyle {
+                        font_size: 20.0,
+                        color: Color::WHITE,
+                        ..default()
+                    },
+                ));
+            });
+
+            // Right: Selected deck
+            parent.spawn((
+                NodeBundle {
+                    style: Style {
+                        width: Val::Percent(40.0),
+                        height: Val::Percent(100.0),
+                        flex_direction: FlexDirection::Column,
+                        padding: UiRect::all(Val::Px(10.0)),
+                        ..default()
+                    },
+                    background_color: Color::srgb(0.15, 0.25, 0.15).into(),
+                    ..default()
+                },
+                SelectedDeckContainer,
+            ))
+            .with_children(|parent| {
+                parent.spawn(TextBundle::from_section(
+                    "Selected Deck",
+                    TextStyle {
+                        font_size: 20.0,
+                        color: Color::WHITE,
+                        ..default()
+                    },
+                ));
+            });
+        });
+
+        // Bottom: Stats and actions
+        parent.spawn(NodeBundle {
+            style: Style {
+                width: Val::Percent(100.0),
+                height: Val::Percent(30.0),
+                flex_direction: FlexDirection::Column,
+                row_gap: Val::Px(10.0),
+                ..default()
+            },
+            ..default()
+        })
+        .with_children(|parent| {
+            // Deck stats
+            parent.spawn((
+                TextBundle::from_section(
+                    "Deck: 20/20 cards",
+                    TextStyle {
+                        font_size: 24.0,
+                        color: Color::WHITE,
+                        ..default()
+                    },
+                ),
+                DeckStatsDisplay,
+            ));
+
+            // Preset buttons
+            parent.spawn(NodeBundle {
+                style: Style {
+                    flex_direction: FlexDirection::Row,
+                    column_gap: Val::Px(10.0),
+                    ..default()
+                },
+                ..default()
+            })
+            .with_children(|parent| {
+                // Default preset
+                parent.spawn((
+                    ButtonBundle {
+                        style: Style {
+                            padding: UiRect::all(Val::Px(10.0)),
+                            ..default()
+                        },
+                        background_color: Color::srgb(0.3, 0.3, 0.3).into(),
+                        ..default()
+                    },
+                    PresetButton { preset: DeckPreset::Default },
+                ))
+                .with_children(|parent| {
+                    parent.spawn(TextBundle::from_section(
+                        "DEFAULT (20)",
+                        TextStyle {
+                            font_size: 20.0,
+                            color: Color::WHITE,
+                            ..default()
+                        },
+                    ));
+                });
+
+                // Aggro preset
+                parent.spawn((
+                    ButtonBundle {
+                        style: Style {
+                            padding: UiRect::all(Val::Px(10.0)),
+                            ..default()
+                        },
+                        background_color: Color::srgb(0.5, 0.2, 0.2).into(),
+                        ..default()
+                    },
+                    PresetButton { preset: DeckPreset::Aggro },
+                ))
+                .with_children(|parent| {
+                    parent.spawn(TextBundle::from_section(
+                        "AGGRO (10)",
+                        TextStyle {
+                            font_size: 20.0,
+                            color: Color::WHITE,
+                            ..default()
+                        },
+                    ));
+                });
+
+                // Control preset
+                parent.spawn((
+                    ButtonBundle {
+                        style: Style {
+                            padding: UiRect::all(Val::Px(10.0)),
+                            ..default()
+                        },
+                        background_color: Color::srgb(0.2, 0.2, 0.5).into(),
+                        ..default()
+                    },
+                    PresetButton { preset: DeckPreset::Control },
+                ))
+                .with_children(|parent| {
+                    parent.spawn(TextBundle::from_section(
+                        "CONTROL (16)",
+                        TextStyle {
+                            font_size: 20.0,
+                            color: Color::WHITE,
+                            ..default()
+                        },
+                    ));
+                });
+            });
+
+            // START RUN button
+            parent.spawn((
+                ButtonBundle {
+                    style: Style {
+                        padding: UiRect::all(Val::Px(15.0)),
+                        ..default()
+                    },
+                    background_color: Color::srgb(0.2, 0.6, 0.2).into(),
+                    ..default()
+                },
+                StartRunButton,
+            ))
+            .with_children(|parent| {
+                parent.spawn(TextBundle::from_section(
+                    "START RUN",
+                    TextStyle {
+                        font_size: 30.0,
+                        color: Color::WHITE,
+                        ..default()
+                    },
+                ));
+            });
+        });
+    });
+}
+
+/// Handle deck builder card clicks (add/remove from deck)
+fn deck_builder_card_click_system(
+    interaction_query: Query<(&Interaction, &DeckBuilderCardButton), Changed<Interaction>>,
+    mut deck_builder: ResMut<DeckBuilder>,
+) {
+    for (interaction, button) in interaction_query.iter() {
+        if *interaction == Interaction::Pressed {
+            // Find the card in available cards
+            let Some(card) = deck_builder.available_cards.iter()
+                .find(|c| c.id == button.card_id)
+                .cloned() else {
+                continue;
+            };
+
+            // Check if card is already in selected deck
+            let is_selected = deck_builder.selected_cards.iter()
+                .any(|c| c.id == button.card_id);
+
+            if is_selected {
+                // Remove from selected deck
+                deck_builder.selected_cards.retain(|c| c.id != button.card_id);
+            } else {
+                // Add to selected deck (if under max)
+                if deck_builder.selected_cards.len() < 20 {
+                    deck_builder.selected_cards.push(card);
+                }
+            }
+        }
+    }
+}
+
+/// Handle preset button clicks
+fn preset_button_system(
+    interaction_query: Query<(&Interaction, &PresetButton), Changed<Interaction>>,
+    mut deck_builder: ResMut<DeckBuilder>,
+) {
+    for (interaction, preset_btn) in interaction_query.iter() {
+        if *interaction == Interaction::Pressed {
+            deck_builder.load_preset(preset_btn.preset);
+        }
+    }
+}
+
+/// Handle START RUN button click
+fn start_run_button_system(
+    mut commands: Commands,
+    interaction_query: Query<&Interaction, (Changed<Interaction>, With<StartRunButton>)>,
+    deck_builder: Res<DeckBuilder>,
+    mut next_state: ResMut<NextState<GameState>>,
+    hand_state_query: Query<Entity, With<HandState>>,
+) {
+    for interaction in interaction_query.iter() {
+        if *interaction == Interaction::Pressed && deck_builder.is_valid() {
+            // Despawn any existing HandState
+            for entity in hand_state_query.iter() {
+                commands.entity(entity).despawn();
+            }
+
+            // Create new HandState with selected deck
+            let mut hand_state = HandState::with_custom_deck(deck_builder.selected_cards.clone());
+            hand_state.draw_cards();
+            commands.spawn(hand_state);
+
+            // Transition to InRun state
+            next_state.set(GameState::InRun);
+        }
+    }
+}
+
+/// Update deck builder UI (stats display)
+fn update_deck_builder_ui_system(
+    deck_builder: Res<DeckBuilder>,
+    mut stats_query: Query<&mut Text, With<DeckStatsDisplay>>,
+) {
+    if !deck_builder.is_changed() {
+        return;
+    }
+
+    for mut text in stats_query.iter_mut() {
+        let count = deck_builder.selected_cards.len();
+        let validation = validate_deck(&deck_builder.selected_cards);
+
+        let is_valid = validation.is_ok();
+        text.sections[0].value = match validation {
+            Ok(_) => format!("Deck: {}/20 cards ✓ VALID", count),
+            Err(msg) => format!("Deck: {}/20 cards ✗ {}", count, msg),
+        };
+
+        text.sections[0].style.color = if is_valid {
+            Color::srgb(0.2, 0.8, 0.2)
+        } else {
+            Color::srgb(0.8, 0.2, 0.2)
+        };
+    }
+}
+
+/// Populate deck builder card displays (recreate when deck changes)
+fn populate_deck_builder_cards_system(
+    mut commands: Commands,
+    deck_builder: Res<DeckBuilder>,
+    pool_container_query: Query<Entity, With<CardPoolContainer>>,
+    selected_container_query: Query<Entity, With<SelectedDeckContainer>>,
+    card_button_query: Query<Entity, With<DeckBuilderCardButton>>,
+) {
+    if !deck_builder.is_changed() {
+        return;
+    }
+
+    // Clear existing card buttons from both containers
+    for entity in card_button_query.iter() {
+        commands.entity(entity).despawn_recursive();
+    }
+
+    // Populate card pool (available cards)
+    if let Ok(pool_entity) = pool_container_query.get_single() {
+        commands.entity(pool_entity).with_children(|parent| {
+            for card in &deck_builder.available_cards {
+                let is_selected = deck_builder.selected_cards.iter().any(|c| c.id == card.id);
+                let bg_color = if is_selected {
+                    Color::srgb(0.3, 0.5, 0.3) // Green if selected
+                } else {
+                    Color::srgb(0.3, 0.3, 0.3) // Gray if not selected
+                };
+
+                parent.spawn((
+                    ButtonBundle {
+                        style: Style {
+                            padding: UiRect::all(Val::Px(5.0)),
+                            margin: UiRect::all(Val::Px(2.0)),
+                            ..default()
+                        },
+                        background_color: bg_color.into(),
+                        ..default()
+                    },
+                    DeckBuilderCardButton {
+                        card_id: card.id,
+                        in_pool: true,
+                    },
+                ))
+                .with_children(|parent| {
+                    parent.spawn(TextBundle::from_section(
+                        format!("{}", card.name),
+                        TextStyle {
+                            font_size: 14.0,
+                            color: Color::WHITE,
+                            ..default()
+                        },
+                    ));
+                });
+            }
+        });
+    }
+
+    // Populate selected deck
+    if let Ok(selected_entity) = selected_container_query.get_single() {
+        commands.entity(selected_entity).with_children(|parent| {
+            for card in &deck_builder.selected_cards {
+                parent.spawn((
+                    ButtonBundle {
+                        style: Style {
+                            padding: UiRect::all(Val::Px(5.0)),
+                            margin: UiRect::all(Val::Px(2.0)),
+                            ..default()
+                        },
+                        background_color: Color::srgb(0.2, 0.4, 0.2).into(),
+                        ..default()
+                    },
+                    DeckBuilderCardButton {
+                        card_id: card.id,
+                        in_pool: false,
+                    },
+                ))
+                .with_children(|parent| {
+                    parent.spawn(TextBundle::from_section(
+                        format!("{}", card.name),
+                        TextStyle {
+                            font_size: 14.0,
+                            color: Color::WHITE,
+                            ..default()
+                        },
+                    ));
+                });
+            }
+        });
     }
 }
 
@@ -992,6 +1500,34 @@ fn toggle_ui_visibility_system(
     // Show/hide restart button (at Bust state)
     if let Ok(mut style) = bust_container_query.get_single_mut() {
         style.display = if hand_state.current_state == State::Bust {
+            Display::Flex
+        } else {
+            Display::None
+        };
+    }
+}
+
+// ============================================================================
+// SOW-006: GAME STATE UI VISIBILITY - Show deck builder or gameplay UI
+// ============================================================================
+
+fn toggle_game_state_ui_system(
+    current_state: Res<bevy::state::state::State<GameState>>,
+    mut deck_builder_query: Query<&mut Style, (With<DeckBuilderRoot>, Without<UiRoot>)>,
+    mut gameplay_ui_query: Query<&mut Style, (With<UiRoot>, Without<DeckBuilderRoot>)>,
+) {
+    // Show deck builder in DeckBuilding state, hide in InRun
+    if let Ok(mut style) = deck_builder_query.get_single_mut() {
+        style.display = if current_state.get() == &GameState::DeckBuilding {
+            Display::Flex
+        } else {
+            Display::None
+        };
+    }
+
+    // Show gameplay UI in InRun state, hide in DeckBuilding
+    if let Ok(mut style) = gameplay_ui_query.get_single_mut() {
+        style.display = if current_state.get() == &GameState::InRun {
             Display::Flex
         } else {
             Display::None
@@ -1290,6 +1826,25 @@ impl Default for HandState {
 }
 
 impl HandState {
+    /// Create HandState with a custom player deck (SOW-006)
+    fn with_custom_deck(player_deck: Vec<Card>) -> Self {
+        Self {
+            current_state: State::Draw,
+            current_round: 1,
+            cards_played: Vec::new(),
+            cards_played_this_round: Vec::new(),
+            narc_deck: create_narc_deck(),
+            customer_deck: create_customer_deck(),
+            player_deck,  // Use custom deck
+            narc_hand: Vec::new(),
+            customer_hand: Vec::new(),
+            player_hand: Vec::new(),
+            outcome: None,
+            cash: 0,
+            current_heat: 0,
+        }
+    }
+
     /// Reset hand state for replay testing
     fn reset(&mut self) {
         *self = Self::default();
@@ -2488,6 +3043,107 @@ fn create_player_deck() -> Vec<Card> {
     // Shuffle deck for variety
     deck.shuffle(&mut rand::thread_rng());
     deck
+}
+
+// ============================================================================
+// SOW-006: DECK VALIDATION AND PRESETS
+// ============================================================================
+
+/// Validate deck meets all constraints
+fn validate_deck(deck: &[Card]) -> Result<(), String> {
+    // Check size constraints
+    if deck.len() < 10 {
+        return Err(format!("Need {} more cards (minimum 10)", 10 - deck.len()));
+    }
+    if deck.len() > 20 {
+        return Err("Maximum 20 cards".to_string());
+    }
+
+    // Check required card types
+    let has_product = deck.iter().any(|c| matches!(c.card_type, CardType::Product { .. }));
+    let has_location = deck.iter().any(|c| matches!(c.card_type, CardType::Location { .. }));
+
+    if !has_product {
+        return Err("Need at least 1 Product card".to_string());
+    }
+    if !has_location {
+        return Err("Need at least 1 Location card".to_string());
+    }
+
+    Ok(())
+}
+
+/// Create aggro preset deck (12-14 cards: high-profit, risky, minimal defense)
+fn create_aggro_deck() -> Vec<Card> {
+    vec![
+        // High-profit products (5)
+        Card { id: 10, name: "Weed".to_string(), owner: Owner::Player,
+            card_type: CardType::Product { price: 30, heat: 5 } },
+        Card { id: 11, name: "Meth".to_string(), owner: Owner::Player,
+            card_type: CardType::Product { price: 100, heat: 30 } },
+        Card { id: 12, name: "Heroin".to_string(), owner: Owner::Player,
+            card_type: CardType::Product { price: 150, heat: 45 } },
+        Card { id: 13, name: "Cocaine".to_string(), owner: Owner::Player,
+            card_type: CardType::Product { price: 120, heat: 35 } },
+        Card { id: 14, name: "Fentanyl".to_string(), owner: Owner::Player,
+            card_type: CardType::Product { price: 200, heat: 50 } },
+        // Risky locations (2)
+        Card { id: 16, name: "School Zone".to_string(), owner: Owner::Player,
+            card_type: CardType::Location { evidence: 40, cover: 5, heat: 20 } },
+        Card { id: 18, name: "Back Alley".to_string(), owner: Owner::Player,
+            card_type: CardType::Location { evidence: 25, cover: 20, heat: 0 } },
+        // Minimal defense - just 1 Cover
+        Card { id: 19, name: "Alibi".to_string(), owner: Owner::Player,
+            card_type: CardType::Cover { cover: 30, heat: -5 } },
+        // 2 modifiers (to reach minimum 10 cards)
+        Card { id: 25, name: "Disguise".to_string(), owner: Owner::Player,
+            card_type: CardType::DealModifier { price_multiplier: 1.0, evidence: 0, cover: 20, heat: -5 } },
+        Card { id: 27, name: "Lookout".to_string(), owner: Owner::Player,
+            card_type: CardType::DealModifier { price_multiplier: 1.0, evidence: 0, cover: 20, heat: 0 } },
+    ]
+}
+
+/// Create control preset deck (15-18 cards: heavy defense, safe locations)
+fn create_control_deck() -> Vec<Card> {
+    vec![
+        // Conservative products (2)
+        Card { id: 10, name: "Weed".to_string(), owner: Owner::Player,
+            card_type: CardType::Product { price: 30, heat: 5 } },
+        Card { id: 11, name: "Meth".to_string(), owner: Owner::Player,
+            card_type: CardType::Product { price: 100, heat: 30 } },
+        // Safe locations (3)
+        Card { id: 15, name: "Safe House".to_string(), owner: Owner::Player,
+            card_type: CardType::Location { evidence: 10, cover: 30, heat: -5 } },
+        Card { id: 17, name: "Warehouse".to_string(), owner: Owner::Player,
+            card_type: CardType::Location { evidence: 15, cover: 25, heat: -10 } },
+        Card { id: 18, name: "Back Alley".to_string(), owner: Owner::Player,
+            card_type: CardType::Location { evidence: 25, cover: 20, heat: 0 } },
+        // All Cover cards (4)
+        Card { id: 19, name: "Alibi".to_string(), owner: Owner::Player,
+            card_type: CardType::Cover { cover: 30, heat: -5 } },
+        Card { id: 20, name: "Bribe".to_string(), owner: Owner::Player,
+            card_type: CardType::Cover { cover: 25, heat: 10 } },
+        Card { id: 21, name: "Fake Receipts".to_string(), owner: Owner::Player,
+            card_type: CardType::Cover { cover: 20, heat: 5 } },
+        Card { id: 22, name: "Bribed Witness".to_string(), owner: Owner::Player,
+            card_type: CardType::Cover { cover: 15, heat: -10 } },
+        // All Insurance (2)
+        Card { id: 23, name: "Plea Bargain".to_string(), owner: Owner::Player,
+            card_type: CardType::Insurance { cover: 20, cost: 1000, heat_penalty: 20 } },
+        Card { id: 24, name: "Fake ID".to_string(), owner: Owner::Player,
+            card_type: CardType::Insurance { cover: 15, cost: 0, heat_penalty: 40 } },
+        // All defensive modifiers (5)
+        Card { id: 25, name: "Disguise".to_string(), owner: Owner::Player,
+            card_type: CardType::DealModifier { price_multiplier: 1.0, evidence: 0, cover: 20, heat: -5 } },
+        Card { id: 26, name: "Burner Phone".to_string(), owner: Owner::Player,
+            card_type: CardType::DealModifier { price_multiplier: 1.0, evidence: 0, cover: 15, heat: -10 } },
+        Card { id: 27, name: "Lookout".to_string(), owner: Owner::Player,
+            card_type: CardType::DealModifier { price_multiplier: 1.0, evidence: 0, cover: 20, heat: 0 } },
+        Card { id: 28, name: "Clean Money".to_string(), owner: Owner::Player,
+            card_type: CardType::DealModifier { price_multiplier: 0.9, evidence: 0, cover: 10, heat: -15 } },
+        Card { id: 29, name: "False Trail".to_string(), owner: Owner::Player,
+            card_type: CardType::DealModifier { price_multiplier: 1.0, evidence: -10, cover: 15, heat: -5 } },
+    ]
 }
 
 // ============================================================================
@@ -3800,5 +4456,148 @@ mod tests {
 
         // Deck should still be reduced (fold penalty persists)
         assert_eq!(hand_state.player_deck.len(), initial_deck_size - 1); // Only 1 card lost (shuffled back 3 drawn)
+    }
+
+    // ========================================================================
+    // SOW-006: DECK BUILDING TESTS
+    // ========================================================================
+
+    #[test]
+    fn test_validate_deck_valid() {
+        let deck = create_player_deck(); // Default 20-card deck
+        assert!(validate_deck(&deck).is_ok());
+    }
+
+    #[test]
+    fn test_validate_deck_too_small() {
+        let deck = vec![
+            Card { id: 10, name: "Weed".to_string(), owner: Owner::Player,
+                card_type: CardType::Product { price: 30, heat: 5 } },
+            Card { id: 15, name: "Safe House".to_string(), owner: Owner::Player,
+                card_type: CardType::Location { evidence: 10, cover: 30, heat: -5 } },
+        ];
+        let result = validate_deck(&deck);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("more cards"));
+    }
+
+    #[test]
+    fn test_validate_deck_too_large() {
+        let mut deck = create_player_deck(); // 20 cards
+        deck.push(Card { id: 99, name: "Extra".to_string(), owner: Owner::Player,
+            card_type: CardType::Cover { cover: 10, heat: 0 } });
+        let result = validate_deck(&deck);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Maximum 20 cards");
+    }
+
+    #[test]
+    fn test_validate_deck_missing_product() {
+        let deck = vec![
+            Card { id: 15, name: "Safe House".to_string(), owner: Owner::Player,
+                card_type: CardType::Location { evidence: 10, cover: 30, heat: -5 } },
+            Card { id: 19, name: "Alibi".to_string(), owner: Owner::Player,
+                card_type: CardType::Cover { cover: 30, heat: -5 } },
+            Card { id: 20, name: "Bribe".to_string(), owner: Owner::Player,
+                card_type: CardType::Cover { cover: 25, heat: 10 } },
+            Card { id: 21, name: "Fake Receipts".to_string(), owner: Owner::Player,
+                card_type: CardType::Cover { cover: 20, heat: 5 } },
+            Card { id: 22, name: "Bribed Witness".to_string(), owner: Owner::Player,
+                card_type: CardType::Cover { cover: 15, heat: -10 } },
+            Card { id: 23, name: "Plea Bargain".to_string(), owner: Owner::Player,
+                card_type: CardType::Insurance { cover: 20, cost: 1000, heat_penalty: 20 } },
+            Card { id: 24, name: "Fake ID".to_string(), owner: Owner::Player,
+                card_type: CardType::Insurance { cover: 15, cost: 0, heat_penalty: 40 } },
+            Card { id: 25, name: "Disguise".to_string(), owner: Owner::Player,
+                card_type: CardType::DealModifier { price_multiplier: 1.0, evidence: 0, cover: 20, heat: -5 } },
+            Card { id: 26, name: "Burner Phone".to_string(), owner: Owner::Player,
+                card_type: CardType::DealModifier { price_multiplier: 1.0, evidence: 0, cover: 15, heat: -10 } },
+            Card { id: 27, name: "Lookout".to_string(), owner: Owner::Player,
+                card_type: CardType::DealModifier { price_multiplier: 1.0, evidence: 0, cover: 20, heat: 0 } },
+        ];
+        let result = validate_deck(&deck);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Need at least 1 Product card");
+    }
+
+    #[test]
+    fn test_validate_deck_missing_location() {
+        let deck = vec![
+            Card { id: 10, name: "Weed".to_string(), owner: Owner::Player,
+                card_type: CardType::Product { price: 30, heat: 5 } },
+            Card { id: 11, name: "Meth".to_string(), owner: Owner::Player,
+                card_type: CardType::Product { price: 100, heat: 30 } },
+            Card { id: 12, name: "Heroin".to_string(), owner: Owner::Player,
+                card_type: CardType::Product { price: 150, heat: 45 } },
+            Card { id: 13, name: "Cocaine".to_string(), owner: Owner::Player,
+                card_type: CardType::Product { price: 120, heat: 35 } },
+            Card { id: 14, name: "Fentanyl".to_string(), owner: Owner::Player,
+                card_type: CardType::Product { price: 200, heat: 50 } },
+            Card { id: 19, name: "Alibi".to_string(), owner: Owner::Player,
+                card_type: CardType::Cover { cover: 30, heat: -5 } },
+            Card { id: 20, name: "Bribe".to_string(), owner: Owner::Player,
+                card_type: CardType::Cover { cover: 25, heat: 10 } },
+            Card { id: 21, name: "Fake Receipts".to_string(), owner: Owner::Player,
+                card_type: CardType::Cover { cover: 20, heat: 5 } },
+            Card { id: 22, name: "Bribed Witness".to_string(), owner: Owner::Player,
+                card_type: CardType::Cover { cover: 15, heat: -10 } },
+            Card { id: 23, name: "Plea Bargain".to_string(), owner: Owner::Player,
+                card_type: CardType::Insurance { cover: 20, cost: 1000, heat_penalty: 20 } },
+        ];
+        let result = validate_deck(&deck);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Need at least 1 Location card");
+    }
+
+    #[test]
+    fn test_preset_aggro_valid() {
+        let deck = create_aggro_deck();
+        assert!(validate_deck(&deck).is_ok());
+        assert_eq!(deck.len(), 10); // Aggro is minimal deck (meets 10 card minimum)
+        // Verify has products and locations
+        let has_product = deck.iter().any(|c| matches!(c.card_type, CardType::Product { .. }));
+        let has_location = deck.iter().any(|c| matches!(c.card_type, CardType::Location { .. }));
+        assert!(has_product);
+        assert!(has_location);
+    }
+
+    #[test]
+    fn test_preset_control_valid() {
+        let deck = create_control_deck();
+        assert!(validate_deck(&deck).is_ok());
+        assert_eq!(deck.len(), 16); // Control is larger deck
+        // Verify has products and locations
+        let has_product = deck.iter().any(|c| matches!(c.card_type, CardType::Product { .. }));
+        let has_location = deck.iter().any(|c| matches!(c.card_type, CardType::Location { .. }));
+        assert!(has_product);
+        assert!(has_location);
+    }
+
+    #[test]
+    fn test_deck_builder_default() {
+        let builder = DeckBuilder::new();
+        assert_eq!(builder.available_cards.len(), 20);
+        assert_eq!(builder.selected_cards.len(), 20); // Default: all cards selected
+        assert!(builder.is_valid());
+    }
+
+    #[test]
+    fn test_deck_builder_load_presets() {
+        let mut builder = DeckBuilder::new();
+
+        // Load aggro
+        builder.load_preset(DeckPreset::Aggro);
+        assert_eq!(builder.selected_cards.len(), 10);
+        assert!(builder.is_valid());
+
+        // Load control
+        builder.load_preset(DeckPreset::Control);
+        assert_eq!(builder.selected_cards.len(), 16);
+        assert!(builder.is_valid());
+
+        // Load default
+        builder.load_preset(DeckPreset::Default);
+        assert_eq!(builder.selected_cards.len(), 20);
+        assert!(builder.is_valid());
     }
 }
