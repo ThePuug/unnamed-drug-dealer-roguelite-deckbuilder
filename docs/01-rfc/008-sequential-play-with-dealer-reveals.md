@@ -2,7 +2,7 @@
 
 ## Status
 
-**Under Review** - 2025-11-10
+**Approved** - 2025-11-10
 
 **Supersedes:** RFC-002 betting mechanics (simultaneous face-down play)
 
@@ -180,9 +180,26 @@ Wild Cards (4 cards):
 
 ## Feasibility Analysis
 
+### ARCHITECT Review - 2025-11-10
+
+**Verdict:** ✅ **FEASIBLE WITH INTEGRATION CONCERNS** (8-12 hours estimated)
+
+**Overall Assessment:**
+The proposed changes are architecturally sound and build on existing patterns. However, the 6-8 hour estimate is optimistic given the need to integrate with existing features (insurance, conviction, deck building). Revised estimate: **8-12 hours** to account for integration testing and potential edge cases.
+
+**Key Architectural Findings:**
+1. ✅ Current state machine (`State` enum) is extensible for turn-based flow
+2. ✅ Card data model (`CardType` enum) supports new Dealer card types
+3. ⚠️ Insurance/Conviction logic tightly coupled to "after all cards played" assumption - needs refactoring
+4. ⚠️ `cards_played_this_round` tracking exists but used for face-down mechanics - repurpose for sequential tracking
+5. ✅ Override system (`apply_override`) is already implemented and will work with progressive reveals
+6. ⚠️ Deck building flow creates `HandState` on run start - must initialize with Dealer deck
+
+---
+
 ### Technical Assessment
 
-**Verdict:** ✅ **HIGHLY FEASIBLE** (6-8 hours estimated)
+**Verified Against Current Codebase:**
 
 **Foundation Ready from SOW-001/002:**
 - ✅ Card data model supports all card types (Products, Locations, Evidence, Cover, Modifiers)
@@ -386,6 +403,125 @@ Next round OR resolve hand
 - SOW-001 card types unchanged (just used differently)
 - Override rules unchanged (just more visible now)
 - Bust resolution unchanged (Evidence > Cover check)
+
+---
+
+### Integration with Existing Features (ARCHITECT Analysis)
+
+**RFC-003: Insurance and Conviction Cards**
+
+**Current Implementation:**
+- Insurance/Conviction checks occur at resolution (`resolve_hand()` in `main.rs:2447`)
+- Logic assumes all cards finalized before checking conviction/insurance
+- Uses `active_insurance(true)` and `active_conviction(true)` to scan all cards
+
+**Integration Requirements:**
+1. ✅ Insurance/Conviction cards can be played sequentially (no change needed)
+2. ✅ Resolution logic remains unchanged (still checks Evidence > Cover at end)
+3. ⚠️ **Edge Case:** Insurance card played Round 3, but player folds after Dealer reveal
+   - **Solution:** Fold logic must NOT count unplayed cards (already handled by existing code)
+4. ✅ Running totals display must show insurance status (already implemented in UI)
+
+**Compatibility:** ✅ **COMPATIBLE** - No changes required to insurance/conviction logic
+
+---
+
+**RFC-004: Card Retention Between Hands**
+
+**Current Implementation:**
+- Cards return to deck after each hand (`refill_decks()` in `main.rs`)
+- Unplayed cards retained in hand for next deal
+
+**Integration Requirements:**
+1. ✅ Sequential play doesn't affect card retention (orthogonal concerns)
+2. ✅ Folding preserves unplayed cards (as specified in RFC-008)
+3. ✅ Dealer deck separate from player decks (no cross-contamination)
+
+**Compatibility:** ✅ **FULLY COMPATIBLE** - No integration work needed
+
+---
+
+**RFC-005: Deck Balance and Card Distribution**
+
+**Current Implementation:**
+- 20 player cards (4 Products, 3 Locations, 10 Evidence, 3 Cover)
+- Balanced for 3-card hands per round
+
+**Integration Requirements:**
+1. ⚠️ **New System:** Dealer deck (20 scenario cards) separate from player decks
+2. ✅ Player deck unchanged (same 20 cards, same distribution)
+3. ⚠️ **Balance Consideration:** Dealer cards affect totals - may need rebalancing
+
+**Compatibility:** ⚠️ **COMPATIBLE WITH TUNING** - Dealer deck is additive, player deck unchanged, but overall difficulty may shift
+
+---
+
+**RFC-006: Deck Building and Meta Progression**
+
+**Current Implementation:**
+- `DeckBuilder` resource manages card selection (`main.rs:22`)
+- `start_run_button_system` creates `HandState` with selected deck (`main.rs`)
+- Transitions from `GameState::DeckBuilding` → `GameState::InRun`
+
+**Integration Requirements:**
+1. ⚠️ **CRITICAL:** `HandState::default()` must initialize Dealer deck
+2. ✅ Player deck selection unchanged (deck builder still works)
+3. ⚠️ **Implementation:** Add `dealer_deck` field to `HandState` struct
+4. ⚠️ **Implementation:** Dealer deck shuffled and 3 cards drawn at hand start
+
+**Code Changes Required:**
+```rust
+// In HandState struct (main.rs:1791)
+pub struct HandState {
+    // ... existing fields
+    dealer_deck: Vec<Card>,  // NEW: Dealer scenario cards
+    dealer_hand: Vec<Card>,  // NEW: 3 cards drawn for this hand
+}
+
+// In HandState::new() or reset logic
+fn initialize_dealer_deck() {
+    self.dealer_deck = create_dealer_deck();  // 20 scenario cards
+    self.dealer_deck.shuffle(&mut rand::thread_rng());
+    self.dealer_hand = self.dealer_deck.drain(0..3).collect();  // Draw 3
+}
+```
+
+**Compatibility:** ⚠️ **REQUIRES CHANGES** - Must extend `HandState` initialization in deck building flow
+
+---
+
+### Revised Implementation Breakdown
+
+**Phase 1: Core Sequential Play (3-4 hours)**
+- Modify state machine: `State::Betting` → turn-based iteration
+- Remove face-down mechanics: immediate card reveals
+- Add turn order tracking: `get_turn_order(round)` function
+- Update UI: show "active player" indicator
+- **Testing:** Verify cards play sequentially and totals update
+
+**Phase 2: Dealer Deck System (2-3 hours)**
+- Add `dealer_deck` and `dealer_hand` fields to `HandState`
+- Create `create_dealer_deck()` function (20 scenario cards)
+- Add `CardType::DealerLocation` and `CardType::DealerModifier` variants
+- Implement dealer reveal after player phase
+- **Testing:** Verify dealer cards integrate with totals calculation
+
+**Phase 3: Fold Mechanics (1-2 hours)**
+- Add fold option after dealer reveal (Rounds 1-2)
+- Player fold: discard played cards, keep unplayed, exit to next hand
+- Customer fold: remove customer cards from totals, continue hand
+- Narc never folds (skip fold check)
+- **Testing:** Verify fold preserves/discards correct cards
+
+**Phase 4: Integration Testing (2-3 hours)**
+- Verify insurance/conviction still work with sequential play
+- Verify deck building initializes dealer deck correctly
+- Verify card retention works with fold mechanic
+- Verify override wars work with progressive reveals
+- Balance tuning: adjust dealer card difficulty
+- **Testing:** Full playthrough with all features enabled
+
+**Total Estimate:** 8-12 hours (accounts for integration complexity)
 
 ---
 
@@ -606,13 +742,13 @@ After 5 test hands, I should be able to answer YES to:
 
 ## Approval
 
-**Status:** Draft → Under Review
+**Status:** Draft → Under Review → **Approved**
 
 **Approvers:**
 - PLAYER: ✅ **APPROVED** - Solves core "rounds feel meaningless" problem, creates progressive decision-making
-- ARCHITECT: [Pending Review] - Needs validation of 6-8 hour estimate and integration with existing features (RFC-003/004/005/006)
+- ARCHITECT: ✅ **APPROVED WITH REVISED ESTIMATE** - Architecturally sound, builds on existing patterns. Revised estimate: 8-12 hours (was 6-8) due to integration complexity with RFC-003/004/005/006. Key integration points identified and documented above.
 
-**Scope Constraint:** 6-8 hours (fits within ≤10 hour SOW limit for critical fixes)
+**Scope Constraint:** 8-12 hours (revised from initial 6-8 hour estimate)
 
 **Dependencies:**
 - RFC-001: ✅ Foundation (card model, override rules)
