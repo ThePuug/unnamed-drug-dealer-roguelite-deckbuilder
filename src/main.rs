@@ -812,7 +812,9 @@ fn recreate_hand_display_system(
 
     // Add card buttons for current hand
     // SOW-008: Show cards during PlayerPhase and other states
+    // SOW-009: Also show during DealerReveal (Buyer card reveal)
     let show_cards = hand_state.current_state == State::PlayerPhase ||
+                     hand_state.current_state == State::DealerReveal ||
                      hand_state.current_state == State::FoldDecision ||
                      hand_state.current_state == State::Resolve ||
                      hand_state.current_state == State::Bust;
