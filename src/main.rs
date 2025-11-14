@@ -3,6 +3,7 @@
 // SOW-006: Deck Building
 
 use bevy::prelude::*;
+use bevy::asset::load_internal_binary_asset;
 use rand::Rng;
 use rand::seq::SliceRandom;
 
@@ -74,15 +75,27 @@ enum DeckPreset {
 }
 
 fn main() {
-    App::new()
-        .add_plugins(DefaultPlugins)
+    let mut app = App::new();
+
+    app.add_plugins(DefaultPlugins)
         .init_state::<GameState>()  // SOW-006: Add state management
         .insert_resource(DeckBuilder::new())  // SOW-006: Initialize deck builder
         .insert_resource(AiActionTimer::default())  // SOW-008: AI pacing timer
         .add_systems(Startup, setup)
         .add_systems(Startup, setup_betting_state)
-        .add_systems(Startup, setup_deck_builder)  // SOW-006: Setup deck builder UI
-        .add_systems(Startup, apply_custom_font.after(setup).after(setup_deck_builder))  // Apply font after UI is created
+        .add_systems(Startup, setup_deck_builder);  // SOW-006: Setup deck builder UI
+
+    // Embed custom font as the default font (supports emojis)
+    load_internal_binary_asset!(
+        app,
+        TextStyle::default().font,
+        "../assets/fonts/FiraCode.ttf",
+        |bytes: &[u8], _path: String| {
+            Font::try_from_bytes(bytes.to_vec()).unwrap()
+        }
+    );
+
+    app
         .add_systems(Update, toggle_game_state_ui_system)  // SOW-006: Show/hide UI based on state (separate to avoid type conflicts)
         .add_systems(Update, (
             auto_play_system,
@@ -109,22 +122,14 @@ fn main() {
         .run();
 }
 
-// Font resource to hold our custom font
-#[derive(Resource)]
-struct GameFont(Handle<Font>);
-
-fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
+fn setup(mut commands: Commands) {
     commands.spawn(Camera2dBundle::default());
-
-    // Load custom font with emoji support
-    let font_handle = asset_server.load("fonts/FiraCode.ttf");
-    commands.insert_resource(GameFont(font_handle.clone()));
 
     // SOW-006: Don't spawn HandState at startup - only when START RUN is pressed
     // HandState will be created when transitioning from DeckBuilding to InRun
 
     // Create gameplay UI root (initially hidden)
-    create_ui(&mut commands, font_handle);
+    create_ui(&mut commands);
 }
 
 fn setup_betting_state(mut commands: Commands) {
@@ -230,28 +235,7 @@ struct PresetButton {
 #[derive(Component)]
 struct StartRunButton;
 
-// Helper function to create TextStyle with our custom font
-fn text_style(font: &Handle<Font>, font_size: f32, color: Color) -> TextStyle {
-    TextStyle {
-        font: font.clone(),
-        font_size,
-        color,
-    }
-}
-
-// System to apply custom font to all text in the UI
-fn apply_custom_font(
-    game_font: Res<GameFont>,
-    mut text_query: Query<&mut Text>,
-) {
-    for mut text in text_query.iter_mut() {
-        for section in text.sections.iter_mut() {
-            section.style.font = game_font.0.clone();
-        }
-    }
-}
-
-fn create_ui(commands: &mut Commands, font: Handle<Font>) {
+fn create_ui(commands: &mut Commands) {
     // UI Root container
     commands.spawn((
         NodeBundle {
@@ -965,8 +949,6 @@ fn recreate_hand_display_system(
                     CardType::DealModifier { .. } => Color::srgb(0.7, 0.5, 0.9), // Purple for modifiers
                     CardType::Insurance { .. } => Color::srgb(0.2, 0.8, 0.8), // Cyan for insurance
                     CardType::Conviction { .. } => Color::srgb(0.9, 0.2, 0.2), // Red for conviction
-                    CardType::DealerLocation { .. } => Color::srgb(0.5, 0.7, 1.0), // Light blue for dealer locations
-                    CardType::DealerModifier { .. } => Color::srgb(0.9, 0.7, 1.0), // Light purple for dealer modifiers
                 };
 
                 let card_info = match &card.card_type {
@@ -984,10 +966,6 @@ fn recreate_hand_display_system(
                         format!("{}\nCover: {} | Cost: ${} | Heat: {}", card.name, cover, cost, heat_penalty),
                     CardType::Conviction { heat_threshold } =>
                         format!("{}\nThreshold: {}", card.name, heat_threshold),
-                    CardType::DealerLocation { evidence, cover, heat } =>
-                        format!("{}\n[DEALER] E:{} C:{} H:{}", card.name, evidence, cover, heat),
-                    CardType::DealerModifier { evidence, cover, heat } =>
-                        format!("{}\n[DEALER] E:{} C:{} H:{}", card.name, evidence, cover, heat),
                 };
 
                 parent.spawn((
@@ -1856,8 +1834,6 @@ fn update_played_cards_display_system(
                 CardType::DealModifier { .. } => Color::srgb(0.7, 0.5, 0.9),
                 CardType::Insurance { .. } => Color::srgb(0.2, 0.8, 0.8),
                 CardType::Conviction { .. } => Color::srgb(0.9, 0.2, 0.2),
-                CardType::DealerLocation { .. } => Color::srgb(0.5, 0.7, 1.0),  // Buyer Location cards
-                CardType::DealerModifier { .. } => Color::srgb(0.9, 0.7, 1.0),  // Buyer Modifier cards
                 _ => Color::srgb(0.5, 0.5, 0.5),
             };
 
@@ -1877,10 +1853,6 @@ fn update_played_cards_display_system(
                     format!("{}\nCover: {}\nCost: ${}", card.name, cover, cost),
                 CardType::Conviction { heat_threshold } =>
                     format!("{}\nThreshold: {}", card.name, heat_threshold),
-                CardType::DealerLocation { evidence, cover, heat } =>
-                    format!("{}\nE:{} C:{} H:{}", card.name, evidence, cover, heat),
-                CardType::DealerModifier { evidence, cover, heat } =>
-                    format!("{}\nE:{} C:{} H:{}", card.name, evidence, cover, heat),
                 _ => card.name.clone(),
             };
 
@@ -1984,17 +1956,17 @@ fn update_played_cards_display_system(
             if let Some(dealer_card) = hand_state.dealer_hand.get(i) {
                 // Dealer card color
                 let card_color = match dealer_card.card_type {
-                    CardType::DealerLocation { .. } => Color::srgb(0.5, 0.7, 1.0),
-                    CardType::DealerModifier { .. } => Color::srgb(0.9, 0.7, 1.0),
+                    CardType::Location { .. } => Color::srgb(0.5, 0.7, 1.0),
+                    CardType::DealModifier { .. } => Color::srgb(0.9, 0.7, 1.0),
                     _ => Color::srgb(0.6, 0.6, 0.6),
                 };
 
                 // Format dealer card with stats
                 let dealer_text = match &dealer_card.card_type {
-                    CardType::DealerLocation { evidence, cover, heat } =>
+                    CardType::Location { evidence, cover, heat } =>
                         format!("{}\nEvidence: {}\nCover: {}\nHeat: {}", dealer_card.name, evidence, cover, heat),
-                    CardType::DealerModifier { evidence, cover, heat } =>
-                        format!("{}\nE:{} C:{} H:{}", dealer_card.name, evidence, cover, heat),
+                    CardType::DealModifier { price_multiplier, evidence, cover, heat } =>
+                        format!("{}\n×{:.1}\nE:{} C:{} H:{}", dealer_card.name, price_multiplier, evidence, cover, heat),
                     _ => dealer_card.name.clone(),
                 };
                 commands.entity(dealer_area).with_children(|parent| {
@@ -2066,17 +2038,17 @@ fn render_buyer_visible_hand_system(
     for card in hand_state.buyer_hand.iter() {
         // Get card color
         let card_color = match card.card_type {
-            CardType::DealerLocation { .. } => Color::srgb(0.5, 0.7, 1.0),  // Buyer Location cards
-            CardType::DealerModifier { .. } => Color::srgb(0.9, 0.7, 1.0),  // Buyer Modifier cards
+            CardType::Location { .. } => Color::srgb(0.5, 0.7, 1.0),  // Buyer Location cards
+            CardType::DealModifier { .. } => Color::srgb(0.7, 0.5, 0.9),     // Buyer Price Modifier cards
             _ => Color::srgb(0.5, 0.5, 0.5),
         };
 
         // Format card with stats
         let card_text = match &card.card_type {
-            CardType::DealerLocation { evidence, cover, heat } =>
+            CardType::Location { evidence, cover, heat } =>
                 format!("{}\nE:{} C:{} H:{}", card.name, evidence, cover, heat),
-            CardType::DealerModifier { evidence, cover, heat } =>
-                format!("{}\nE:{} C:{} H:{}", card.name, evidence, cover, heat),
+            CardType::DealModifier { price_multiplier, evidence, cover, heat } =>
+                format!("{}\n×{:.1}\nE:{} C:{} H:{}", card.name, price_multiplier, evidence, cover, heat),
             _ => card.name.clone(),
         };
 
@@ -2163,18 +2135,18 @@ enum Owner {
 #[derive(Debug, Clone)]
 enum CardType {
     Product { price: u32, heat: i32 },
-    Location { evidence: u32, cover: u32, heat: i32 },
+    Location { evidence: u32, cover: u32, heat: i32 },  // SOW-009: Used by both Player and Buyer (override rule)
     Evidence { evidence: u32, heat: i32 },
     Cover { cover: u32, heat: i32 },
     // SOW-002 Phase 4: Deal Modifiers (multiplicative price, additive Evidence/Cover/Heat)
+    // SOW-009: Used by both Player and Buyer (price_multiplier defaults to 1.0 for non-price cards)
     DealModifier { price_multiplier: f32, evidence: i32, cover: i32, heat: i32 },
     // SOW-003 Phase 1: Insurance (Cover + bust activation)
     Insurance { cover: u32, cost: u32, heat_penalty: i32 },
     // SOW-003 Phase 2: Conviction (Heat threshold, overrides insurance)
     Conviction { heat_threshold: u32 },
-    // SOW-008 Phase 2: Dealer cards (community cards affecting all players)
-    DealerLocation { evidence: u32, cover: u32, heat: i32 }, // Can be overridden
-    DealerModifier { evidence: i32, cover: i32, heat: i32 }, // Cannot be overridden
+    // SOW-009: DealerLocation removed (merged into Location)
+    // SOW-009: DealerModifier removed (merged into DealModifier)
 }
 
 /// Card instance
@@ -3176,11 +3148,11 @@ impl HandState {
             self.cards_played.iter().collect()
         };
 
-        // Find last player Location
-        cards.into_iter().rev().find(|card| matches!(card.card_type, CardType::Location { .. }))
-
-        // SOW-008 Phase 2 TODO: Integrate dealer Location cards with proper override logic
-        // For now, only checking player cards to avoid breaking existing tests
+        // Find last Location (player or Buyer)
+        // SOW-009: Buyer Location cards can override player Location cards (both use CardType::Location)
+        cards.into_iter().rev().find(|card| {
+            matches!(card.card_type, CardType::Location { .. })
+        })
     }
 
     /// Get active Insurance card (last Insurance played, if any)
@@ -3241,11 +3213,6 @@ impl HandState {
                     totals.cover = cover;
                     totals.heat += heat;
                 }
-                CardType::DealerLocation { evidence, cover, heat } => {
-                    totals.evidence = evidence;
-                    totals.cover = cover;
-                    totals.heat += heat;
-                }
                 _ => {} // Shouldn't happen
             }
         }
@@ -3284,13 +3251,6 @@ impl HandState {
                 // SOW-003 Phase 2: Conviction has no effect on totals
                 CardType::Conviction { .. } => {
                     // No effect on totals - only affects bust resolution
-                }
-                // SOW-008 Phase 2: Dealer cards handled separately (not in cards_played)
-                CardType::DealerLocation { .. } => {
-                    // Already handled by active_location()
-                }
-                CardType::DealerModifier { .. } => {
-                    // Will be handled below when processing dealer_hand
                 }
                 _ => {}
             }
@@ -3617,21 +3577,21 @@ fn create_college_party_host() -> BuyerPersona {
                 id: id,
                 name: "Cops Called".to_string(),
                 owner: Owner::Buyer,
-                card_type: CardType::DealerModifier { evidence: 20, cover: 0, heat: 5 },
+                card_type: CardType::DealModifier { price_multiplier: 1.0, evidence: 20, cover: 0, heat: 5 },
             },
             // 2. Increase Cover
             { id += 1; Card {
                 id: id,
                 name: "VIP Room".to_string(),
                 owner: Owner::Buyer,
-                card_type: CardType::DealerModifier { evidence: 0, cover: 15, heat: -5 },
+                card_type: CardType::DealModifier { price_multiplier: 1.0, evidence: 0, cover: 15, heat: -5 },
             }},
             // 3. Change Location
             { id += 1; Card {
                 id: id,
                 name: "Move to Dorm".to_string(),
                 owner: Owner::Buyer,
-                card_type: CardType::DealerLocation { evidence: 10, cover: 5, heat: 10 },
+                card_type: CardType::Location { evidence: 10, cover: 5, heat: 10 },
             }},
             // 4. Volume/Price Up
             { id += 1; Card {
@@ -3652,14 +3612,14 @@ fn create_college_party_host() -> BuyerPersona {
                 id: id,
                 name: "Word of Mouth".to_string(),
                 owner: Owner::Buyer,
-                card_type: CardType::DealerModifier { evidence: 0, cover: 5, heat: 15 },
+                card_type: CardType::DealModifier { price_multiplier: 1.0, evidence: 0, cover: 5, heat: 15 },
             }},
             // 7. Thematic card (Mixed)
             { id += 1; Card {
                 id: id,
                 name: "Noise Complaint".to_string(),
                 owner: Owner::Buyer,
-                card_type: CardType::DealerModifier { evidence: 10, cover: 0, heat: 10 },
+                card_type: CardType::DealModifier { price_multiplier: 1.0, evidence: 10, cover: 0, heat: 10 },
             }},
         ],
     }
@@ -3689,21 +3649,21 @@ fn create_stay_at_home_mom() -> BuyerPersona {
                 id: id,
                 name: "Kids Are Watching".to_string(),
                 owner: Owner::Buyer,
-                card_type: CardType::DealerModifier { evidence: 15, cover: 0, heat: 5 },
+                card_type: CardType::DealModifier { price_multiplier: 1.0, evidence: 15, cover: 0, heat: 5 },
             },
             // 2. Increase Cover
             { id += 1; Card {
                 id: id,
                 name: "Safe Exchange".to_string(),
                 owner: Owner::Buyer,
-                card_type: CardType::DealerModifier { evidence: 0, cover: 20, heat: -5 },
+                card_type: CardType::DealModifier { price_multiplier: 1.0, evidence: 0, cover: 20, heat: -5 },
             }},
             // 3. Change Location
             { id += 1; Card {
                 id: id,
                 name: "Move Inside".to_string(),
                 owner: Owner::Buyer,
-                card_type: CardType::DealerLocation { evidence: 5, cover: 15, heat: -5 },
+                card_type: CardType::Location { evidence: 5, cover: 15, heat: -5 },
             }},
             // 4. Volume/Price Up
             { id += 1; Card {
@@ -3724,14 +3684,14 @@ fn create_stay_at_home_mom() -> BuyerPersona {
                 id: id,
                 name: "Paranoid Check".to_string(),
                 owner: Owner::Buyer,
-                card_type: CardType::DealerModifier { evidence: 5, cover: 0, heat: 15 },
+                card_type: CardType::DealModifier { price_multiplier: 1.0, evidence: 5, cover: 0, heat: 15 },
             }},
             // 7. Thematic card (Panic)
             { id += 1; Card {
                 id: id,
                 name: "Panic Attack".to_string(),
                 owner: Owner::Buyer,
-                card_type: CardType::DealerModifier { evidence: 10, cover: 0, heat: 20 },
+                card_type: CardType::DealModifier { price_multiplier: 1.0, evidence: 10, cover: 0, heat: 20 },
             }},
         ],
     }
@@ -3761,21 +3721,21 @@ fn create_executive() -> BuyerPersona {
                 id: id,
                 name: "Security Check".to_string(),
                 owner: Owner::Buyer,
-                card_type: CardType::DealerModifier { evidence: 15, cover: 0, heat: 10 },
+                card_type: CardType::DealModifier { price_multiplier: 1.0, evidence: 15, cover: 0, heat: 10 },
             },
             // 2. Increase Cover
             { id += 1; Card {
                 id: id,
                 name: "Discrete Meeting".to_string(),
                 owner: Owner::Buyer,
-                card_type: CardType::DealerModifier { evidence: 0, cover: 25, heat: -10 },
+                card_type: CardType::DealModifier { price_multiplier: 1.0, evidence: 0, cover: 25, heat: -10 },
             }},
             // 3. Change Location
             { id += 1; Card {
                 id: id,
                 name: "Move to Office".to_string(),
                 owner: Owner::Buyer,
-                card_type: CardType::DealerLocation { evidence: 5, cover: 20, heat: -5 },
+                card_type: CardType::Location { evidence: 5, cover: 20, heat: -5 },
             }},
             // 4. Volume/Price Up
             { id += 1; Card {
@@ -3796,14 +3756,14 @@ fn create_executive() -> BuyerPersona {
                 id: id,
                 name: "Background Check".to_string(),
                 owner: Owner::Buyer,
-                card_type: CardType::DealerModifier { evidence: 10, cover: 5, heat: 20 },
+                card_type: CardType::DealModifier { price_multiplier: 1.0, evidence: 10, cover: 5, heat: 20 },
             }},
             // 7. Thematic card (Disruption)
             { id += 1; Card {
                 id: id,
                 name: "Assistant Interrupt".to_string(),
                 owner: Owner::Buyer,
-                card_type: CardType::DealerModifier { evidence: 5, cover: 0, heat: 15 },
+                card_type: CardType::DealModifier { price_multiplier: 1.0, evidence: 5, cover: 0, heat: 15 },
             }},
         ],
     }
