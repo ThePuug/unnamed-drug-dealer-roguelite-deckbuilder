@@ -15,7 +15,7 @@ RFCs bridge player needs and technical reality. Each RFC starts with a player-fa
 | 006 | Run Progression and Meta Systems | 🎲 Roguelite | ✅ Implemented (SOW-006 merged) | 2025-11-09 | N/A |
 | 007 | Meaningful Betting Decisions | 🎲 Roguelite | ❌ Rejected | 2025-11-10 | N/A |
 | 008 | Sequential Play with Progressive Dealer Reveals | 🎲 Roguelite | ✅ Implemented (SOW-008 merged) | 2025-11-10 | ADR-006 |
-| 009 | Buyer System (Merged Dealer + Customer) | 🎲 Roguelite | ✅ Approved (SOW-009 planned) | 2025-11-11 | N/A |
+| 009 | Buyer System (Merged Dealer + Customer) | 🎲 Roguelite | ✅ Implemented (SOW-009 merged) | 2025-11-11 | N/A |
 
 **Legend:**
 - **Status:** ✅ Implemented (merged to main) | ✅ Approved (ready for implementation) | 🔄 Under Review | 📝 Draft/Proposed | ❌ Rejected

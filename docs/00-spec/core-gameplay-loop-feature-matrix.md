@@ -2,9 +2,9 @@
 
 **Companion to:** [core-gameplay-loop.md](core-gameplay-loop.md)
 
-**Last Updated:** 2025-11-10 (Updated to reflect RFC-005, RFC-006, RFC-008 implementations)
+**Last Updated:** 2025-11-14 (Updated to reflect RFC-009 Buyer System implementation)
 
-**Overall Status:** Updated to reflect recent RFC implementations - significant changes to core loop
+**Overall Status:** Updated to reflect Buyer System (RFC-009) - Customer/Dealer replaced with unified Buyer entity
 
 ---
 
@@ -14,7 +14,7 @@
 - ✅ Player deck expanded to 20 cards (was 15)
 - ✅ Evidence cards removed from player deck (moved to Narc)
 - ✅ Conviction cards moved to Narc deck (was in player deck)
-- ✅ Customer deck now strategic (Products, Locations, Modifiers instead of placeholder Evidence)
+- ~~Customer deck now strategic~~ → **Superseded by RFC-009 Buyer System**
 
 **RFC-006 (Deck Building):**
 - ✅ Players now choose 10-20 cards from 20-card pool
@@ -26,16 +26,27 @@
 
 **RFC-008 (Sequential Play) - MAJOR CORE LOOP REWORK:**
 - ✅ **Sequential play** (one card at a time, face-up) replaces simultaneous face-down play
-- ✅ **Dealer deck with 3 community cards** revealed progressively (NEW mechanic)
-- ✅ **Rotating turn order** per round (was fixed Narc→Customer→Player)
+- ~~Dealer deck with 3 community cards~~ → **Superseded by RFC-009 Buyer reaction deck**
+- ~~Rotating turn order~~ → **Replaced by fixed Narc→Player order (RFC-009)**
 - ✅ **Check action** (skip playing card)
 - ✅ **Fold mechanic** after Dealer reveal (Rounds 1-2)
-- ✅ **Customer can fold** (removes cards from totals)
+- ~~Customer can fold~~ → **Customer removed (RFC-009)**
 - ✅ **Narc cannot fold** (always plays through)
 - ✅ **Running totals update after each card** (progressive information)
 - ❌ Initiative/raising mechanics removed (simplified)
 
-**These changes represent a fundamental shift from "poker-style betting" to "progressive information revelation"**
+**RFC-009 (Buyer System) - ENTITY SIMPLIFICATION:**
+- ✅ **Buyer entity replaces Customer + Dealer** (3 players → 2 players)
+- ✅ **3 Buyer personas** (College Party Host, Stay-at-Home Mom, Executive)
+- ✅ **Buyer reaction deck** (7 cards per persona, 3 visible)
+- ✅ **Demand satisfaction system** (Product + Location matching)
+- ✅ **Buyer bail thresholds** (Heat/Evidence limits)
+- ✅ **Profit multipliers** (base vs reduced based on demand)
+- ✅ **Fixed turn order** (Narc → Player, no rotation)
+- ✅ **Visible hand UI** (anticipation mechanic)
+- ⏸️ **Session structure** (BuyerSelection, SessionDecision states - deferred)
+
+**These changes represent a fundamental shift from "3-player complex AI" to "2-player with strategic Buyer personas"**
 
 ---
 
@@ -81,40 +92,41 @@
 
 ## Hand Structure
 
-### Hand Flow - 10/14 complete (71%)
+### Hand Flow - 11/14 complete (79%)
 
 | Feature | Status | Notes | RFC/ADR/SOW |
 |---------|:------:|-------|-------------|
-| 3-round hand structure | ✅ | Player Phase → Dealer Reveal × 3 | RFC-008, SOW-008 |
-| Rotating turn order | ✅ | Changes per round | RFC-008, SOW-008 |
-| Sequential card play (face-up) | ✅ | **CHANGED: One at a time, immediate reveal** | RFC-008, SOW-008 |
+| 3-round hand structure | ✅ | Player Phase → Buyer Reveal × 3 | RFC-008/009, SOW-008/009 |
+| Turn order | ✅ | **CHANGED: Fixed Narc→Player (was rotating)** | RFC-009, SOW-009 |
+| Sequential card play (face-up) | ✅ | One at a time, immediate reveal | RFC-008, SOW-008 |
 | Check action | ✅ | Skip playing card | RFC-008, SOW-008 |
-| Dealer card reveals | ✅ | **NEW: 3 community cards, one per round** | RFC-008, SOW-008 |
-| Player fold after Dealer reveal | ✅ | **NEW: Fold option Rounds 1-2** | RFC-008, SOW-008 |
-| Customer can fold | ✅ | **NEW: Removes cards from totals** | RFC-008, SOW-008 |
+| Buyer card reveals | ✅ | **CHANGED: Random from 3 visible cards** | RFC-009, SOW-009 |
+| Player fold after Buyer reveal | ✅ | Fold option Rounds 1-2 | RFC-008, SOW-008 |
+| Buyer cannot fold | ✅ | **CHANGED: Buyer plays via reaction deck** | RFC-009, SOW-009 |
 | Narc cannot fold | ✅ | Hardcoded behavior | RFC-008, SOW-008 |
 | Running totals calculation | ✅ | After each card played | RFC-008, SOW-008 |
-| End of hand resolution | ✅ | Calculate finals, bust check | SOW-001-008 |
-| Dealer deck system (20 cards) | ✅ | **NEW: Separate deck with Locations/Modifiers/Wild** | RFC-008, SOW-008 |
+| End of hand resolution | ✅ | Validity/Bail/Demand/Bust checks | RFC-009, SOW-009 |
+| Buyer reaction deck | ✅ | **NEW: 7 cards per persona, 3 visible** | RFC-009, SOW-009 |
 | Card retention between hands | ✅ | Unplayed cards carry over | RFC-004, SOW-004 |
 | Hand history/replay | ❌ | Review previous hands | Phase 3 |
 | Undo last action | ❌ | Take back play | Phase 3 |
 
-### Round Flow - 8/9 complete (89%) - **SIGNIFICANTLY CHANGED per RFC-008**
+### Round Flow - 8/9 complete (89%) - **SIGNIFICANTLY CHANGED per RFC-008/009**
 
 | Feature | Status | Notes | RFC/ADR/SOW |
 |---------|:------:|-------|-------------|
-| Sequential turn-based play | ✅ | **CHANGED: One player at a time** | RFC-008, SOW-008 |
-| Play card face-up | ✅ | **CHANGED: Immediate reveal, no face-down** | RFC-008, SOW-008 |
+| Sequential turn-based play | ✅ | **Fixed order: Narc→Player** | RFC-009, SOW-009 |
+| Play card face-up | ✅ | Immediate reveal, no face-down | RFC-008, SOW-008 |
 | Check action (skip card) | ✅ | Play no card this turn | RFC-008, SOW-008 |
-| Fold action | ✅ | Exit hand (after Dealer reveal) | RFC-008, SOW-008 |
-| Cards visible immediately | ✅ | **CHANGED: No simultaneous flip** | RFC-008, SOW-008 |
-| Running totals update per card | ✅ | **CHANGED: After each card, not per round** | RFC-008, SOW-008 |
-| Dealer reveal after Player Phase | ✅ | **NEW: Community card reveal** | RFC-008, SOW-008 |
-| Decision point after Dealer reveal | ✅ | "Fold or Continue?" | RFC-008, SOW-008 |
+| Fold action | ✅ | Exit hand (after Buyer reveal) | RFC-008, SOW-008 |
+| Cards visible immediately | ✅ | No simultaneous flip | RFC-008, SOW-008 |
+| Running totals update per card | ✅ | After each card, not per round | RFC-008, SOW-008 |
+| Buyer reveal after Player Phase | ✅ | **Random card from 3 visible** | RFC-009, SOW-009 |
+| Decision point after Buyer reveal | ✅ | "Fold or Continue?" | RFC-008, SOW-008 |
 | Turn order indicator UI | ❌ | Show whose turn + order | Phase 2 polish |
 
 **Note:** Initiative and raising mechanics removed in RFC-008 (betting system simplified)
+**Note:** Customer removed, Dealer scenario deck replaced with Buyer reaction deck (RFC-009)
 
 ---
 
@@ -265,7 +277,33 @@
 
 ## Implementation Deviations
 
-*None yet - MVP in progress*
+### RFC-009: Buyer System (Supersedes Customer + Dealer)
+
+**Status:** ✅ Implemented and merged (2025-11-14)
+
+**Changes to Spec:**
+- **Customer entity removed** - Previously 3 players (Narc, Customer, Player), now 2 players (Narc, Player)
+- **Dealer scenario deck removed** - Replaced with Buyer reaction deck system
+- **Rotating turn order removed** - Now fixed Narc → Player order
+- **Customer AI removed** - No longer needed with 2-player structure
+
+**New Systems Added:**
+- **Buyer personas** - 3 distinct personas with different demands, multipliers, thresholds
+- **Buyer reaction deck** - 7 cards per persona, 3 shown face-up (anticipation mechanic)
+- **Demand satisfaction** - Product + Location matching affects profit multiplier
+- **Buyer bail thresholds** - Heat/Evidence limits cause deal failure
+- **Enhanced resolution** - Validity checks, bail checks, demand satisfaction
+
+**Rationale:**
+- Simplifies game from 3-player to 2-player structure
+- Reduces AI complexity (only Narc AI needed)
+- Adds strategic depth through Buyer personas and visible reaction deck
+- Improves player clarity ("who am I dealing with?")
+- Creates anticipation without frustration (visible hand mechanic)
+
+**Documentation:**
+- RFC: [docs/01-rfc/009-buyer-system.md](../01-rfc/009-buyer-system.md)
+- SOW: [docs/03-sow/009-buyer-system.md](../03-sow/009-buyer-system.md)
 
 ---
 

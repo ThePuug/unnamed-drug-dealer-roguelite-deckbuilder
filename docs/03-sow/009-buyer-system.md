@@ -2,6 +2,7 @@
 
 ## Status
 
+**Merged** - 2025-11-14 (squash merged to main)
 **Approved** - 2025-11-14 (ARCHITECT review complete, ready to merge)
 **Review** - 2025-11-11 (completed, awaiting ARCHITECT review)
 **In Progress** - 2025-11-11 (started)
