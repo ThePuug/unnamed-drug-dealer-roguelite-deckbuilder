@@ -3612,47 +3612,54 @@ fn create_college_party_host() -> BuyerPersona {
         evidence_threshold: None,
         special_rules: vec![],  // TODO: Add "+10 Evidence if public Location" in future phase
         reaction_deck: vec![
+            // 1. Increase Evidence
             Card {
                 id: id,
-                name: "Invite More People".to_string(),
+                name: "Cops Called".to_string(),
                 owner: Owner::Buyer,
-                card_type: CardType::DealerModifier { evidence: 15, cover: 0, heat: 10 },
+                card_type: CardType::DealerModifier { evidence: 20, cover: 0, heat: 5 },
             },
+            // 2. Increase Cover
             { id += 1; Card {
                 id: id,
                 name: "VIP Room".to_string(),
                 owner: Owner::Buyer,
-                card_type: CardType::DealerModifier { evidence: -10, cover: 0, heat: 0 },
+                card_type: CardType::DealerModifier { evidence: 0, cover: 15, heat: -5 },
             }},
+            // 3. Change Location
             { id += 1; Card {
                 id: id,
-                name: "Cops Called".to_string(),
+                name: "Move to Dorm".to_string(),
                 owner: Owner::Buyer,
-                card_type: CardType::DealerModifier { evidence: 20, cover: 0, heat: 0 },
+                card_type: CardType::DealerLocation { evidence: 10, cover: 5, heat: 10 },
             }},
+            // 4. Volume/Price Up
             { id += 1; Card {
                 id: id,
-                name: "Cash Bar".to_string(),
+                name: "Invite More People".to_string(),
                 owner: Owner::Buyer,
-                card_type: CardType::DealerModifier { evidence: 0, cover: 0, heat: 0 },
+                card_type: CardType::DealModifier { price_multiplier: 1.5, evidence: 15, cover: 0, heat: 10 },
             }},
+            // 5. Volume/Price Down
             { id += 1; Card {
                 id: id,
                 name: "Party Shutdown".to_string(),
                 owner: Owner::Buyer,
-                card_type: CardType::DealerModifier { evidence: 10, cover: 0, heat: 5 },
+                card_type: CardType::DealModifier { price_multiplier: 0.7, evidence: 5, cover: 0, heat: -5 },
             }},
+            // 6. Thematic card (Heat focus)
             { id += 1; Card {
                 id: id,
                 name: "Word of Mouth".to_string(),
                 owner: Owner::Buyer,
-                card_type: CardType::DealerModifier { evidence: 0, cover: 0, heat: 20 },
+                card_type: CardType::DealerModifier { evidence: 0, cover: 5, heat: 15 },
             }},
+            // 7. Thematic card (Mixed)
             { id += 1; Card {
                 id: id,
-                name: "Last Call".to_string(),
+                name: "Noise Complaint".to_string(),
                 owner: Owner::Buyer,
-                card_type: CardType::DealerModifier { evidence: 10, cover: 0, heat: 0 },
+                card_type: CardType::DealerModifier { evidence: 10, cover: 0, heat: 10 },
             }},
         ],
     }
@@ -3677,47 +3684,54 @@ fn create_stay_at_home_mom() -> BuyerPersona {
         evidence_threshold: None,
         special_rules: vec![],
         reaction_deck: vec![
+            // 1. Increase Evidence
             Card {
-                id: id,
-                name: "Nervous Glance".to_string(),
-                owner: Owner::Buyer,
-                card_type: CardType::DealerModifier { evidence: 5, cover: 0, heat: 0 },
-            },
-            { id += 1; Card {
-                id: id,
-                name: "Quick Handoff".to_string(),
-                owner: Owner::Buyer,
-                card_type: CardType::DealerModifier { evidence: -5, cover: 0, heat: 0 },
-            }},
-            { id += 1; Card {
-                id: id,
-                name: "Paranoid Check".to_string(),
-                owner: Owner::Buyer,
-                card_type: CardType::DealerModifier { evidence: 0, cover: 0, heat: 15 },
-            }},
-            { id += 1; Card {
                 id: id,
                 name: "Kids Are Watching".to_string(),
                 owner: Owner::Buyer,
-                card_type: CardType::DealerModifier { evidence: 10, cover: 0, heat: 0 },
-            }},
-            { id += 1; Card {
-                id: id,
-                name: "Text Message".to_string(),
-                owner: Owner::Buyer,
-                card_type: CardType::DealerModifier { evidence: 0, cover: 0, heat: 5 },
-            }},
+                card_type: CardType::DealerModifier { evidence: 15, cover: 0, heat: 5 },
+            },
+            // 2. Increase Cover
             { id += 1; Card {
                 id: id,
                 name: "Safe Exchange".to_string(),
                 owner: Owner::Buyer,
-                card_type: CardType::DealerModifier { evidence: -10, cover: 0, heat: 0 },
+                card_type: CardType::DealerModifier { evidence: 0, cover: 20, heat: -5 },
             }},
+            // 3. Change Location
+            { id += 1; Card {
+                id: id,
+                name: "Move Inside".to_string(),
+                owner: Owner::Buyer,
+                card_type: CardType::DealerLocation { evidence: 5, cover: 15, heat: -5 },
+            }},
+            // 4. Volume/Price Up
+            { id += 1; Card {
+                id: id,
+                name: "Needs Extra".to_string(),
+                owner: Owner::Buyer,
+                card_type: CardType::DealModifier { price_multiplier: 1.3, evidence: 10, cover: 5, heat: 5 },
+            }},
+            // 5. Volume/Price Down
+            { id += 1; Card {
+                id: id,
+                name: "Can't Afford It".to_string(),
+                owner: Owner::Buyer,
+                card_type: CardType::DealModifier { price_multiplier: 0.8, evidence: 5, cover: 5, heat: 0 },
+            }},
+            // 6. Thematic card (Paranoia/Heat)
+            { id += 1; Card {
+                id: id,
+                name: "Paranoid Check".to_string(),
+                owner: Owner::Buyer,
+                card_type: CardType::DealerModifier { evidence: 5, cover: 0, heat: 15 },
+            }},
+            // 7. Thematic card (Panic)
             { id += 1; Card {
                 id: id,
                 name: "Panic Attack".to_string(),
                 owner: Owner::Buyer,
-                card_type: CardType::DealerModifier { evidence: 0, cover: 0, heat: 20 },
+                card_type: CardType::DealerModifier { evidence: 10, cover: 0, heat: 20 },
             }},
         ],
     }
@@ -3742,47 +3756,54 @@ fn create_executive() -> BuyerPersona {
         evidence_threshold: None,
         special_rules: vec![],
         reaction_deck: vec![
+            // 1. Increase Evidence
             Card {
-                id: id,
-                name: "Expensive Taste".to_string(),
-                owner: Owner::Buyer,
-                card_type: CardType::DealerModifier { evidence: 0, cover: 0, heat: 0 },
-            },
-            { id += 1; Card {
                 id: id,
                 name: "Security Check".to_string(),
                 owner: Owner::Buyer,
                 card_type: CardType::DealerModifier { evidence: 15, cover: 0, heat: 10 },
-            }},
+            },
+            // 2. Increase Cover
             { id += 1; Card {
                 id: id,
                 name: "Discrete Meeting".to_string(),
                 owner: Owner::Buyer,
-                card_type: CardType::DealerModifier { evidence: -15, cover: 0, heat: 0 },
+                card_type: CardType::DealerModifier { evidence: 0, cover: 25, heat: -10 },
             }},
+            // 3. Change Location
             { id += 1; Card {
                 id: id,
-                name: "Assistant Interrupt".to_string(),
+                name: "Move to Office".to_string(),
                 owner: Owner::Buyer,
-                card_type: CardType::DealerModifier { evidence: 0, cover: 0, heat: 10 },
+                card_type: CardType::DealerLocation { evidence: 5, cover: 20, heat: -5 },
             }},
+            // 4. Volume/Price Up
             { id += 1; Card {
                 id: id,
-                name: "Wire Transfer".to_string(),
+                name: "Expensive Taste".to_string(),
                 owner: Owner::Buyer,
-                card_type: CardType::DealerModifier { evidence: 0, cover: 0, heat: 0 },
+                card_type: CardType::DealModifier { price_multiplier: 1.8, evidence: 5, cover: 10, heat: 5 },
             }},
+            // 5. Volume/Price Down
+            { id += 1; Card {
+                id: id,
+                name: "Budget Conscious".to_string(),
+                owner: Owner::Buyer,
+                card_type: CardType::DealModifier { price_multiplier: 0.6, evidence: 0, cover: 15, heat: -5 },
+            }},
+            // 6. Thematic card (Background check)
             { id += 1; Card {
                 id: id,
                 name: "Background Check".to_string(),
                 owner: Owner::Buyer,
-                card_type: CardType::DealerModifier { evidence: 0, cover: 0, heat: 20 },
+                card_type: CardType::DealerModifier { evidence: 10, cover: 5, heat: 20 },
             }},
+            // 7. Thematic card (Disruption)
             { id += 1; Card {
                 id: id,
-                name: "Clean Exchange".to_string(),
+                name: "Assistant Interrupt".to_string(),
                 owner: Owner::Buyer,
-                card_type: CardType::DealerModifier { evidence: -10, cover: 0, heat: 0 },
+                card_type: CardType::DealerModifier { evidence: 5, cover: 0, heat: 15 },
             }},
         ],
     }
