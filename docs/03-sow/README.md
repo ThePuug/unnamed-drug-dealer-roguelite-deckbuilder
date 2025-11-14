@@ -14,6 +14,7 @@ SOWs are work orders for developers. Each SOW defines what needs to be built, wh
 | 006 | Run Progression and Meta Systems | 🎲 Roguelite | ✅ Merged | 2025-11-09 | 8-10 hours | ~6 hours |
 | 007 | Meaningful Betting Decisions | 🎲 Roguelite | ❌ Rejected | 2025-11-10 | 6-8 hours | N/A |
 | 008 | Sequential Play with Progressive Dealer Reveals | 🎲 Roguelite | ✅ Merged | 2025-11-10 | 8-12 hours | ~5 hours |
+| 009 | Buyer System (Merged Dealer + Customer) | 🎲 Roguelite | 📝 Planned | 2025-11-11 | 10-13 hours | TBD |
 
 **Legend:**
 - **Status:** ✅ Accepted/Merged | 🔄 In Progress/Review | 📝 Planned/Proposed | ❌ Rejected
