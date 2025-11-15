@@ -45,12 +45,12 @@ Implementation tracking for Card System specification.
 | Deal Modifier Cards | 3 | 3 | 0 |
 | Evidence Cards | 5 | 0 | 0 |
 | Cover Cards | 5 | 0 | 0 |
-| Get Out of Jail Cards | 2 | 4 | 0 |
+| Get Out of Jail Cards | 6 | 0 | 0 |
 | Make It Stick Cards | 3 | 1 | 0 |
 | **Dealer Cards (NEW)** | **3** | **0** | **0** |
-| Card Interactions | 6 | 2 | 0 |
+| Card Interactions | 7 | 1 | 0 |
 | Edge Cases | 4 | 2 | 0 |
-| **Total** | **42** | **12** | **0** |
+| **Total** | **51** | **3** | **0** |
 
 ---
 
@@ -116,16 +116,16 @@ Implementation tracking for Card System specification.
 
 ---
 
-## Get Out of Jail Cards: 0/6 complete (0%)
+## Get Out of Jail Cards: 6/6 complete (100%)
 
 | Feature | Status | RFC/ADR | Notes |
 |---------|:------:|---------|-------|
-| Insurance override system | ❌ | - | Last Get Out of Jail played = active |
-| Dual function (Cover + Insurance) | ❌ | - | Acts as Cover while active, Insurance on bust |
-| Single use per deck | ❌ | - | Burned after insurance triggered |
-| Requirements check (cost payment) | ❌ | - | Verify can afford before activation |
-| Heat penalty application | ❌ | - | Gain overage + card penalty Heat |
-| Plea Bargain/Fake ID (MVP) | ❌ | - | 2 Insurance cards for MVP |
+| Insurance override system | ✅ | SOW-003, ADR-003 | Last Get Out of Jail played = active |
+| Dual function (Cover + Insurance) | ✅ | SOW-003, ADR-003 | Acts as Cover while active, Insurance on bust |
+| Single use per deck | ✅ | SOW-003, ADR-003 | Burned after insurance triggered |
+| Requirements check (cost payment) | ✅ | SOW-003, ADR-003 | Verify can afford before activation |
+| Heat penalty application | ✅ | SOW-003, ADR-003 | Gain overage + card penalty Heat |
+| Plea Bargain/Fake ID (MVP) | ✅ | SOW-005 | 2 Insurance cards in player deck |
 
 ---
 
@@ -157,7 +157,7 @@ Implementation tracking for Card System specification.
 
 ---
 
-## Card Interactions: 5/8 complete (63%)
+## Card Interactions: 7/8 complete (88%)
 
 | Feature | Status | RFC/ADR | Notes |
 |---------|:------:|---------|-------|
@@ -166,22 +166,22 @@ Implementation tracking for Card System specification.
 | Additive stacking (Evidence/Cover) | ✅ | SOW-001 | Evidence/Cover cards stack on Location base |
 | Heat accumulation | ✅ | SOW-001 | Sum all Heat modifiers from cards played |
 | Multiplicative stacking (Price) | ✅ | SOW-002 | Apply multipliers to Product price |
-| Override rule (Insurance) | ❌ | RFC-003, ADR-003 | New Get Out of Jail discards old |
-| Override rule (Conviction) | ❌ | RFC-003, ADR-003 | New Make It Stick replaces old threshold |
+| Override rule (Insurance) | ✅ | SOW-003, ADR-003 | New Get Out of Jail discards old |
+| Override rule (Conviction) | ✅ | SOW-005, ADR-003 | New Make It Stick replaces old threshold |
 | Card replacement feedback UI | ❌ | Phase 2 polish | "Weed → Meth (previous discarded)" |
 
 ---
 
-## Edge Cases: 1/6 complete (17%)
+## Edge Cases: 4/6 complete (67%)
 
 | Feature | Status | RFC/ADR | Notes |
 |---------|:------:|---------|-------|
 | Multiple Products same round | ✅ | SOW-001 | Override applies, only last counts |
 | Location override after Evidence added | ❌ | RFC-003 | Location base changes, Evidence cards remain |
-| Insurance played but not needed | ❌ | RFC-003, ADR-003 | Acts as Cover only, not consumed |
-| Multiple Get Out of Jail cards | ❌ | RFC-003, ADR-003 | Override applies, only one active |
-| Make It Stick below threshold | ❌ | RFC-003, ADR-003 | Conviction inactive, insurance works |
-| Make It Stick AND Insurance | ❌ | RFC-003, ADR-003 | Conviction overrides if threshold met |
+| Insurance played but not needed | ✅ | SOW-003, ADR-003 | Acts as Cover only, not consumed |
+| Multiple Get Out of Jail cards | ✅ | SOW-003, ADR-003 | Override applies, only one active |
+| Make It Stick below threshold | ✅ | SOW-005, ADR-003 | Conviction inactive, insurance works |
+| Make It Stick AND Insurance | ✅ | SOW-005, ADR-003 | Conviction overrides if threshold met |
 
 ---
 

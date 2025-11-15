@@ -101,7 +101,7 @@
 | Sequential card play (face-up) | ✅ | One at a time, immediate reveal | RFC-008, SOW-008 |
 | Check action | ✅ | Skip playing card | RFC-008, SOW-008 |
 | Buyer card reveals | ✅ | **CHANGED: Random from 3 visible cards** | RFC-009, SOW-009 |
-| Player fold after Buyer reveal | ✅ | Fold option Rounds 1-2 | RFC-008, SOW-008 |
+| Player fold on player's turn | ✅ | Fold option all rounds (1, 2, 3) during PlayerPhase | RFC-008, SOW-008 |
 | Buyer cannot fold | ✅ | **CHANGED: Buyer plays via reaction deck** | RFC-009, SOW-009 |
 | Narc cannot fold | ✅ | Hardcoded behavior | RFC-008, SOW-008 |
 | Running totals calculation | ✅ | After each card played | RFC-008, SOW-008 |
@@ -118,11 +118,11 @@
 | Sequential turn-based play | ✅ | **Fixed order: Narc→Player** | RFC-009, SOW-009 |
 | Play card face-up | ✅ | Immediate reveal, no face-down | RFC-008, SOW-008 |
 | Check action (skip card) | ✅ | Play no card this turn | RFC-008, SOW-008 |
-| Fold action | ✅ | Exit hand (after Buyer reveal) | RFC-008, SOW-008 |
+| Fold action | ✅ | Exit hand (on player's turn, any round) | RFC-008, SOW-008 |
 | Cards visible immediately | ✅ | No simultaneous flip | RFC-008, SOW-008 |
 | Running totals update per card | ✅ | After each card, not per round | RFC-008, SOW-008 |
 | Buyer reveal after Player Phase | ✅ | **Random card from 3 visible** | RFC-009, SOW-009 |
-| Decision point after Buyer reveal | ✅ | "Fold or Continue?" | RFC-008, SOW-008 |
+| Fold available during player turn | ✅ | Available alongside Play/Check actions | RFC-008, SOW-008 |
 | Turn order indicator UI | ❌ | Show whose turn + order | Phase 2 polish |
 
 **Note:** Initiative and raising mechanics removed in RFC-008 (betting system simplified)

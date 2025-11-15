@@ -1,0 +1,321 @@
+// UI Helpers - Reusable card display functions
+// SOW-011-A Phase 2: Eliminates ~200 lines of duplicated card rendering logic
+
+use bevy::prelude::*;
+use crate::CardType;
+use super::theme;
+
+/// Card display size variants
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum CardSize {
+    Small,        // 100x120 (played cards)
+    Hand,         // 120x160 (player hand)
+    DeckBuilder,  // 110x140 (deck builder)
+    BuyerVisible, // 120x140 (buyer's visible hand)
+    Large,        // 180x250 (scenario card, future use)
+}
+
+impl CardSize {
+    pub fn dimensions(&self) -> (f32, f32) {
+        match self {
+            CardSize::Small => (theme::CARD_WIDTH_SMALL, theme::CARD_HEIGHT_SMALL),
+            CardSize::Hand => (theme::CARD_WIDTH_HAND, theme::CARD_HEIGHT_HAND),
+            CardSize::DeckBuilder => (theme::CARD_WIDTH_DECK_BUILDER, theme::CARD_HEIGHT_DECK_BUILDER),
+            CardSize::BuyerVisible => (theme::CARD_WIDTH_BUYER_VISIBLE, theme::CARD_HEIGHT_BUYER_VISIBLE),
+            CardSize::Large => (theme::CARD_WIDTH_LARGE, theme::CARD_HEIGHT_LARGE),
+        }
+    }
+
+    pub fn font_size(&self) -> f32 {
+        match self {
+            CardSize::Small => 10.0,
+            CardSize::Hand => 14.0,
+            CardSize::DeckBuilder => 11.0,
+            CardSize::BuyerVisible => 11.0,
+            CardSize::Large => 18.0,
+        }
+    }
+}
+
+/// Card display state - affects visual styling
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum CardDisplayState {
+    Active,      // Bright colors, highlighted border
+    Inactive,    // Dim colors, normal border
+    Ghosted,     // Dashed placeholder for empty slots
+    Selected,    // Bright border (for deck builder selection)
+}
+
+/// Get color for a card type based on display state
+pub fn get_card_color(card_type: &CardType, state: CardDisplayState) -> Color {
+    let base_color = match card_type {
+        CardType::Product { .. } => theme::PRODUCT_CARD_COLOR,
+        CardType::Location { .. } => theme::LOCATION_CARD_COLOR,
+        CardType::Evidence { .. } => theme::EVIDENCE_CARD_COLOR,
+        CardType::Cover { .. } => theme::COVER_CARD_COLOR,
+        CardType::DealModifier { .. } => theme::DEAL_MODIFIER_CARD_COLOR,
+        CardType::Insurance { .. } => theme::INSURANCE_CARD_COLOR,
+        CardType::Conviction { .. } => theme::CONVICTION_CARD_COLOR,
+    };
+
+    match state {
+        CardDisplayState::Active | CardDisplayState::Selected => base_color,
+        CardDisplayState::Inactive => theme::dim_color(base_color, 0.6),
+        CardDisplayState::Ghosted => theme::dim_color(base_color, 0.3),
+    }
+}
+
+/// Get buyer-specific color for a card type (for buyer visible hand)
+pub fn get_buyer_card_color(card_type: &CardType) -> Color {
+    match card_type {
+        CardType::Location { .. } => theme::BUYER_LOCATION_COLOR,
+        CardType::DealModifier { .. } => theme::BUYER_MODIFIER_COLOR,
+        _ => theme::BUYER_DEFAULT_COLOR,
+    }
+}
+
+/// Get dim color variant for a card type (for played cards)
+pub fn get_card_color_dim(card_type: &CardType) -> Color {
+    match card_type {
+        CardType::Product { .. } => theme::PRODUCT_CARD_COLOR_DIM,
+        CardType::Location { .. } => theme::LOCATION_CARD_COLOR_DIM,
+        CardType::Evidence { .. } => theme::EVIDENCE_CARD_COLOR_DIM,
+        CardType::Cover { .. } => theme::COVER_CARD_COLOR_DIM,
+        CardType::DealModifier { .. } => theme::DEAL_MODIFIER_CARD_COLOR_DIM,
+        CardType::Insurance { .. } => theme::INSURANCE_CARD_COLOR_DIM,
+        CardType::Conviction { .. } => theme::CONVICTION_CARD_COLOR_DIM,
+    }
+}
+
+/// Get border color based on display state
+pub fn get_border_color(state: CardDisplayState) -> Color {
+    match state {
+        CardDisplayState::Active => theme::CARD_BORDER_BRIGHT,
+        CardDisplayState::Selected => theme::CARD_BORDER_SELECTED,
+        CardDisplayState::Inactive => theme::CARD_BORDER_PLAYED,
+        CardDisplayState::Ghosted => theme::CARD_BORDER_NORMAL,
+    }
+}
+
+/// Format card text based on card type
+pub fn format_card_text(card_name: &str, card_type: &CardType) -> String {
+    match card_type {
+        CardType::Product { price, heat } =>
+            format!("{}\n${} | Heat: {}", card_name, price, heat),
+        CardType::Location { evidence, cover, heat } =>
+            format!("{}\nE:{} C:{} H:{}", card_name, evidence, cover, heat),
+        CardType::Evidence { evidence, heat } =>
+            format!("{}\nEvidence: {} | Heat: {}", card_name, evidence, heat),
+        CardType::Cover { cover, heat } =>
+            format!("{}\nCover: {} | Heat: {}", card_name, cover, heat),
+        CardType::DealModifier { price_multiplier, evidence, cover, heat } =>
+            format!("{}\n×{:.1} | E:{} C:{} H:{}", card_name, price_multiplier, evidence, cover, heat),
+        CardType::Insurance { cover, cost, heat_penalty } =>
+            format!("{}\nCover: {} | Cost: ${} | Heat: {}", card_name, cover, cost, heat_penalty),
+        CardType::Conviction { heat_threshold } =>
+            format!("{}\nThreshold: {}", card_name, heat_threshold),
+    }
+}
+
+/// Compact format for small cards (played cards display)
+pub fn format_card_text_compact(card_name: &str, card_type: &CardType) -> String {
+    match card_type {
+        CardType::Product { price, heat } =>
+            format!("{}\n${} H:{}", card_name, price, heat),
+        CardType::Location { evidence, cover, heat } =>
+            format!("{}\nE:{} C:{} H:{}", card_name, evidence, cover, heat),
+        CardType::Evidence { evidence, heat } =>
+            format!("{}\nE:{} H:{}", card_name, evidence, heat),
+        CardType::Cover { cover, heat } =>
+            format!("{}\nC:{} H:{}", card_name, cover, heat),
+        CardType::DealModifier { price_multiplier, evidence, cover, heat } =>
+            format!("{}\n×{:.1} E:{} C:{} H:{}", card_name, price_multiplier, evidence, cover, heat),
+        CardType::Insurance { cover, cost, heat_penalty } =>
+            format!("{}\nC:{} ${} H:{}", card_name, cover, cost, heat_penalty),
+        CardType::Conviction { heat_threshold } =>
+            format!("{}\nT:{}", card_name, heat_threshold),
+    }
+}
+
+/// Spawn a card display node (static, non-interactive)
+/// Use this for played cards, buyer visible hand, etc.
+pub fn spawn_card_display(
+    parent: &mut ChildBuilder,
+    card_name: &str,
+    card_type: &CardType,
+    size: CardSize,
+    state: CardDisplayState,
+    compact_text: bool,
+) {
+    let (width, height) = size.dimensions();
+    let font_size = size.font_size();
+    let card_color = get_card_color(card_type, state);
+    let border_color = get_border_color(state);
+
+    let card_text = if compact_text {
+        format_card_text_compact(card_name, card_type)
+    } else {
+        format_card_text(card_name, card_type)
+    };
+
+    parent.spawn(NodeBundle {
+        style: Style {
+            width: Val::Px(width),
+            height: Val::Px(height),
+            justify_content: JustifyContent::Center,
+            align_items: AlignItems::Center,
+            padding: UiRect::all(Val::Px(8.0)),
+            border: UiRect::all(Val::Px(theme::CARD_BORDER_WIDTH)),
+            margin: UiRect::all(Val::Px(4.0)),
+            ..default()
+        },
+        background_color: card_color.into(),
+        border_color: border_color.into(),
+        ..default()
+    })
+    .with_children(|parent| {
+        parent.spawn(TextBundle::from_section(
+            card_text,
+            TextStyle {
+                font_size,
+                color: theme::TEXT_PRIMARY,
+                ..default()
+            },
+        ).with_text_justify(JustifyText::Center));
+    });
+}
+
+/// Spawn a card display node with a marker component
+/// Use this when you need to query for specific card entities
+pub fn spawn_card_display_with_marker<T: Component>(
+    parent: &mut ChildBuilder,
+    card_name: &str,
+    card_type: &CardType,
+    size: CardSize,
+    state: CardDisplayState,
+    compact_text: bool,
+    marker: T,
+) {
+    let (width, height) = size.dimensions();
+    let font_size = size.font_size();
+    let card_color = get_card_color(card_type, state);
+    let border_color = get_border_color(state);
+
+    let card_text = if compact_text {
+        format_card_text_compact(card_name, card_type)
+    } else {
+        format_card_text(card_name, card_type)
+    };
+
+    parent.spawn((
+        NodeBundle {
+            style: Style {
+                width: Val::Px(width),
+                height: Val::Px(height),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                padding: UiRect::all(Val::Px(6.0)),
+                border: UiRect::all(Val::Px(theme::CARD_BORDER_WIDTH)),
+                margin: UiRect::all(Val::Px(2.0)),
+                ..default()
+            },
+            background_color: card_color.into(),
+            border_color: border_color.into(),
+            ..default()
+        },
+        marker,
+    ))
+    .with_children(|parent| {
+        parent.spawn(TextBundle::from_section(
+            card_text,
+            TextStyle {
+                font_size,
+                color: theme::TEXT_PRIMARY,
+                ..default()
+            },
+        ));
+    });
+}
+
+/// Spawn a card button (interactive, clickable)
+/// Use this for player hand cards, deck builder cards
+pub fn spawn_card_button<T: Component>(
+    parent: &mut ChildBuilder,
+    card_name: &str,
+    card_type: &CardType,
+    size: CardSize,
+    state: CardDisplayState,
+    marker: T,
+) {
+    let (width, height) = size.dimensions();
+    let font_size = size.font_size();
+    let card_color = get_card_color(card_type, state);
+    let border_color = get_border_color(state);
+
+    let card_text = format_card_text(card_name, card_type);
+
+    parent.spawn((
+        ButtonBundle {
+            style: Style {
+                width: Val::Px(width),
+                height: Val::Px(height),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                padding: UiRect::all(Val::Px(8.0)),
+                border: UiRect::all(Val::Px(theme::CARD_BORDER_WIDTH)),
+                ..default()
+            },
+            background_color: card_color.into(),
+            border_color: border_color.into(),
+            ..default()
+        },
+        marker,
+    ))
+    .with_children(|parent| {
+        parent.spawn(TextBundle::from_section(
+            card_text,
+            TextStyle {
+                font_size,
+                color: Color::BLACK, // Buttons use black text for readability
+                ..default()
+            },
+        ).with_text_justify(JustifyText::Center));
+    });
+}
+
+/// Spawn a ghosted placeholder for an empty slot
+pub fn spawn_placeholder(
+    parent: &mut ChildBuilder,
+    placeholder_text: &str,
+    size: CardSize,
+    color_hint: Color,
+) {
+    let (width, height) = size.dimensions();
+    let font_size = size.font_size();
+
+    parent.spawn(NodeBundle {
+        style: Style {
+            width: Val::Px(width),
+            height: Val::Px(height),
+            justify_content: JustifyContent::Center,
+            align_items: AlignItems::Center,
+            padding: UiRect::all(Val::Px(8.0)),
+            border: UiRect::all(Val::Px(theme::CARD_BORDER_WIDTH)),
+            margin: UiRect::all(Val::Px(2.0)),
+            ..default()
+        },
+        background_color: theme::PLACEHOLDER_BG.into(),
+        border_color: theme::dim_color(color_hint, 0.5).into(), // Dashed effect via dim color
+        ..default()
+    })
+    .with_children(|parent| {
+        parent.spawn(TextBundle::from_section(
+            placeholder_text,
+            TextStyle {
+                font_size,
+                color: theme::TEXT_SECONDARY,
+                ..default()
+            },
+        ).with_text_justify(JustifyText::Center));
+    });
+}

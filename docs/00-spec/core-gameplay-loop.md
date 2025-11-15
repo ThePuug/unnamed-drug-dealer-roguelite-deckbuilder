@@ -185,35 +185,37 @@ After all players act, Dealer reveals one community card.
 
 ---
 
-**3. Decision Point: Fold or Continue?**
+**3. Fold Option (Available on Player's Turn)**
 
-After Dealer reveal, before next round (Rounds 1-2 only):
-
-**Options:**
-- **Continue** - Proceed to next round
-- **Fold** - Exit hand, keep unplayed cards, lose cards played so far, keep Heat accumulated
+Player can fold during their turn in any round (1, 2, or 3):
 
 **Fold Mechanics:**
-- Player can fold Rounds 1-2 (NOT Round 3)
+- Available as action during player's turn (alongside Play Card and Check)
+- Can fold in any round (including Round 3 before committing final card)
+- Exit hand immediately when chosen
+- Keep unplayed cards, lose cards played so far, keep Heat accumulated
 - Narc CANNOT fold (always plays through)
-- Customer can fold (removes Customer cards from totals, reduces profit multipliers)
+- Buyer plays via reaction deck (no fold decision)
+
+**Strategic Timing:**
+- **Round 1**: Fold after seeing Narc's opening threat
+- **Round 2**: Fold after seeing Narc's escalation + Buyer's Round 1 card impact
+- **Round 3**: Fold even in final round if situation becomes unwinnable
 
 **Why Fold?**
-- Dealer revealed dangerous card (Police Checkpoint, Bad Intel)
-- Evidence climbing too high after Dealer reveal
-- Customer folded (profit multipliers lost)
-- Preserving cards for next hand
+- Narc played high Evidence cards
+- Buyer revealed dangerous card in previous round
+- Running low on defensive cards
+- Evidence exceeds Cover with no outs
 
 **Why Continue?**
 - Totals still manageable
-- Have Cover/Location cards to defend in next round
+- Have Cover/Location cards to defend
 - Insurance card in hand
 - Profit worth the risk
 
-**Feedback:**
-- Show current totals with margin: "Evidence 55, Cover 40 (need 15 more Cover)"
-- "If you fold: Keep Heat +25, lose 4 cards, keep 8 cards in hand"
-- Fold button available Rounds 1-2, disabled Round 3
+**Key Design:**
+Sequential turn order means player always sees current game state (Narc's cards, running totals, Buyer's previous reveals) before their turn, providing natural information-based fold decision points without needing separate phases.
 
 ---
 
