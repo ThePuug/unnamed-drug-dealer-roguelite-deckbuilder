@@ -2,7 +2,7 @@
 
 ## Status
 
-**Draft** - 2025-11-15
+**Under Review** - 2025-11-15 (ARCHITECT feasibility analysis complete, awaiting PLAYER feedback)
 
 ## Feature Request
 
@@ -306,6 +306,195 @@ After implementing and playing 5 hands across different scenarios:
 
 ---
 
+## Feasibility Analysis (ARCHITECT)
+
+**Date:** 2025-11-15
+**Reviewer:** ARCHITECT
+
+### Technical Assessment
+
+**Can we build this?** ✅ Yes
+
+This RFC extends the existing Buyer system (RFC-009) without fundamental architectural changes. The core mechanics already support:
+- BuyerPersona data structures (can extend with scenarios)
+- Demand satisfaction logic (can update to check scenario preferences)
+- Product/Location override system (just need more card variety)
+- Heat threshold per Buyer (can move to per-scenario)
+
+### System Integration
+
+**Fits existing architecture:** ✅ Yes
+
+**Integration points:**
+1. **BuyerPersona struct** - Add scenarios array, active_scenario index
+2. **Card creation** - Add 4 new Products, update 2 Location cards, add tags field
+3. **Demand validation** - Update is_demand_satisfied() to check scenario.products/locations
+4. **Buyer selection** - Add scenario randomization (1 line change)
+5. **UI display** - Show active scenario in Buyer info panel
+
+**No breaking changes:**
+- Existing Buyer system remains functional
+- Card override rules unchanged
+- Resolution flow intact
+- All tests should pass with scenario additions
+
+### Scope Assessment
+
+**Fits in one SOW (≤20 hours)?** ✅ Yes
+
+**Estimated breakdown:**
+- Phase 1: Add 4 new Products to player deck (2-3h)
+- Phase 2: Update 2 player Locations, add tags to Card struct (2h)
+- Phase 3: Implement BuyerScenario struct, update personas (3-4h)
+- Phase 4: Update demand validation for scenarios (2h)
+- Phase 5: UI updates (scenario display, better Buyer info) (2-3h)
+- Phase 6: Testing and balance (2-3h)
+
+**Total:** 13-17 hours (within ≤20 hour constraint)
+
+### Risks and Unknowns
+
+**Low Risk:**
+- Product/Location additions (just data)
+- Scenario structure (straightforward extension)
+- Tag system (future-proofing, can start minimal)
+
+**Medium Risk:**
+- Balance (9 products might need tuning, price/heat relationships)
+- Scenario variety (2 per Buyer enough? or feels repetitive?)
+- Tag explosion (could over-tag early, then never use tags)
+
+**Mitigation:**
+- Start with MVP tags (just Drug Class, Privacy Level)
+- Balance via playtesting (PLAYER feedback)
+- Can add scenarios post-MVP if needed
+
+### Technical Approach
+
+**Recommended structure:**
+
+```rust
+struct BuyerScenario {
+    id: String,
+    display_name: String,
+    products: Vec<String>,        // ["Weed", "Coke"]
+    locations: Vec<String>,       // ["Frat House", "Locker Room"]
+    heat_threshold: Option<u32>,
+    description: String,
+}
+
+struct BuyerPersona {
+    // ... existing fields
+    scenarios: Vec<BuyerScenario>,  // 2 scenarios
+    active_scenario_index: Option<usize>,  // 0 or 1
+}
+
+enum ProductTag {
+    // Drug Class
+    Stimulant, Depressant, Psychedelic, Cannabis, Party,
+    // Use Context
+    PartyDrug, MedicalPrescription, StreetDrug, PerformanceEnhancing,
+    // Legal Schedule
+    Schedule1, Schedule2, Schedule3,
+    // Risk Profile
+    HighHeat, ModerateHeat, LowHeat,
+    // Market Tier
+    Premium, MidTier, Budget,
+}
+
+enum LocationTag {
+    // Privacy Level
+    Private, SemiPrivate, Public,
+    // Location Type
+    Residential, Industrial, Commercial, Educational, Recreational,
+}
+
+struct Card {
+    // ... existing fields
+    tags: Vec<ProductTag>,  // Or Vec<LocationTag> - empty for non-Product/Location
+}
+```
+
+**Validation logic:**
+```rust
+fn is_demand_satisfied(&self) -> bool {
+    let scenario = &self.buyer_persona.scenarios[active_scenario_index];
+
+    let product_match = self.active_product(true)
+        .map(|p| scenario.products.contains(&p.name))
+        .unwrap_or(false);
+
+    let location_match = self.active_location(true)
+        .map(|l| scenario.locations.contains(&l.name))
+        .unwrap_or(false);
+
+    product_match && location_match
+}
+```
+
+### Architectural Concerns
+
+**1. Tag Maintenance**
+- **Issue:** Tags on every card instance (memory overhead, maintenance burden)
+- **Solution:** Start with minimal tags (Drug Class, Privacy Level only), add more if actually needed
+- **Alternative:** Derive tags from card name via lookup table (centralized, less redundant)
+
+**2. Scenario Complexity**
+- **Issue:** 3 Buyers × 2 scenarios = 6 total combinations (will players remember?)
+- **Solution:** Clear UI display, scenario persists across hands (no surprises)
+- **Future:** Could add scenario icons/colors for quick recognition
+
+**3. Product/Location Count**
+- **Issue:** 9 products + many locations = large card pool (deck building complexity)
+- **Solution:** Deck builder already handles 20-card pool, adding variety improves it
+- **Balance:** May need to adjust deck building to show "Products: 9 available" guidance
+
+### Recommendation
+
+**✅ FEASIBLE** - Proceed to implementation planning
+
+**Scope is appropriate:**
+- Extends existing system cleanly
+- Fits in one SOW (13-17h estimate)
+- Low technical risk
+- High player value (thematic coherence, variety)
+
+**Suggested refinements:**
+1. Start with minimal tags (Drug Class, Privacy Level) - add more in future SOW if needed
+2. Keep scenario count at 2 per Buyer for MVP (can expand post-launch)
+3. Consider scenario icon/color system for quick recognition
+4. Playtest balance after adding products (price/heat relationships)
+
+**Status:** Ready for PLAYER/ARCHITECT iteration in Discussion section
+
+---
+
 ## Discussion
 
-_To be filled during ARCHITECT review_
+### ARCHITECT Notes - Initial Review
+
+**Strong Points:**
+- Clear player need (thematic coherence, variety)
+- Natural extension of RFC-009 (scenarios fit Buyer system well)
+- Low technical risk (mostly data additions)
+- Good scope control (≤20 hours)
+
+**Open Items for Discussion:**
+
+**Q1: Tag Granularity**
+Should we implement all 5 tag categories initially, or start minimal?
+- **Proposal:** Start with Drug Class + Privacy Level only, defer others to future SOW
+- **Rationale:** YAGNI - implement tags when actually needed for logic
+
+**Q2: Scenario Selection UX**
+How should scenario be presented to player?
+- **Option A:** Just show chosen scenario (simpler)
+- **Option B:** Show both scenarios, highlight chosen one (more context)
+- **Recommendation:** Option A for MVP (reduces UI complexity)
+
+**Q3: Location Type Tags**
+Parking Lot is both Industrial + Commercial - allow multi-tagging?
+- **Proposal:** Yes, locations can have multiple Type tags
+- **Implementation:** `Vec<LocationTag>` supports this naturally
+
+**Awaiting PLAYER feedback on open items before approval.**
