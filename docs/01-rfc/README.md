@@ -16,6 +16,7 @@ RFCs bridge player needs and technical reality. Each RFC starts with a player-fa
 | 007 | Meaningful Betting Decisions | 🎲 Roguelite | ❌ Rejected | 2025-11-10 | N/A |
 | 008 | Sequential Play with Progressive Dealer Reveals | 🎲 Roguelite | ✅ Implemented (SOW-008 merged) | 2025-11-10 | ADR-006 |
 | 009 | Buyer System (Merged Dealer + Customer) | 🎲 Roguelite | ✅ Implemented (SOW-009 merged) | 2025-11-11 | N/A |
+| 010 | Buyer Scenarios and Product/Location Expansion | 🃏 Cards | ✅ Approved (SOW-010 planned) | 2025-11-15 | N/A |
 
 **Legend:**
 - **Status:** ✅ Implemented (merged to main) | ✅ Approved (ready for implementation) | 🔄 Under Review | 📝 Draft/Proposed | ❌ Rejected
