@@ -2,7 +2,7 @@
 
 **Companion to:** [core-gameplay-loop.md](core-gameplay-loop.md)
 
-**Last Updated:** 2025-11-14 (Updated to reflect RFC-009 Buyer System implementation)
+**Last Updated:** 2025-11-15 (Updated to reflect RFC-010 Buyer Scenarios and RFC-011 UI Refactor)
 
 **Overall Status:** Updated to reflect Buyer System (RFC-009) - Customer/Dealer replaced with unified Buyer entity
 
@@ -37,7 +37,7 @@
 
 **RFC-009 (Buyer System) - ENTITY SIMPLIFICATION:**
 - ✅ **Buyer entity replaces Customer + Dealer** (3 players → 2 players)
-- ✅ **3 Buyer personas** (College Party Host, Stay-at-Home Mom, Executive)
+- ✅ **3 Buyer personas** (Frat Bro, Desperate Housewife, Wall Street Wolf)
 - ✅ **Buyer reaction deck** (7 cards per persona, 3 visible)
 - ✅ **Demand satisfaction system** (Product + Location matching)
 - ✅ **Buyer bail thresholds** (Heat/Evidence limits)
@@ -45,6 +45,24 @@
 - ✅ **Fixed turn order** (Narc → Player, no rotation)
 - ✅ **Visible hand UI** (anticipation mechanic)
 - ⏸️ **Session structure** (BuyerSelection, SessionDecision states - deferred)
+
+**RFC-010 (Buyer Scenarios and Product Expansion) - IMPLEMENTED:**
+- ✅ **2 scenarios per Buyer** (different motivations/contexts)
+- ✅ **9 products total** (expanded from 5: added Codeine, Ecstasy, Shrooms, Acid)
+- ✅ **Scenario-specific demands** (different products/locations per scenario)
+- ✅ **Product/Location tags** (for future conditional logic)
+- ✅ **Thematic coherence** (scenarios tell stories, locations make sense)
+
+**RFC-011 (UI Refactor) - IMPLEMENTED:**
+- ✅ **16:9 optimized layout** (Figma design)
+- ✅ **Active slot system** (Product/Location/Conviction/Insurance slots)
+- ✅ **Vertical heat bar** (dynamic fill, color transitions)
+- ✅ **Hand resolution overlay** (modal with outcome-specific results)
+- ✅ **Single shared played pool** (Evidence/Cover/DealMod for all players)
+- ✅ **Modular UI architecture** (ui/theme, components, helpers, systems)
+- ✅ **Consistent card sizing** (Small vs Medium two-tier system)
+- ✅ **Discard pile** (vertical list of replaced cards)
+- ✅ **Slot-based player hand** (preserves card positions)
 
 **These changes represent a fundamental shift from "3-player complex AI" to "2-player with strategic Buyer personas"**
 
@@ -132,23 +150,23 @@
 
 ## Player Feedback Systems
 
-### Visual Indicators - 4/13 complete (31%)
+### Visual Indicators - 10/13 complete (77%)
 
 | Feature | Status | Notes | RFC/ADR/SOW |
 |---------|:------:|-------|-------------|
-| Turn indicator | ❌ | Highlight active player | Phase 2 polish |
-| Card count per player | ❌ | Show hand size | Phase 2 polish |
-| Running totals display | ✅ | Evidence/Cover/Heat/Profit | SOW-001, SOW-002 |
-| Color-coded safety | ❌ | Green/Yellow/Red zones | RFC-003 |
-| Evidence gap display | ❌ | "Cover +20" or "Evidence +15" | RFC-003 |
-| Heat accumulation | ✅ | "+45 Heat this hand" | SOW-001, SOW-002 |
-| Initiative badge | ❌ | "X has initiative" | Phase 2 polish |
-| Raises remaining | ❌ | "2/3 raises left" | Phase 2 polish |
-| Active Product highlight | ✅ | Show which Product active | SOW-001, SOW-002 |
-| Active Location highlight | ✅ | Show which Location active | SOW-001, SOW-002 |
-| Bust warning | ❌ | "Evidence > Cover if flip now" | RFC-003 |
-| Fold projection | ❌ | "If fold: Keep Heat +30" | RFC-003 |
-| Continue projection | ❌ | "If continue: Need 25 Cover" | RFC-003 |
+| Turn indicator | ✅ | "Turn: Player" in status | RFC-011, SOW-011-B |
+| Card count per player | ✅ | Visible hand displays | RFC-009, SOW-009 |
+| Running totals display | ✅ | Evidence/Cover/Multiplier bar | RFC-011, SOW-011-A |
+| Color-coded safety | ✅ | Heat bar green/yellow/red | RFC-011, SOW-011-A |
+| Evidence gap display | ✅ | Shown in resolution overlay | RFC-011, SOW-011-B |
+| Heat accumulation | ✅ | Heat bar with current/threshold | RFC-011, SOW-011-A |
+| Initiative badge | ❌ | N/A (initiative removed) | - |
+| Raises remaining | ❌ | N/A (raising removed) | - |
+| Active Product highlight | ✅ | Active slot system | RFC-011, SOW-011-A |
+| Active Location highlight | ✅ | Active slot system | RFC-011, SOW-011-A |
+| Bust warning | ✅ | Real-time totals comparison | RFC-011, SOW-011-A |
+| Fold projection | ❌ | Not implemented | Phase 2 polish |
+| Continue projection | ❌ | Not implemented | Phase 2 polish |
 
 ### Decision Support - 0/4 complete (0%)
 
