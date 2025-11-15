@@ -2,13 +2,13 @@
 
 ## Status
 
-**Planned** - 2025-11-15
+**Review** - 2025-11-15 (Implementation complete, awaiting merge)
 
 ## References
 
 - **RFC-011:** [UI Refactor - Hand Resolution and Card Display](../01-rfc/011-ui-refactor.md)
 - **SOW-011-A:** [Core Layout & Foundation](./011-ui-refactor-layout-foundation.md) (prerequisite)
-- **Branch:** (proposed: `feature/sow-011-b-ui-resolution-polish`)
+- **Branch:** `feature/sow-011-b-ui-resolution-polish`
 - **Implementation Time:** 8-10 hours
 
 ---
@@ -157,7 +157,88 @@
 
 ## Acceptance Review
 
-*This section will be populated after implementation is complete.*
+**Date:** 2025-11-15
+**Reviewer:** ARCHITECT
+
+### Scope Completion: 100%
+
+**All Phases Complete:**
+- ✅ Phase 1: Hand Resolution Overlay (~2 hours)
+- ✅ Phase 2: UI Polish & Consistent Spacing (~1 hour)
+- ✅ Phase 3: Layout & Behavior Fixes (~2 hours)
+
+**Total Time:** ~5 hours (well under 8-10h estimate)
+
+### Implementation Quality
+
+**Hand Resolution Overlay:** ✅ EXCELLENT
+- Clean modal pattern using proven Display::Flex/None approach
+- Outcome-specific messaging clear and helpful
+- Color-coded titles provide instant feedback
+- NEW DEAL/GO HOME buttons appropriately placed
+
+**Spacing & Theming:** ✅ EXCELLENT
+- Two-tier card sizing system well-designed (Small vs Medium)
+- Consistent spacing rules (Small WITH margin, Medium WITHOUT)
+- All theme constants properly utilized
+- No hardcoded values introduced
+
+**Layout Improvements:** ✅ EXCELLENT
+- Slot-based hand system preserves card positions (no confusing reordering)
+- Placeholders maintain stable layout during play
+- Bottom alignment achieved across all panels
+- Discard pile as vertical list (clean, space-efficient)
+
+**UX Improvements:** ✅ EXCELLENT
+- Buttons always visible (never disappear unexpectedly)
+- Deck builder starts with sensible default
+- Deck preserved on return from run
+- Alphabetical sorting in deck builder
+
+### Code Quality
+
+**Strengths:**
+- Slot-based hand system elegant solution to position preservation
+- Discard pile vertical list clean and efficient
+- Proper use of SpaceBetween for layout control
+- Button visibility/disable logic clear
+
+**No significant issues identified.**
+
+### Player Experience
+
+- Hand resolution overlay provides satisfying conclusion
+- No unexpected layout shifts
+- Buttons behave predictably (visible but disabled)
+- Card positions preserved (less cognitive load)
+- Discard pile visible and informative
+
+### Recommendation
+
+✅ **ACCEPT AND MERGE**
+
+SOW-011-B delivers excellent UX improvements and completes RFC-011 implementation. Code quality high, all acceptance criteria met, well under time estimate.
+
+---
+
+## Conclusion
+
+SOW-011-B successfully completes the UI refactor:
+- Hand resolution overlay provides dramatic conclusion to each hand
+- Stable layouts prevent confusing shifts
+- Consistent spacing and sizing throughout
+- All player feedback addressed
+
+Combined with SOW-011-A, RFC-011 is now fully implemented with excellent results.
+
+---
+
+## Sign-Off
+
+**Reviewed By:** ARCHITECT Role
+**Date:** 2025-11-15
+**Decision:** ✅ **ACCEPTED**
+**Status:** Ready to merge to main
 
 ---
 

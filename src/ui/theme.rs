@@ -118,10 +118,13 @@ pub const STAT_BOX_BORDER: Color = Color::srgb(0.6, 0.6, 0.6);         // Stat b
 // Card Sizing Constants
 // ============================================================================
 
-pub const CARD_WIDTH_SMALL: f32 = 100.0;      // Small cards (played area)
-pub const CARD_HEIGHT_SMALL: f32 = 120.0;
+pub const CARD_WIDTH_SMALL: f32 = 110.0;      // Small cards (narc/buyer hands, played pool)
+pub const CARD_HEIGHT_SMALL: f32 = 140.0;
 
-pub const CARD_WIDTH_HAND: f32 = 120.0;       // Hand cards (player hand)
+pub const CARD_WIDTH_MEDIUM: f32 = 120.0;     // Medium cards (player hand, override slots)
+pub const CARD_HEIGHT_MEDIUM: f32 = 152.0;
+
+pub const CARD_WIDTH_HAND: f32 = 120.0;       // Hand cards (deprecated, use MEDIUM)
 pub const CARD_HEIGHT_HAND: f32 = 160.0;
 
 pub const CARD_WIDTH_DECK_BUILDER: f32 = 110.0; // Deck builder cards
@@ -141,9 +144,12 @@ pub const CARD_BORDER_WIDTH: f32 = 2.0;
 pub const CARD_BORDER_WIDTH_THICK: f32 = 3.0;
 pub const CARD_BORDER_RADIUS: f32 = 8.0;
 
-pub const SPACING_SMALL: f32 = 5.0;
+pub const SPACING_TINY: f32 = 5.0;
+pub const SPACING_SMALL: f32 = 8.0;
 pub const SPACING_MEDIUM: f32 = 10.0;
+pub const SPACING_MEDIUM_LARGE: f32 = 15.0;
 pub const SPACING_LARGE: f32 = 20.0;
+pub const SPACING_XLARGE: f32 = 30.0;
 
 // ============================================================================
 // Font Sizes

@@ -52,11 +52,13 @@ struct DeckBuilder {
 impl DeckBuilder {
     fn new() -> Self {
         let available = create_player_deck();
-        let selected = available.clone(); // Default: all 20 cards
-        Self {
+        // SOW-011-B: Start with Default preset (not all cards)
+        let mut deck_builder = Self {
             available_cards: available,
-            selected_cards: selected,
-        }
+            selected_cards: Vec::new(),
+        };
+        deck_builder.load_preset(DeckPreset::Default);
+        deck_builder
     }
 
     fn is_valid(&self) -> bool {
@@ -122,6 +124,7 @@ fn main() {
             ui_update_system,
             ui::update_active_slots_system,  // SOW-011-A Phase 4
             ui::update_heat_bar_system,      // SOW-011-A Phase 4
+            ui::update_resolution_overlay_system, // SOW-011-B Phase 1
         ).chain())
         .add_systems(Update, (
             card_click_system,
@@ -276,42 +279,54 @@ fn create_ui(commands: &mut Commands) {
         parent.spawn(NodeBundle {
             style: Style {
                 width: Val::Percent(100.0),
-                height: Val::Px(280.0), // Compact top row for 16:9
-                flex_direction: FlexDirection::Row,
-                column_gap: Val::Px(15.0),
-                padding: UiRect::all(Val::Px(10.0)),
+                position_type: PositionType::Relative,
                 ..default()
             },
             ..default()
         })
         .with_children(|parent| {
-            // Left side: Status info (compact)
+            // Status (absolute positioned, top-left, floated over main content)
+            parent.spawn((
+                NodeBundle {
+                    style: Style {
+                        position_type: PositionType::Absolute,
+                        left: Val::Px(10.0),
+                        top: Val::Px(10.0),
+                        ..default()
+                    },
+                    z_index: ZIndex::Global(10),
+                    ..default()
+                },
+                StatusDisplay,
+            ))
+            .with_children(|parent| {
+                parent.spawn(TextBundle::from_section(
+                    "Round 1/3\nCash: $0",
+                    TextStyle {
+                        font_size: 14.0,
+                        color: theme::TEXT_HEADER,
+                        ..default()
+                    },
+                ));
+            });
+
+            // Centered content (slots + scenario + heat bar)
             parent.spawn(NodeBundle {
                 style: Style {
-                    flex_direction: FlexDirection::Column,
-                    row_gap: Val::Px(5.0),
+                    width: Val::Percent(100.0),
+                    flex_direction: FlexDirection::Row,
+                    justify_content: JustifyContent::Center,
+                    align_items: AlignItems::FlexEnd,
+                    column_gap: Val::Px(15.0),
+                    padding: UiRect::all(Val::Px(10.0)),
                     ..default()
                 },
                 ..default()
             })
             .with_children(|parent| {
-                // Round/Cash display
+                // Active card slots (horizontal row - Location, Product, Conviction, Insurance)
+                // Slots are just empty containers, will be populated by update_active_slots_system
                 parent.spawn((
-                    TextBundle::from_section(
-                        "Round 1 - Your Turn\nCash: $2,400",
-                        TextStyle {
-                            font_size: 16.0,
-                            color: theme::TEXT_HEADER,
-                            ..default()
-                        },
-                    ),
-                    StatusDisplay,
-                ));
-            });
-
-            // Active card slots (horizontal row - Location, Product, Conviction, Insurance)
-            // Slots are just empty containers, will be populated by update_active_slots_system
-            parent.spawn((
                 NodeBundle {
                     style: Style {
                         flex_direction: FlexDirection::Row,
@@ -322,29 +337,28 @@ fn create_ui(commands: &mut Commands) {
                     ..default()
                 },
                 ActiveSlotsContainer,
-            ))
-            .with_children(|parent| {
-                // Create empty slot containers (will be populated by system)
-                for slot_type in [SlotType::Location, SlotType::Product, SlotType::Conviction, SlotType::Insurance] {
-                    parent.spawn((
-                        NodeBundle {
-                            style: Style {
-                                width: Val::Px(100.0),
-                                height: Val::Px(140.0),
-                                flex_direction: FlexDirection::Column,
-                                justify_content: JustifyContent::Center,
-                                align_items: AlignItems::Center,
+                ))
+                .with_children(|parent| {
+                    // Create empty slot containers (will be populated by system)
+                    for slot_type in [SlotType::Location, SlotType::Product, SlotType::Conviction, SlotType::Insurance] {
+                        parent.spawn((
+                            NodeBundle {
+                                style: Style {
+                                    // No fixed size - let card/placeholder inside determine dimensions
+                                    flex_direction: FlexDirection::Column,
+                                    justify_content: JustifyContent::Center,
+                                    align_items: AlignItems::Center,
+                                    ..default()
+                                },
                                 ..default()
                             },
-                            ..default()
-                        },
-                        ActiveSlot { slot_type },
-                    ));
-                }
-            });
+                            ActiveSlot { slot_type },
+                        ));
+                    }
+                });
 
-            // Scenario card (larger to match heat bar height)
-            parent.spawn((
+                // Scenario card (larger to match heat bar height)
+                parent.spawn((
                 NodeBundle {
                     style: Style {
                         width: Val::Px(280.0),
@@ -373,10 +387,10 @@ fn create_ui(commands: &mut Commands) {
                     ),
                     BuyerScenarioCardText,
                 ));
-            });
+                });
 
-            // Vertical heat bar (matches scenario card height)
-            parent.spawn(NodeBundle {
+                // Vertical heat bar (matches scenario card height)
+                parent.spawn(NodeBundle {
                 style: Style {
                     width: Val::Px(40.0), // Slightly wider for visibility
                     height: Val::Px(220.0), // Match scenario card height
@@ -433,6 +447,7 @@ fn create_ui(commands: &mut Commands) {
                     ).with_text_justify(JustifyText::Center),
                     HeatBarText,
                 ));
+                });
             });
         });
 
@@ -464,7 +479,7 @@ fn create_ui(commands: &mut Commands) {
                         padding: UiRect::all(Val::Px(8.0)),
                         border: UiRect::all(Val::Px(2.0)),
                         row_gap: Val::Px(10.0),
-                        justify_content: JustifyContent::FlexEnd, // Bottom justify
+                        justify_content: JustifyContent::FlexStart, // Top justify (not bottom)
                         ..default()
                     },
                     background_color: Color::srgba(0.2, 0.1, 0.1, 0.5).into(),
@@ -484,7 +499,7 @@ fn create_ui(commands: &mut Commands) {
                     },
                 ));
 
-                // Narc's visible hand section (upcoming cards)
+                // Narc's visible hand section (upcoming cards, no label)
                 parent.spawn((
                     NodeBundle {
                         style: Style {
@@ -496,17 +511,7 @@ fn create_ui(commands: &mut Commands) {
                         ..default()
                     },
                     NarcVisibleHand,
-                ))
-                .with_children(|parent| {
-                    parent.spawn(TextBundle::from_section(
-                        "Narc's Hand",
-                        TextStyle {
-                            font_size: 11.0,
-                            color: theme::TEXT_SECONDARY,
-                            ..default()
-                        },
-                    ));
-                });
+                ));
             });
 
             // ================================================================
@@ -517,23 +522,34 @@ fn create_ui(commands: &mut Commands) {
                     flex_grow: 1.0,
                     flex_direction: FlexDirection::Column,
                     row_gap: Val::Px(10.0),
+                    justify_content: JustifyContent::SpaceBetween, // Totals/pool at top, hand at bottom
                     ..default()
                 },
                 ..default()
             })
             .with_children(|parent| {
-                // Top: Totals bar
+                // Top section: Totals bar + Played pool
                 parent.spawn(NodeBundle {
                     style: Style {
-                        width: Val::Percent(100.0),
-                        flex_direction: FlexDirection::Row,
-                        column_gap: Val::Px(30.0),
-                        justify_content: JustifyContent::Center,
-                        padding: UiRect::all(Val::Px(8.0)),
+                        flex_direction: FlexDirection::Column,
+                        row_gap: Val::Px(10.0),
                         ..default()
                     },
                     ..default()
                 })
+                .with_children(|parent| {
+                    // Totals bar
+                    parent.spawn(NodeBundle {
+                        style: Style {
+                            width: Val::Percent(100.0),
+                            flex_direction: FlexDirection::Row,
+                            column_gap: Val::Px(30.0),
+                            justify_content: JustifyContent::Center,
+                            padding: UiRect::all(Val::Px(8.0)),
+                            ..default()
+                        },
+                        ..default()
+                    })
                 .with_children(|parent| {
                     // Evidence total
                     parent.spawn((
@@ -573,40 +589,70 @@ fn create_ui(commands: &mut Commands) {
                         ),
                         DealModPool,
                     ));
+                });
 
-                    // Discard count
+                // Middle: Played pool + Discard pile (side by side)
+                parent.spawn(NodeBundle {
+                    style: Style {
+                        width: Val::Percent(100.0),
+                        flex_direction: FlexDirection::Row,
+                        column_gap: Val::Px(10.0),
+                        ..default()
+                    },
+                    ..default()
+                })
+                .with_children(|parent| {
+                    // Played cards pool (grows to fill space)
                     parent.spawn((
-                        TextBundle::from_section(
-                            "Discard: 0",
+                        NodeBundle {
+                            style: Style {
+                                flex_grow: 1.0,
+                                flex_direction: FlexDirection::Row,
+                                flex_wrap: FlexWrap::Wrap,
+                                column_gap: Val::Px(5.0),
+                                row_gap: Val::Px(5.0),
+                                padding: UiRect::all(Val::Px(10.0)),
+                                justify_content: JustifyContent::Center,
+                                min_height: Val::Px(140.0),
+                                ..default()
+                            },
+                            background_color: Color::srgba(0.1, 0.1, 0.15, 0.8).into(),
+                            ..default()
+                        },
+                        PlayAreaDealer,
+                    ));
+
+                    // Discard pile (right side, vertical list)
+                    parent.spawn((
+                        NodeBundle {
+                            style: Style {
+                                width: Val::Px(150.0),
+                                flex_direction: FlexDirection::Column,
+                                padding: UiRect::all(Val::Px(8.0)),
+                                border: UiRect::all(Val::Px(2.0)),
+                                row_gap: Val::Px(3.0),
+                                ..default()
+                            },
+                            background_color: Color::srgba(0.1, 0.1, 0.1, 0.8).into(),
+                            border_color: theme::CARD_BORDER_NORMAL.into(),
+                            ..default()
+                        },
+                        DiscardPile,
+                    ))
+                    .with_children(|parent| {
+                        // Discard pile header
+                        parent.spawn(TextBundle::from_section(
+                            "Discard Pile",
                             TextStyle {
-                                font_size: 14.0,
+                                font_size: 12.0,
                                 color: theme::TEXT_SECONDARY,
                                 ..default()
                             },
-                        ),
-                        DiscardPile,
-                    ));
+                        ));
+                        // Discarded cards will be added by system
+                    });
                 });
-
-                // Middle: Single append-only played cards pool
-                parent.spawn((
-                    NodeBundle {
-                        style: Style {
-                            width: Val::Percent(100.0),
-                            flex_direction: FlexDirection::Row,
-                            flex_wrap: FlexWrap::Wrap,
-                            column_gap: Val::Px(5.0),
-                            row_gap: Val::Px(5.0),
-                            padding: UiRect::all(Val::Px(10.0)),
-                            justify_content: JustifyContent::Center,
-                            min_height: Val::Px(140.0),
-                            ..default()
-                        },
-                        background_color: Color::srgba(0.1, 0.1, 0.15, 0.8).into(),
-                        ..default()
-                    },
-                    PlayAreaDealer,
-                ));
+                });
 
                 // Bottom: Player hand with betting buttons immediately to the right
                 parent.spawn(NodeBundle {
@@ -614,7 +660,8 @@ fn create_ui(commands: &mut Commands) {
                         width: Val::Percent(100.0),
                         flex_direction: FlexDirection::Row,
                         justify_content: JustifyContent::Center,
-                        align_items: AlignItems::FlexEnd, // Bottom justify player hand
+                        align_items: AlignItems::FlexEnd, // Bottom justify content
+                        align_self: AlignSelf::FlexEnd, // Align entire panel to bottom
                         column_gap: Val::Px(15.0),
                         padding: UiRect::all(Val::Px(10.0)),
                         ..default()
@@ -741,7 +788,7 @@ fn create_ui(commands: &mut Commands) {
                 // Will be populated by render_buyer_visible_hand_system
                 // For now, just the container
 
-                // Buyer's visible hand section (at bottom of panel)
+                // Buyer's visible hand section (at bottom of panel, no label)
                 parent.spawn((
                     NodeBundle {
                         style: Style {
@@ -753,17 +800,7 @@ fn create_ui(commands: &mut Commands) {
                         ..default()
                     },
                     BuyerVisibleHand,
-                ))
-                .with_children(|parent| {
-                    parent.spawn(TextBundle::from_section(
-                        "Buyer's Hand",
-                        TextStyle {
-                            font_size: 11.0,
-                            color: theme::TEXT_SECONDARY,
-                            ..default()
-                        },
-                    ));
-                });
+                ));
             });
         });
 
@@ -897,6 +934,153 @@ fn create_ui(commands: &mut Commands) {
                 ));
             });
         });
+
+        // ====================================================================
+        // SOW-011-B: HAND RESOLUTION OVERLAY (initially hidden)
+        // ====================================================================
+        parent.spawn((
+            NodeBundle {
+                style: Style {
+                    position_type: PositionType::Absolute,
+                    width: Val::Percent(100.0),
+                    height: Val::Percent(100.0),
+                    justify_content: JustifyContent::Center,
+                    align_items: AlignItems::Center,
+                    display: Display::None, // Hidden until hand resolves
+                    ..default()
+                },
+                z_index: ZIndex::Global(100), // On top of everything
+                ..default()
+            },
+            ResolutionOverlay,
+        ))
+        .with_children(|parent| {
+            // Semi-transparent backdrop
+            parent.spawn((
+                NodeBundle {
+                    style: Style {
+                        position_type: PositionType::Absolute,
+                        width: Val::Percent(100.0),
+                        height: Val::Percent(100.0),
+                        ..default()
+                    },
+                    background_color: Color::srgba(0.0, 0.0, 0.0, 0.7).into(), // Dark semi-transparent
+                    ..default()
+                },
+                ResolutionBackdrop,
+            ));
+
+            // Results panel (centered)
+            parent.spawn((
+                NodeBundle {
+                    style: Style {
+                        width: Val::Px(600.0),
+                        flex_direction: FlexDirection::Column,
+                        padding: UiRect::all(Val::Px(30.0)),
+                        border: UiRect::all(Val::Px(3.0)),
+                        row_gap: Val::Px(20.0),
+                        align_items: AlignItems::Center,
+                        ..default()
+                    },
+                    background_color: theme::UI_ROOT_BG.into(),
+                    border_color: theme::SCENARIO_CARD_BORDER.into(),
+                    z_index: ZIndex::Global(101),
+                    ..default()
+                },
+                ResolutionPanel,
+            ))
+            .with_children(|parent| {
+                // Title
+                parent.spawn((
+                    TextBundle::from_section(
+                        "HAND COMPLETE",
+                        TextStyle {
+                            font_size: 32.0,
+                            color: theme::TEXT_HEADER,
+                            ..default()
+                        },
+                    ),
+                    ResolutionTitle,
+                ));
+
+                // Results text (will be updated by system)
+                parent.spawn((
+                    TextBundle::from_section(
+                        "Results...",
+                        TextStyle {
+                            font_size: 18.0,
+                            color: theme::TEXT_PRIMARY,
+                            ..default()
+                        },
+                    ).with_text_justify(JustifyText::Center),
+                    ResolutionResults,
+                ));
+
+                // Action buttons (NEW DEAL / GO HOME)
+                parent.spawn(NodeBundle {
+                    style: Style {
+                        flex_direction: FlexDirection::Row,
+                        column_gap: Val::Px(20.0),
+                        margin: UiRect::top(Val::Px(20.0)),
+                        ..default()
+                    },
+                    ..default()
+                })
+                .with_children(|parent| {
+                    // New Deal button
+                    parent.spawn((
+                        ButtonBundle {
+                            style: Style {
+                                width: Val::Px(180.0),
+                                height: Val::Px(60.0),
+                                justify_content: JustifyContent::Center,
+                                align_items: AlignItems::Center,
+                                ..default()
+                            },
+                            background_color: theme::CONTINUE_BUTTON_BG.into(),
+                            ..default()
+                        },
+                        RestartButton,
+                    ))
+                    .with_children(|parent| {
+                        parent.spawn(TextBundle::from_section(
+                            "NEW DEAL",
+                            TextStyle {
+                                font_size: 24.0,
+                                color: Color::WHITE,
+                                ..default()
+                            },
+                        ));
+                    });
+
+                    // Go Home button
+                    parent.spawn((
+                        ButtonBundle {
+                            style: Style {
+                                width: Val::Px(180.0),
+                                height: Val::Px(60.0),
+                                justify_content: JustifyContent::Center,
+                                align_items: AlignItems::Center,
+                                ..default()
+                            },
+                            background_color: theme::RESTART_BUTTON_BG.into(),
+                            ..default()
+                        },
+                        GoHomeButton,
+                    ))
+                    .with_children(|parent| {
+                        parent.spawn(TextBundle::from_section(
+                            "GO HOME",
+                            TextStyle {
+                                font_size: 24.0,
+                                color: Color::WHITE,
+                                ..default()
+                            },
+                        ));
+                    });
+                });
+            });
+        });
     });
 }
 
@@ -967,15 +1151,26 @@ fn ui_update_system(
         );
     }
 
-    // Update status display with debug info
+    // SOW-011-B: Simplified status display - just Round and Cash
     if let Ok(mut text) = status_query.get_single_mut() {
-        // SOW-008: Get current player info for turn display
+        // Get turn info for display
         let turn_info = if hand_state.current_state == State::PlayerPhase {
             format!(" - Turn: {:?}", hand_state.current_player())
         } else {
             String::new()
         };
 
+        text.sections[0].value = format!(
+            "Round {}/3{}\nCash: ${}",
+            hand_state.current_round,
+            turn_info,
+            hand_state.cash
+        );
+        text.sections[0].style.color = theme::TEXT_HEADER;
+    }
+
+    // Old detailed status display removed - overlay now shows all outcome details
+    /*
         let mut status = match hand_state.current_state {
             State::Draw => format!("Status: Round {}/3 - Drawing Cards...", hand_state.current_round),
             State::PlayerPhase => format!("Status: Round {}/3 - Playing Cards{}", hand_state.current_round, turn_info),
@@ -1078,22 +1273,7 @@ fn ui_update_system(
             }
         }
 
-        text.sections[0].value = status;
-
-        // Color code status (SOW-008)
-        text.sections[0].style.color = match hand_state.current_state {
-            State::PlayerPhase => theme::STATUS_PLAYING,
-            State::Bust => match hand_state.outcome {
-                Some(HandOutcome::Safe) => theme::STATUS_SAFE,
-                Some(HandOutcome::Busted) => theme::STATUS_BUSTED,
-                Some(HandOutcome::Folded) => theme::STATUS_FOLDED,
-                Some(HandOutcome::InvalidDeal) => theme::STATUS_INVALID,
-                Some(HandOutcome::BuyerBailed) => theme::STATUS_BAILED,
-                None => Color::WHITE,
-            },
-            _ => Color::WHITE,
-        };
-    }
+    */
 
     // Update scenario card
     if let Ok(mut text) = scenario_query.get_single_mut() {
@@ -1179,17 +1359,28 @@ fn recreate_hand_display_system(
                      hand_state.current_state == State::Bust;
 
     if show_cards {
-        // SOW-011-A: Show only unplayed cards (played cards go to shared pools)
+        // SOW-011-B: Use slot-based hand to preserve card positions
         commands.entity(hand_entity).with_children(|parent| {
-            for (index, card) in hand_state.player_hand.iter().enumerate() {
-                ui::spawn_card_button(
-                    parent,
-                    &card.name,
-                    &card.card_type,
-                    ui::CardSize::Hand,
-                    ui::CardDisplayState::Active,
-                    CardButton { card_index: index },
-                );
+            for (slot_index, slot) in hand_state.player_hand_slots.iter().enumerate() {
+                if let Some(card) = slot {
+                    // Show actual card (Medium size, no margin)
+                    ui::spawn_card_button(
+                        parent,
+                        &card.name,
+                        &card.card_type,
+                        ui::CardSize::Medium,
+                        ui::CardDisplayState::Active,
+                        CardButton { card_index: slot_index },
+                    );
+                } else {
+                    // Show placeholder for empty slot (Medium size, no margin)
+                    ui::spawn_placeholder(
+                        parent,
+                        "Drawing...",
+                        ui::CardSize::Medium,
+                        theme::CARD_BORDER_NORMAL,
+                    );
+                }
             }
         });
     }
@@ -1334,12 +1525,36 @@ fn betting_button_system(
 // ============================================================================
 
 fn update_betting_button_states(
-    _hand_state_query: Query<&HandState>,
+    hand_state_query: Query<&HandState>,
     _betting_state_query: Query<&BettingState>,
-    _check_button_query: Query<&mut BackgroundColor, With<CheckButton>>,
+    mut check_button_query: Query<&mut BackgroundColor, (With<CheckButton>, Without<FoldButton>)>,
+    mut fold_button_query: Query<&mut BackgroundColor, (With<FoldButton>, Without<CheckButton>)>,
 ) {
-    // SOW-008 Phase 1: Stubbed out - betting system removed
-    return;
+    let Ok(hand_state) = hand_state_query.get_single() else {
+        return;
+    };
+
+    // SOW-011-B: Buttons enabled only during PlayerPhase when it's player's turn, disabled otherwise
+    let is_player_turn = hand_state.current_state == State::PlayerPhase &&
+                         hand_state.current_player() == Owner::Player;
+
+    // Update Pass button (Check) - enabled when player's turn, disabled otherwise
+    if let Ok(mut bg) = check_button_query.get_single_mut() {
+        *bg = if is_player_turn {
+            theme::BUTTON_ENABLED_BG.into()
+        } else {
+            theme::BUTTON_DISABLED_BG.into()
+        };
+    }
+
+    // Update Bail Out button (Fold) - enabled when player's turn, disabled otherwise
+    if let Ok(mut bg) = fold_button_query.get_single_mut() {
+        *bg = if is_player_turn {
+            theme::BUTTON_NEUTRAL_BG.into()
+        } else {
+            theme::BUTTON_DISABLED_BG.into()
+        };
+    }
 }
 
 // ============================================================================
@@ -1484,8 +1699,8 @@ fn go_home_button_system(
                 *betting_state = BettingState::default();
             }
 
-            // Reset deck builder to Default preset
-            deck_builder.load_preset(DeckPreset::Default);
+            // SOW-011-B: Don't reset deck - preserve player's selection
+            // deck_builder.load_preset(DeckPreset::Default); // REMOVED
 
             // Transition back to DeckBuilding state
             next_state.set(GameState::DeckBuilding);
@@ -1836,10 +2051,10 @@ fn populate_deck_builder_cards_system(
     // SOW-010: Populate single grid with all cards (styled like played cards)
     if let Ok(pool_entity) = pool_container_query.get_single() {
         commands.entity(pool_entity).with_children(|parent| {
-            // Sort cards by type for organized display
+            // Sort cards by type, then alphabetically by name
             let mut sorted_cards = deck_builder.available_cards.clone();
-            sorted_cards.sort_by_key(|card| {
-                match card.card_type {
+            sorted_cards.sort_by(|a, b| {
+                let type_order_a = match a.card_type {
                     CardType::Product { .. } => 0,
                     CardType::Location { .. } => 1,
                     CardType::Cover { .. } => 2,
@@ -1847,7 +2062,19 @@ fn populate_deck_builder_cards_system(
                     CardType::Insurance { .. } => 4,
                     CardType::Evidence { .. } => 5,
                     CardType::Conviction { .. } => 6,
-                }
+                };
+                let type_order_b = match b.card_type {
+                    CardType::Product { .. } => 0,
+                    CardType::Location { .. } => 1,
+                    CardType::Cover { .. } => 2,
+                    CardType::DealModifier { .. } => 3,
+                    CardType::Insurance { .. } => 4,
+                    CardType::Evidence { .. } => 5,
+                    CardType::Conviction { .. } => 6,
+                };
+
+                // First sort by type, then alphabetically by name
+                type_order_a.cmp(&type_order_b).then_with(|| a.name.cmp(&b.name))
             });
 
             for card in &sorted_cards {
@@ -1916,14 +2143,9 @@ fn toggle_ui_visibility_system(
         return;
     };
 
-    // SOW-008: Show Check button during PlayerPhase when it's player's turn
+    // SOW-011-B: Always show betting buttons (never hide them)
     if let Ok(mut style) = betting_container_query.get_single_mut() {
-        style.display = if hand_state.current_state == State::PlayerPhase &&
-                          hand_state.current_player() == Owner::Player {
-            Display::Flex
-        } else {
-            Display::None
-        };
+        style.display = Display::Flex;
     }
 
     // SOW-008: Hide decision point UI (fold happens during PlayerPhase now)
@@ -1931,13 +2153,9 @@ fn toggle_ui_visibility_system(
         style.display = Display::None;
     }
 
-    // Show/hide restart button (at Bust state)
+    // SOW-011-B: Bust container always hidden (overlay handles resolution)
     if let Ok(mut style) = bust_container_query.get_single_mut() {
-        style.display = if hand_state.current_state == State::Bust {
-            Display::Flex
-        } else {
-            Display::None
-        };
+        style.display = Display::None;
     }
 }
 
@@ -2067,12 +2285,12 @@ fn render_buyer_visible_hand_system(
         }
     }
 
-    // Display each card in buyer_hand
+    // Display each card in buyer_hand (use Small size for consistency)
     commands.entity(buyer_area).with_children(|parent| {
         for card in hand_state.buyer_hand.iter() {
-            // Spawn buyer card with special buyer coloring and bright border
-            let (width, height) = ui::CardSize::BuyerVisible.dimensions();
-            let font_size = ui::CardSize::BuyerVisible.font_size();
+            // Use Small size (same as Narc hand and active slots)
+            let (width, height) = ui::CardSize::Small.dimensions();
+            let font_size = ui::CardSize::Small.font_size();
             let card_color = ui::get_buyer_card_color(&card.card_type);
 
             let card_text = ui::format_card_text_compact(&card.name, &card.card_type);
@@ -2084,8 +2302,8 @@ fn render_buyer_visible_hand_system(
                         height: Val::Px(height),
                         justify_content: JustifyContent::Center,
                         align_items: AlignItems::Center,
-                        padding: UiRect::all(Val::Px(8.0)),
-                        border: UiRect::all(Val::Px(3.0)),
+                        padding: UiRect::all(Val::Px(theme::SPACING_SMALL)),
+                        border: UiRect::all(Val::Px(theme::CARD_BORDER_WIDTH)),
                         margin: UiRect::all(Val::Px(4.0)),
                         ..default()
                     },
@@ -2316,7 +2534,7 @@ enum State {
 
 /// Outcome of hand resolution
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum HandOutcome {
+pub enum HandOutcome { // SOW-011-B: Made public for UI systems
     Safe,
     Busted,
     Folded,        // SOW-004: Player folded during hand (not bust, not completed)
@@ -2351,6 +2569,8 @@ struct HandState {
     pub buyer_played: Vec<Card>,           // Cards played so far (for UI tracking)
     // SOW-011-A: Discard pile for replaced cards
     pub discard_pile: Vec<Card>,           // Cards replaced via override mechanic
+    // SOW-011-B: Track player hand as Option array to preserve slot positions
+    pub player_hand_slots: [Option<Card>; 3], // Fixed 3-slot hand (None = empty/drawing)
 }
 
 impl Default for HandState {
@@ -2376,6 +2596,7 @@ impl Default for HandState {
             buyer_hand: Vec::new(),
             buyer_played: Vec::new(),
             discard_pile: Vec::new(), // SOW-011-A
+            player_hand_slots: [None, None, None], // SOW-011-B
         }
     }
 }
@@ -2407,6 +2628,7 @@ impl HandState {
             buyer_hand: Vec::new(),
             buyer_played: Vec::new(),
             discard_pile: Vec::new(), // SOW-011-A
+            player_hand_slots: [None, None, None], // SOW-011-B
         }
     }
 
@@ -2483,11 +2705,17 @@ impl HandState {
             self.narc_hand.push(self.narc_deck.remove(0));
         }
 
-        // SOW-009: Customer draw removed
-
-        while self.player_hand.len() < HAND_SIZE && !self.player_deck.is_empty() {
-            self.player_hand.push(self.player_deck.remove(0));
+        // SOW-011-B: Draw player cards into empty slots (preserves positions)
+        for slot in &mut self.player_hand_slots {
+            if slot.is_none() && !self.player_deck.is_empty() {
+                *slot = Some(self.player_deck.remove(0));
+            }
         }
+
+        // Sync player_hand vec from slots (for compatibility with existing code)
+        self.player_hand = self.player_hand_slots.iter()
+            .filter_map(|s| s.clone())
+            .collect();
 
         // SOW-009 Phase 3: Initialize Buyer hand (draw 3 visible cards)
         self.initialize_buyer_hand();
@@ -2547,20 +2775,36 @@ impl HandState {
             return Err(format!("Wrong turn: expected {:?}, got {:?}", current_player, owner));
         }
 
-        // Get the card from the appropriate hand (SOW-009: Only Narc and Player can call this)
-        let hand = match owner {
-            Owner::Narc => &mut self.narc_hand,
-            Owner::Player => &mut self.player_hand,
-            Owner::Buyer => unreachable!("Buyer uses buyer_plays_card(), not play_card()"),
-        };
+        // SOW-011-B: Handle player specially (slot-based hand)
+        if owner == Owner::Player {
+            if card_index >= 3 {
+                return Err(format!("Card index {} out of bounds", card_index));
+            }
 
-        if card_index >= hand.len() {
-            return Err(format!("Card index {} out of bounds", card_index));
+            if let Some(card) = self.player_hand_slots[card_index].take() {
+                self.cards_played.push(card);
+                // Sync player_hand vec for compatibility
+                self.player_hand = self.player_hand_slots.iter()
+                    .filter_map(|s| s.clone())
+                    .collect();
+            } else {
+                return Err(format!("No card in slot {}", card_index));
+            }
+        } else {
+            // Narc/Buyer use normal Vec-based hands
+            let hand = match owner {
+                Owner::Narc => &mut self.narc_hand,
+                Owner::Buyer => unreachable!("Buyer uses buyer_plays_card(), not play_card()"),
+                Owner::Player => unreachable!(),
+            };
+
+            if card_index >= hand.len() {
+                return Err(format!("Card index {} out of bounds", card_index));
+            }
+
+            let card = hand.remove(card_index);
+            self.cards_played.push(card);
         }
-
-        // Remove card from hand and play it face-up immediately (SOW-008)
-        let card = hand.remove(card_index);
-        self.cards_played.push(card);
 
         // Advance to next player's turn (increments index)
         self.current_player_index += 1;

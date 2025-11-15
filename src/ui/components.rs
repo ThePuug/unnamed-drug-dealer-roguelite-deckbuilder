@@ -167,3 +167,22 @@ pub struct NarcVisibleHand;
 
 #[derive(Component)]
 pub struct PlayerHandPanel;
+
+// ============================================================================
+// SOW-011-B: Hand Resolution Overlay
+// ============================================================================
+
+#[derive(Component)]
+pub struct ResolutionOverlay;
+
+#[derive(Component)]
+pub struct ResolutionBackdrop;
+
+#[derive(Component)]
+pub struct ResolutionPanel;
+
+#[derive(Component)]
+pub struct ResolutionTitle;
+
+#[derive(Component)]
+pub struct ResolutionResults;

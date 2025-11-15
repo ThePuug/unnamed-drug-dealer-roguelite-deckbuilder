@@ -8,10 +8,11 @@ use super::theme;
 /// Card display size variants
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum CardSize {
-    Small,        // 100x120 (played cards)
-    Hand,         // 120x160 (player hand)
+    Small,        // 110x140 (narc/buyer hands, played pool)
+    Medium,       // 120x152 (player hand, override slots)
+    Hand,         // 120x160 (deprecated, use Medium)
     DeckBuilder,  // 110x140 (deck builder)
-    BuyerVisible, // 120x140 (buyer's visible hand)
+    BuyerVisible, // 120x140 (deprecated)
     Large,        // 180x250 (scenario card, future use)
 }
 
@@ -19,6 +20,7 @@ impl CardSize {
     pub fn dimensions(&self) -> (f32, f32) {
         match self {
             CardSize::Small => (theme::CARD_WIDTH_SMALL, theme::CARD_HEIGHT_SMALL),
+            CardSize::Medium => (theme::CARD_WIDTH_MEDIUM, theme::CARD_HEIGHT_MEDIUM),
             CardSize::Hand => (theme::CARD_WIDTH_HAND, theme::CARD_HEIGHT_HAND),
             CardSize::DeckBuilder => (theme::CARD_WIDTH_DECK_BUILDER, theme::CARD_HEIGHT_DECK_BUILDER),
             CardSize::BuyerVisible => (theme::CARD_WIDTH_BUYER_VISIBLE, theme::CARD_HEIGHT_BUYER_VISIBLE),
@@ -29,6 +31,7 @@ impl CardSize {
     pub fn font_size(&self) -> f32 {
         match self {
             CardSize::Small => 10.0,
+            CardSize::Medium => 12.0,
             CardSize::Hand => 14.0,
             CardSize::DeckBuilder => 11.0,
             CardSize::BuyerVisible => 11.0,
@@ -166,7 +169,7 @@ pub fn spawn_card_display(
             align_items: AlignItems::Center,
             padding: UiRect::all(Val::Px(8.0)),
             border: UiRect::all(Val::Px(theme::CARD_BORDER_WIDTH)),
-            margin: UiRect::all(Val::Px(4.0)),
+            margin: UiRect::all(Val::Px(theme::SPACING_MEDIUM)), // Small cards have margin
             ..default()
         },
         background_color: card_color.into(),
@@ -214,9 +217,9 @@ pub fn spawn_card_display_with_marker<T: Component>(
                 height: Val::Px(height),
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,
-                padding: UiRect::all(Val::Px(6.0)),
+                padding: UiRect::all(Val::Px(8.0)),
                 border: UiRect::all(Val::Px(theme::CARD_BORDER_WIDTH)),
-                margin: UiRect::all(Val::Px(2.0)),
+                margin: UiRect::all(Val::Px(theme::SPACING_MEDIUM)), // Small cards have margin
                 ..default()
             },
             background_color: card_color.into(),
@@ -301,7 +304,7 @@ pub fn spawn_placeholder(
             align_items: AlignItems::Center,
             padding: UiRect::all(Val::Px(8.0)),
             border: UiRect::all(Val::Px(theme::CARD_BORDER_WIDTH)),
-            margin: UiRect::all(Val::Px(2.0)),
+            // Margin only for Small size (narc/buyer/played pool), not Medium (player hand/slots)
             ..default()
         },
         background_color: theme::PLACEHOLDER_BG.into(),

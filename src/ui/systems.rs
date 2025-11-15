@@ -1,8 +1,9 @@
 // UI Systems - Update systems for active slots, heat bar, etc.
 // SOW-011-A Phase 4: Active slot population and heat bar updates
+// SOW-011-B Phase 1: Resolution overlay system
 
 use bevy::prelude::*;
-use crate::{HandState, CardType, Card};
+use crate::{HandState, CardType, Card, State, HandOutcome};
 use super::components::*;
 use super::helpers;
 use super::theme;
@@ -11,10 +12,10 @@ use super::theme;
 pub fn update_active_slots_system(
     mut hand_state_query: Query<&mut HandState, Changed<HandState>>,
     slots_query: Query<(Entity, &ActiveSlot)>,
+    discard_pile_query: Query<Entity, With<super::components::DiscardPile>>,
     mut commands: Commands,
     children_query: Query<&Children>,
     card_display_query: Query<Entity, With<PlayedCardDisplay>>,
-    mut discard_text_query: Query<&mut Text, With<super::components::DiscardPile>>,
 ) {
     let Ok(mut hand_state) = hand_state_query.get_single_mut() else {
         return;
@@ -54,9 +55,29 @@ pub fn update_active_slots_system(
         hand_state.discard_pile.push(card);
     }
 
-    // Update discard pile text
-    if let Ok(mut text) = discard_text_query.get_single_mut() {
-        text.sections[0].value = format!("Discard: {}", hand_state.discard_pile.len());
+    // Update discard pile display (vertical list of card names)
+    if let Ok(discard_entity) = discard_pile_query.get_single() {
+        // Clear old discard items (except header)
+        if let Ok(children) = children_query.get(discard_entity) {
+            // Skip first child (header "Discard Pile")
+            for &child in children.iter().skip(1) {
+                commands.entity(child).despawn_recursive();
+            }
+        }
+
+        // Add discarded cards (most recent first)
+        commands.entity(discard_entity).with_children(|parent| {
+            for card in hand_state.discard_pile.iter().rev() {
+                parent.spawn(TextBundle::from_section(
+                    &card.name,
+                    TextStyle {
+                        font_size: 11.0,
+                        color: theme::TEXT_SECONDARY,
+                        ..default()
+                    },
+                ));
+            }
+        });
     }
 
     // For each slot type, determine which card (if any) is active
@@ -76,21 +97,45 @@ pub fn update_active_slots_system(
             SlotType::Insurance => hand_state.active_insurance(true),
         };
 
-        // Spawn card or placeholder
+        // Spawn card or placeholder (Medium size, no margin for override slots)
         commands.entity(slot_entity).with_children(|parent| {
             if let Some(card) = active_card {
-                // Spawn actual card with active state
-                helpers::spawn_card_display_with_marker(
-                    parent,
-                    &card.name,
-                    &card.card_type,
-                    helpers::CardSize::Small,
-                    helpers::CardDisplayState::Active,
-                    true, // compact text
+                // Spawn actual card with Medium size (no margin)
+                let (width, height) = helpers::CardSize::Medium.dimensions();
+                let font_size = helpers::CardSize::Medium.font_size();
+                let card_color = helpers::get_card_color(&card.card_type, helpers::CardDisplayState::Active);
+
+                parent.spawn((
+                    NodeBundle {
+                        style: Style {
+                            width: Val::Px(width),
+                            height: Val::Px(height),
+                            justify_content: JustifyContent::Center,
+                            align_items: AlignItems::Center,
+                            padding: UiRect::all(Val::Px(8.0)),
+                            border: UiRect::all(Val::Px(theme::CARD_BORDER_WIDTH)),
+                            // No margin for Medium cards (override slots)
+                            ..default()
+                        },
+                        background_color: card_color.into(),
+                        border_color: theme::CARD_BORDER_BRIGHT.into(),
+                        ..default()
+                    },
                     PlayedCardDisplay,
-                );
+                ))
+                .with_children(|parent| {
+                    let card_text = helpers::format_card_text_compact(&card.name, &card.card_type);
+                    parent.spawn(TextBundle::from_section(
+                        card_text,
+                        TextStyle {
+                            font_size,
+                            color: theme::TEXT_PRIMARY,
+                            ..default()
+                        },
+                    ));
+                });
             } else {
-                // Spawn ghosted placeholder
+                // Spawn ghosted placeholder (Medium size, no margin)
                 let (color, label) = match slot.slot_type {
                     SlotType::Location => (theme::LOCATION_CARD_COLOR, "Location"),
                     SlotType::Product => (theme::PRODUCT_CARD_COLOR, "Product"),
@@ -101,7 +146,7 @@ pub fn update_active_slots_system(
                 helpers::spawn_placeholder(
                     parent,
                     label,
-                    helpers::CardSize::Small,
+                    helpers::CardSize::Medium,
                     color,
                 );
             }
@@ -167,3 +212,105 @@ pub fn update_heat_bar_system(
         text.sections[0].value = format!("{}/{}", current_heat, heat_threshold);
     }
 }
+
+/// Show/hide resolution overlay and update results text
+pub fn update_resolution_overlay_system(
+    hand_state_query: Query<&HandState, Changed<HandState>>,
+    mut overlay_query: Query<&mut Style, With<ResolutionOverlay>>,
+    mut title_query: Query<&mut Text, (With<ResolutionTitle>, Without<ResolutionResults>)>,
+    mut results_query: Query<&mut Text, (With<ResolutionResults>, Without<ResolutionTitle>)>,
+) {
+    let Ok(hand_state) = hand_state_query.get_single() else {
+        return;
+    };
+
+    let Ok(mut overlay_style) = overlay_query.get_single_mut() else {
+        return;
+    };
+
+    // Show overlay when hand reaches Bust state
+    if hand_state.current_state == State::Bust {
+        overlay_style.display = Display::Flex;
+
+        // Update title based on outcome
+        if let Ok(mut title_text) = title_query.get_single_mut() {
+            title_text.sections[0].value = match hand_state.outcome {
+                Some(HandOutcome::Safe) => "DEAL COMPLETE!".to_string(),
+                Some(HandOutcome::Busted) => "BUSTED!".to_string(),
+                Some(HandOutcome::Folded) => "HAND FOLDED".to_string(),
+                Some(HandOutcome::InvalidDeal) => "INVALID DEAL".to_string(),
+                Some(HandOutcome::BuyerBailed) => "BUYER BAILED".to_string(),
+                None => "HAND COMPLETE".to_string(),
+            };
+
+            // Color code title
+            title_text.sections[0].style.color = match hand_state.outcome {
+                Some(HandOutcome::Safe) => theme::STATUS_SAFE,
+                Some(HandOutcome::Busted) => theme::STATUS_BUSTED,
+                Some(HandOutcome::Folded) => theme::STATUS_FOLDED,
+                Some(HandOutcome::InvalidDeal) => theme::STATUS_INVALID,
+                Some(HandOutcome::BuyerBailed) => theme::STATUS_BAILED,
+                None => theme::TEXT_HEADER,
+            };
+        }
+
+        // Update results breakdown
+        if let Ok(mut results_text) = results_query.get_single_mut() {
+            let totals = hand_state.calculate_totals(true);
+            let mut results = String::new();
+
+            match hand_state.outcome {
+                Some(HandOutcome::Safe) => {
+                    results.push_str(&format!("Evidence: {} ≤ Cover: {} ✓\n\n", totals.evidence, totals.cover));
+                    results.push_str(&format!("Profit: ${}\n", totals.profit));
+                    results.push_str(&format!("Heat: {}\n", totals.heat));
+
+                    if hand_state.is_demand_satisfied() {
+                        let multiplier = hand_state.get_profit_multiplier();
+                        results.push_str(&format!("\nDemand Met! ×{:.1} multiplier", multiplier));
+                    } else {
+                        results.push_str("\nDemand Not Met (reduced multiplier)");
+                    }
+                }
+                Some(HandOutcome::Busted) => {
+                    if hand_state.player_deck.len() < 3 {
+                        results.push_str(&format!("Deck Exhausted: {} cards\n\nRun Ends", hand_state.player_deck.len()));
+                    } else {
+                        results.push_str(&format!("Evidence: {} > Cover: {} ✗\n\n", totals.evidence, totals.cover));
+                        results.push_str(&format!("You got caught!\nHeat: {}", totals.heat));
+                    }
+                }
+                Some(HandOutcome::Folded) => {
+                    results.push_str("You bailed out\n\nNo profit, no risk");
+                }
+                Some(HandOutcome::InvalidDeal) => {
+                    let has_product = hand_state.active_product(true).is_some();
+                    let has_location = hand_state.active_location(true).is_some();
+
+                    if !has_product && !has_location {
+                        results.push_str("Missing Product AND Location!");
+                    } else if !has_product {
+                        results.push_str("Missing Product card!");
+                    } else {
+                        results.push_str("Missing Location card!");
+                    }
+                    results.push_str("\n\nNo profit");
+                }
+                Some(HandOutcome::BuyerBailed) => {
+                    if let Some(persona) = &hand_state.buyer_persona {
+                        results.push_str(&format!("{} got nervous!\n\n", persona.display_name));
+                    }
+                    results.push_str("Deal fell through\nNo profit");
+                }
+                None => {
+                    results.push_str("Hand ended");
+                }
+            }
+
+            results_text.sections[0].value = results;
+        }
+    } else {
+        overlay_style.display = Display::None;
+    }
+}
+
