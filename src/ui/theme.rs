@@ -14,22 +14,12 @@ pub const COVER_CARD_COLOR: Color = Color::srgb(0.3, 0.8, 0.3);        // Bright
 pub const DEAL_MODIFIER_CARD_COLOR: Color = Color::srgb(0.7, 0.5, 0.9); // Purple
 pub const INSURANCE_CARD_COLOR: Color = Color::srgb(0.2, 0.8, 0.8);    // Cyan
 pub const CONVICTION_CARD_COLOR: Color = Color::srgb(0.9, 0.2, 0.2);   // Red
-pub const DEFAULT_CARD_COLOR: Color = Color::srgb(0.5, 0.5, 0.5);      // Gray
-
-// Card Type Colors (Dim - for played/inactive display)
-pub const PRODUCT_CARD_COLOR_DIM: Color = Color::srgb(0.5, 0.4, 0.1);
-pub const LOCATION_CARD_COLOR_DIM: Color = Color::srgb(0.2, 0.3, 0.5);
-pub const EVIDENCE_CARD_COLOR_DIM: Color = Color::srgb(0.4, 0.2, 0.2);
-pub const COVER_CARD_COLOR_DIM: Color = Color::srgb(0.2, 0.4, 0.2);
-pub const DEAL_MODIFIER_CARD_COLOR_DIM: Color = Color::srgb(0.4, 0.3, 0.5);
-pub const INSURANCE_CARD_COLOR_DIM: Color = Color::srgb(0.1, 0.4, 0.4);
-pub const CONVICTION_CARD_COLOR_DIM: Color = Color::srgb(0.5, 0.1, 0.1);
-pub const DEFAULT_CARD_COLOR_DIM: Color = Color::srgb(0.3, 0.3, 0.3);
+// SOW-AAA: Unused dim color constants removed
 
 // Buyer Card Colors (specific for buyer deck display)
 pub const BUYER_LOCATION_COLOR: Color = Color::srgb(0.5, 0.7, 1.0);
 pub const BUYER_MODIFIER_COLOR: Color = Color::srgb(0.9, 0.7, 1.0);
-pub const BUYER_VISIBLE_HAND_COLOR: Color = Color::srgb(0.5, 0.7, 1.0); // Muted blue bg
+// SOW-AAA: BUYER_VISIBLE_HAND_COLOR removed (unused)
 pub const BUYER_DEFAULT_COLOR: Color = Color::srgb(0.5, 0.5, 0.5);
 
 // ============================================================================
@@ -37,7 +27,7 @@ pub const BUYER_DEFAULT_COLOR: Color = Color::srgb(0.5, 0.5, 0.5);
 // ============================================================================
 
 pub const UI_ROOT_BG: Color = Color::srgb(0.1, 0.1, 0.15);             // Dark background
-pub const PLAY_AREA_BG: Color = Color::srgb(0.15, 0.15, 0.2);          // Play area background
+// SOW-AAA: PLAY_AREA_BG removed (unused)
 pub const PLAYER_HAND_BG: Color = Color::srgb(0.2, 0.2, 0.25);         // Player hand panel
 
 // Scenario Card (Buyer challenge card)
@@ -51,13 +41,13 @@ pub const BUYER_SECTION_COLOR: Color = Color::srgb(0.9, 0.9, 0.4);     // Yellow
 
 // Buyer Visible Hand
 pub const BUYER_HAND_BORDER: Color = Color::srgb(1.0, 1.0, 0.0);       // Bright yellow border
-pub const DEALER_CARD_BORDER: Color = Color::srgb(1.0, 1.0, 0.8);      // Bright border for dealer reveals
+// SOW-AAA: DEALER_CARD_BORDER removed (unused)
 
 // ============================================================================
 // State/Status Colors
 // ============================================================================
 
-pub const STATUS_PLAYING: Color = Color::srgb(1.0, 1.0, 0.3);          // Yellow
+// SOW-AAA: STATUS_PLAYING removed (unused)
 pub const STATUS_SAFE: Color = Color::srgb(0.3, 1.0, 0.3);             // Green
 pub const STATUS_BUSTED: Color = Color::srgb(1.0, 0.3, 0.3);           // Red
 pub const STATUS_FOLDED: Color = Color::srgb(0.7, 0.7, 0.7);           // Gray
@@ -73,7 +63,7 @@ pub const BUTTON_DISABLED_BG: Color = Color::srgb(0.2, 0.2, 0.2);      // Dark g
 pub const BUTTON_NEUTRAL_BG: Color = Color::srgb(0.5, 0.5, 0.5);       // Gray
 pub const CONTINUE_BUTTON_BG: Color = Color::srgb(0.3, 0.8, 0.3);      // Green
 pub const RESTART_BUTTON_BG: Color = Color::srgb(0.8, 0.3, 0.3);       // Red
-pub const GO_HOME_BUTTON_BG: Color = Color::srgb(0.3, 0.8, 0.3);       // Green
+// SOW-AAA: GO_HOME_BUTTON_BG, PRESET_BUTTON_BG removed (unused)
 
 // ============================================================================
 // Border Colors
@@ -102,17 +92,14 @@ pub const SELECTED_DECK_BG_VALID: Color = Color::srgb(0.2, 0.6, 0.2);  // Green 
 pub const SELECTED_DECK_BG_INVALID: Color = Color::srgb(0.8, 0.2, 0.2); // Red (invalid deck)
 pub const CARD_AVAILABLE_BG: Color = Color::srgb(0.3, 0.3, 0.3);       // Available card
 pub const CARD_UNAVAILABLE_BG: Color = Color::srgb(0.5, 0.2, 0.2);     // Unavailable (no copies)
-pub const PRESET_BUTTON_BG: Color = Color::srgb(0.2, 0.2, 0.5);        // Blue preset button
+// SOW-AAA: PRESET_BUTTON_BG removed (unused)
 
 // ============================================================================
 // Misc UI Colors
 // ============================================================================
 
 pub const PLACEHOLDER_BG: Color = Color::srgb(0.35, 0.35, 0.35);       // Placeholder card back
-pub const PLACEHOLDER_BORDER: Color = Color::srgb(0.5, 0.5, 0.5);      // Placeholder border
-pub const PILE_INDICATOR_BG: Color = Color::srgb(0.6, 0.6, 0.6);       // Card pile counter bg
-pub const STAT_BOX_BG: Color = Color::srgb(0.4, 0.4, 0.4);             // Stat box background
-pub const STAT_BOX_BORDER: Color = Color::srgb(0.6, 0.6, 0.6);         // Stat box border
+// SOW-AAA: PLACEHOLDER_BORDER, PILE_INDICATOR_BG, STAT_BOX_BG, STAT_BOX_BORDER removed (unused)
 
 // ============================================================================
 // Card Sizing Constants
@@ -124,48 +111,32 @@ pub const CARD_HEIGHT_SMALL: f32 = 140.0;
 pub const CARD_WIDTH_MEDIUM: f32 = 120.0;     // Medium cards (player hand, override slots)
 pub const CARD_HEIGHT_MEDIUM: f32 = 152.0;
 
-pub const CARD_WIDTH_HAND: f32 = 120.0;       // Hand cards (deprecated, use MEDIUM)
-pub const CARD_HEIGHT_HAND: f32 = 160.0;
-
 pub const CARD_WIDTH_DECK_BUILDER: f32 = 110.0; // Deck builder cards
 pub const CARD_HEIGHT_DECK_BUILDER: f32 = 140.0;
 
-pub const CARD_WIDTH_BUYER_VISIBLE: f32 = 120.0; // Buyer visible hand
-pub const CARD_HEIGHT_BUYER_VISIBLE: f32 = 140.0;
-
-pub const CARD_WIDTH_LARGE: f32 = 180.0;      // Large cards (scenario card, etc.)
-pub const CARD_HEIGHT_LARGE: f32 = 250.0;
+// SOW-AAA: Unused card size constants removed (HAND, BUYER_VISIBLE, LARGE)
 
 // ============================================================================
 // Border/Spacing Constants
 // ============================================================================
 
 pub const CARD_BORDER_WIDTH: f32 = 2.0;
-pub const CARD_BORDER_WIDTH_THICK: f32 = 3.0;
-pub const CARD_BORDER_RADIUS: f32 = 8.0;
+// SOW-AAA: CARD_BORDER_WIDTH_THICK, CARD_BORDER_RADIUS removed (unused)
 
-pub const SPACING_TINY: f32 = 5.0;
+// SOW-AAA: SPACING_TINY removed (unused)
 pub const SPACING_SMALL: f32 = 8.0;
 pub const SPACING_MEDIUM: f32 = 10.0;
-pub const SPACING_MEDIUM_LARGE: f32 = 15.0;
-pub const SPACING_LARGE: f32 = 20.0;
-pub const SPACING_XLARGE: f32 = 30.0;
+// SOW-AAA: SPACING_MEDIUM_LARGE, SPACING_LARGE, SPACING_XLARGE removed (unused)
 
 // ============================================================================
 // Font Sizes
 // ============================================================================
-
-pub const FONT_SIZE_SMALL: f32 = 14.0;
-pub const FONT_SIZE_MEDIUM: f32 = 18.0;
-pub const FONT_SIZE_LARGE: f32 = 24.0;
-pub const FONT_SIZE_HEADER: f32 = 28.0;
+// SOW-AAA: All FONT_SIZE constants removed (font sizes defined in CardSize enum)
 
 // ============================================================================
 // Heat Bar Constants (SOW-011-A Phase 4)
 // ============================================================================
-
-pub const HEAT_BAR_WIDTH: f32 = 30.0;
-pub const HEAT_BAR_HEIGHT: f32 = 220.0;
+// SOW-AAA: HEAT_BAR_WIDTH, HEAT_BAR_HEIGHT removed (unused)
 pub const HEAT_BAR_BG: Color = Color::srgb(0.2, 0.2, 0.2);
 
 // Heat bar gradient colors (stacked nodes)
@@ -186,30 +157,4 @@ pub fn dim_color(color: Color, factor: f32) -> Color {
     }
 }
 
-/// Get card type color (bright version for hand/active display)
-pub fn get_card_color_bright(card_type: &str) -> Color {
-    match card_type {
-        "Product" => PRODUCT_CARD_COLOR,
-        "Location" => LOCATION_CARD_COLOR,
-        "Evidence" => EVIDENCE_CARD_COLOR,
-        "Cover" => COVER_CARD_COLOR,
-        "DealModifier" => DEAL_MODIFIER_CARD_COLOR,
-        "Insurance" => INSURANCE_CARD_COLOR,
-        "Conviction" => CONVICTION_CARD_COLOR,
-        _ => DEFAULT_CARD_COLOR,
-    }
-}
-
-/// Get card type color (dim version for played/inactive display)
-pub fn get_card_color_dim(card_type: &str) -> Color {
-    match card_type {
-        "Product" => PRODUCT_CARD_COLOR_DIM,
-        "Location" => LOCATION_CARD_COLOR_DIM,
-        "Evidence" => EVIDENCE_CARD_COLOR_DIM,
-        "Cover" => COVER_CARD_COLOR_DIM,
-        "DealModifier" => DEAL_MODIFIER_CARD_COLOR_DIM,
-        "Insurance" => INSURANCE_CARD_COLOR_DIM,
-        "Conviction" => CONVICTION_CARD_COLOR_DIM,
-        _ => DEFAULT_CARD_COLOR_DIM,
-    }
-}
+// SOW-AAA: get_card_color_bright and get_card_color_dim removed (unused)

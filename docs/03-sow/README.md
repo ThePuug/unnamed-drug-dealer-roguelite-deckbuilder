@@ -18,6 +18,7 @@ SOWs are work orders for developers. Each SOW defines what needs to be built, wh
 | 010 | Buyer Scenarios and Product/Location Expansion | 🃏 Cards | ✅ Merged | 2025-11-15 | 13-17 hours | ~11 hours |
 | 011-A | UI Refactor - Core Layout & Foundation | 🎨 UI | ✅ Merged | 2025-11-15 | 14-18 hours | ~11.5 hours |
 | 011-B | UI Refactor - Hand Resolution & Polish | 🎨 UI | ✅ Merged | 2025-11-15 | 8-10 hours | ~5 hours |
+| AAA | Code Organization - main.rs Modularization | 🛠️ Dev Tools | 🔄 In Progress | 2025-11-15 | 16-24 hours | ~3 hours (Phases 1-4) |
 
 **Legend:**
 - **Status:** ✅ Accepted/Merged | 🔄 In Progress/Review | 📝 Planned/Proposed | ❌ Rejected

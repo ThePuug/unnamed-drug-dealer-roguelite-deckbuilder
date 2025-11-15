@@ -1,0 +1,10 @@
+// SOW-AAA: Systems module
+// Bevy systems extracted from main.rs
+
+pub mod input;
+pub mod ui_update;
+pub mod game_loop;
+
+pub use input::*;
+pub use ui_update::*;
+pub use game_loop::*;

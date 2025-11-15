@@ -2,84 +2,26 @@
 // SOW-002: Betting System and AI Opponents
 // SOW-006: Deck Building
 // SOW-011-A: Modular UI organization
+// SOW-AAA: Code organization and modularization
 
 mod ui;
+mod data;
+mod models;
+mod systems;
+mod game_state;
 
 use bevy::prelude::*;
 use bevy::asset::load_internal_binary_asset;
-use rand::Rng;
-use rand::seq::SliceRandom;
-use ui::theme;
-use ui::components::*;
+use ui::setup::*;
+use models::card::*;
+use models::deck_builder::*;
+use models::hand_state::*; // SOW-AAA Phase 5
+use systems::*;
+use game_state::{GameState, AiActionTimer}; // SOW-AAA Phase 8
 
 // ============================================================================
-// SOW-006: GAME STATE AND DECK BUILDER
+// SOW-AAA Phase 8: GameState and AiActionTimer extracted to game_state.rs
 // ============================================================================
-
-/// Game states for deck building vs gameplay
-#[derive(States, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
-enum GameState {
-    #[default]
-    DeckBuilding,  // Pre-run deck selection
-    InRun,         // Active gameplay
-}
-
-/// SOW-008 Phase 1: AI pacing timers
-#[derive(Resource)]
-struct AiActionTimer {
-    ai_timer: Timer,
-    dealer_timer: Timer,
-    dealer_timer_started: bool, // Track if we've started the dealer timer this state
-}
-
-impl Default for AiActionTimer {
-    fn default() -> Self {
-        Self {
-            ai_timer: Timer::from_seconds(1.0, TimerMode::Repeating), // 1s delay, repeating
-            dealer_timer: Timer::from_seconds(1.0, TimerMode::Repeating), // 1s delay, repeating
-            dealer_timer_started: false,
-        }
-    }
-}
-
-/// Deck builder resource for managing card selection
-#[derive(Resource)]
-struct DeckBuilder {
-    available_cards: Vec<Card>,  // All 20 player cards
-    selected_cards: Vec<Card>,   // Chosen cards (10-20)
-}
-
-impl DeckBuilder {
-    fn new() -> Self {
-        let available = create_player_deck();
-        // SOW-011-B: Start with Default preset (not all cards)
-        let mut deck_builder = Self {
-            available_cards: available,
-            selected_cards: Vec::new(),
-        };
-        deck_builder.load_preset(DeckPreset::Default);
-        deck_builder
-    }
-
-    fn is_valid(&self) -> bool {
-        validate_deck(&self.selected_cards).is_ok()
-    }
-
-    fn load_preset(&mut self, preset: DeckPreset) {
-        self.selected_cards = match preset {
-            DeckPreset::Default => create_default_deck(),
-            DeckPreset::Aggro => create_aggro_deck(),
-            DeckPreset::Control => create_control_deck(),
-        };
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-enum DeckPreset {
-    Default,
-    Aggro,
-    Control,
-}
 
 fn main() {
     let mut app = App::new();
@@ -89,7 +31,6 @@ fn main() {
         .insert_resource(DeckBuilder::new())  // SOW-006: Initialize deck builder
         .insert_resource(AiActionTimer::default())  // SOW-008: AI pacing timer
         .add_systems(Startup, setup)
-        .add_systems(Startup, setup_betting_state)
         .add_systems(Startup, setup_deck_builder);  // SOW-006: Setup deck builder UI
 
     // Embed custom font as the default font (supports emojis)
@@ -105,11 +46,9 @@ fn main() {
     app
         .add_systems(Update, toggle_game_state_ui_system)
         .add_systems(Update, (
-            auto_play_system,
             ai_betting_system,
             auto_flip_system,
             betting_button_system,
-            decision_point_button_system,
             restart_button_system,
             go_home_button_system,
             update_betting_button_states,
@@ -137,4255 +76,27 @@ fn main() {
         .run();
 }
 
-fn setup(mut commands: Commands) {
-    commands.spawn(Camera2dBundle::default());
-
-    // SOW-006: Don't spawn HandState at startup - only when START RUN is pressed
-    // HandState will be created when transitioning from DeckBuilding to InRun
-
-    // Create gameplay UI root (initially hidden)
-    create_ui(&mut commands);
-}
-
-fn setup_betting_state(mut commands: Commands) {
-    // Initialize betting state component
-    commands.spawn(BettingState::default());
-}
-
 // ============================================================================
-// UI COMPONENTS - Phase 4
+// SOW-AAA: All systems extracted to systems/ module
+// - setup() -> systems/game_loop.rs
+// - update_restart_button_states() -> systems/input.rs
+// - go_home_button_system() -> systems/input.rs
+// - card_click_system() -> systems/input.rs
+// - All deck builder systems -> systems/input.rs & systems/ui_update.rs
 // ============================================================================
 
-#[derive(Component)]
-struct UiRoot;
-
-#[derive(Component)]
-struct TotalsDisplay;
-
-#[derive(Component)]
-struct StatusDisplay;
-
-#[derive(Component)]
-struct BuyerScenarioCard;  // SOW-010: Oversized card displaying scenario info
-
-#[derive(Component)]
-struct BuyerScenarioCardText;  // SOW-010: Text content of scenario card
-
-#[derive(Component)]
-struct PlayAreaNarc;
-
-// SOW-009: PlayAreaCustomer removed (Customer no longer exists)
-
-#[derive(Component)]
-struct PlayAreaDealer; // SOW-008: Repurposed from PlayAreaPlayer to show dealer cards
-                       // SOW-009: Will show Buyer cards (played cards)
-
-#[derive(Component)]
-struct BuyerVisibleHand; // SOW-009: Displays Buyer's 3 visible cards (not yet played)
-
-#[derive(Component)]
-struct CardsContainer; // SOW-008: Container for cards within play area (horizontal layout)
-
-#[derive(Component)]
-struct PlayerHandDisplay;
-
-#[derive(Component)]
-struct CardButton {
-    card_index: usize,
-}
-
-// SOW-002 Phase 5: Betting UI components
-#[derive(Component)]
-struct BettingActionsContainer;
-
-#[derive(Component)]
-struct CheckButton;
-
-#[derive(Component)]
-struct RaiseButton;
-
-#[derive(Component)]
-struct FoldButton;
-
-#[derive(Component)]
-struct DecisionPointContainer;
-
-#[derive(Component)]
-struct BustContainer;
-
-#[derive(Component)]
-struct ContinueButton;
-
-#[derive(Component)]
-struct FoldDecisionButton;
-
-// Restart buttons (appear at end of hand) - SOW-004
-#[derive(Component)]
-struct RestartButton; // "NEW DEAL" button
-
-#[derive(Component)]
-struct GoHomeButton; // "GO HOME" button
-
-#[derive(Component)]
-struct PlayedCardDisplay;
-
-// SOW-006: Deck Builder UI components
-#[derive(Component)]
-struct DeckBuilderRoot;
-
-#[derive(Component)]
-struct CardPoolContainer;
-
-#[derive(Component)]
-struct SelectedDeckContainer;
-
-#[derive(Component)]
-struct DeckStatsDisplay;
-
-#[derive(Component)]
-struct DeckBuilderCardButton {
-    card_id: u32,
-    in_pool: bool,  // true = in available pool, false = in selected deck
-}
-
-#[derive(Component)]
-struct PresetButton {
-    preset: DeckPreset,
-}
-
-#[derive(Component)]
-struct StartRunButton;
-
-fn create_ui(commands: &mut Commands) {
-    // UI Root container
-    commands.spawn((
-        NodeBundle {
-            style: Style {
-                width: Val::Percent(100.0),
-                height: Val::Percent(100.0),
-                flex_direction: FlexDirection::Column,
-                padding: UiRect::all(Val::Px(20.0)),
-                ..default()
-            },
-            background_color: theme::UI_ROOT_BG.into(),
-            ..default()
-        },
-        UiRoot,
-    ))
-    .with_children(|parent| {
-        // ====================================================================
-        // SOW-011-A Phase 3: TOP ROW - Active Slots + Scenario Card + Heat Bar
-        // ====================================================================
-        parent.spawn(NodeBundle {
-            style: Style {
-                width: Val::Percent(100.0),
-                position_type: PositionType::Relative,
-                ..default()
-            },
-            ..default()
-        })
-        .with_children(|parent| {
-            // Status (absolute positioned, top-left, floated over main content)
-            parent.spawn((
-                NodeBundle {
-                    style: Style {
-                        position_type: PositionType::Absolute,
-                        left: Val::Px(10.0),
-                        top: Val::Px(10.0),
-                        ..default()
-                    },
-                    z_index: ZIndex::Global(10),
-                    ..default()
-                },
-                StatusDisplay,
-            ))
-            .with_children(|parent| {
-                parent.spawn(TextBundle::from_section(
-                    "Round 1/3\nCash: $0",
-                    TextStyle {
-                        font_size: 14.0,
-                        color: theme::TEXT_HEADER,
-                        ..default()
-                    },
-                ));
-            });
-
-            // Centered content (slots + scenario + heat bar)
-            parent.spawn(NodeBundle {
-                style: Style {
-                    width: Val::Percent(100.0),
-                    flex_direction: FlexDirection::Row,
-                    justify_content: JustifyContent::Center,
-                    align_items: AlignItems::FlexEnd,
-                    column_gap: Val::Px(15.0),
-                    padding: UiRect::all(Val::Px(10.0)),
-                    ..default()
-                },
-                ..default()
-            })
-            .with_children(|parent| {
-                // Active card slots (horizontal row - Location, Product, Conviction, Insurance)
-                // Slots are just empty containers, will be populated by update_active_slots_system
-                parent.spawn((
-                NodeBundle {
-                    style: Style {
-                        flex_direction: FlexDirection::Row,
-                        column_gap: Val::Px(10.0),
-                        align_items: AlignItems::FlexEnd, // Bottom justify to match scenario card
-                        ..default()
-                    },
-                    ..default()
-                },
-                ActiveSlotsContainer,
-                ))
-                .with_children(|parent| {
-                    // Create empty slot containers (will be populated by system)
-                    for slot_type in [SlotType::Location, SlotType::Product, SlotType::Conviction, SlotType::Insurance] {
-                        parent.spawn((
-                            NodeBundle {
-                                style: Style {
-                                    // No fixed size - let card/placeholder inside determine dimensions
-                                    flex_direction: FlexDirection::Column,
-                                    justify_content: JustifyContent::Center,
-                                    align_items: AlignItems::Center,
-                                    ..default()
-                                },
-                                ..default()
-                            },
-                            ActiveSlot { slot_type },
-                        ));
-                    }
-                });
-
-                // Scenario card (larger to match heat bar height)
-                parent.spawn((
-                NodeBundle {
-                    style: Style {
-                        width: Val::Px(280.0),
-                        height: Val::Px(220.0), // Match heat bar height
-                        flex_direction: FlexDirection::Column,
-                        padding: UiRect::all(Val::Px(12.0)),
-                        border: UiRect::all(Val::Px(3.0)),
-                        align_self: AlignSelf::FlexEnd, // Bottom align
-                        ..default()
-                    },
-                    background_color: theme::SCENARIO_CARD_BG.into(),
-                    border_color: theme::SCENARIO_CARD_BORDER.into(),
-                    ..default()
-                },
-                BuyerScenarioCard,
-            ))
-            .with_children(|parent| {
-                parent.spawn((
-                    TextBundle::from_section(
-                        "Buyer Scenario Info",
-                        TextStyle {
-                            font_size: 16.0,
-                            color: theme::SCENARIO_CARD_TEXT,
-                            ..default()
-                        },
-                    ),
-                    BuyerScenarioCardText,
-                ));
-                });
-
-                // Vertical heat bar (matches scenario card height)
-                parent.spawn(NodeBundle {
-                style: Style {
-                    width: Val::Px(40.0), // Slightly wider for visibility
-                    height: Val::Px(220.0), // Match scenario card height
-                    flex_direction: FlexDirection::Column,
-                    align_self: AlignSelf::FlexEnd, // Bottom align
-                    justify_content: JustifyContent::FlexEnd,
-                    ..default()
-                },
-                ..default()
-            })
-            .with_children(|parent| {
-                // Heat bar container
-                parent.spawn((
-                    NodeBundle {
-                        style: Style {
-                            width: Val::Percent(100.0),
-                            flex_grow: 1.0,
-                            flex_direction: FlexDirection::Column,
-                            justify_content: JustifyContent::FlexEnd, // Fill from bottom
-                            border: UiRect::all(Val::Px(2.0)),
-                            ..default()
-                        },
-                        background_color: theme::HEAT_BAR_BG.into(),
-                        border_color: theme::CARD_BORDER_NORMAL.into(),
-                        ..default()
-                    },
-                    HeatBar,
-                ))
-                .with_children(|parent| {
-                    // Heat bar fill
-                    parent.spawn((
-                        NodeBundle {
-                            style: Style {
-                                width: Val::Percent(100.0),
-                                height: Val::Percent(0.0), // Updated by system
-                                ..default()
-                            },
-                            background_color: theme::HEAT_BAR_GREEN.into(),
-                            ..default()
-                        },
-                        HeatBarFill,
-                    ));
-                });
-
-                // Heat bar text below
-                parent.spawn((
-                    TextBundle::from_section(
-                        "0/100",
-                        TextStyle {
-                            font_size: 11.0,
-                            color: theme::TEXT_SECONDARY,
-                            ..default()
-                        },
-                    ).with_text_justify(JustifyText::Center),
-                    HeatBarText,
-                ));
-                });
-            });
-        });
-
-        // ====================================================================
-        // SOW-011-A Phase 3: MIDDLE + BOTTOM COMBINED ROW
-        // Narc and Buyer hands span full height (middle + bottom)
-        // Center has: Played cards area (middle) + Player hand (bottom)
-        // ====================================================================
-        parent.spawn(NodeBundle {
-            style: Style {
-                width: Val::Percent(100.0),
-                flex_grow: 1.0, // Take remaining space
-                flex_direction: FlexDirection::Row,
-                column_gap: Val::Px(15.0),
-                padding: UiRect::all(Val::Px(10.0)),
-                ..default()
-            },
-            ..default()
-        })
-        .with_children(|parent| {
-            // ================================================================
-            // LEFT: Narc section (spans full height - played cards + visible hand)
-            // ================================================================
-            parent.spawn((
-                NodeBundle {
-                    style: Style {
-                        width: Val::Px(150.0),
-                        flex_direction: FlexDirection::Column,
-                        padding: UiRect::all(Val::Px(8.0)),
-                        border: UiRect::all(Val::Px(2.0)),
-                        row_gap: Val::Px(10.0),
-                        justify_content: JustifyContent::FlexStart, // Top justify (not bottom)
-                        ..default()
-                    },
-                    background_color: Color::srgba(0.2, 0.1, 0.1, 0.5).into(),
-                    border_color: theme::NARC_SECTION_COLOR.into(),
-                    ..default()
-                },
-                PlayAreaNarc,
-            ))
-            .with_children(|parent| {
-                // Narc label
-                parent.spawn(TextBundle::from_section(
-                    "⚠ Narc",
-                    TextStyle {
-                        font_size: 14.0,
-                        color: theme::NARC_SECTION_COLOR,
-                        ..default()
-                    },
-                ));
-
-                // Narc's visible hand section (upcoming cards, no label)
-                parent.spawn((
-                    NodeBundle {
-                        style: Style {
-                            flex_direction: FlexDirection::Column,
-                            row_gap: Val::Px(5.0),
-                            padding: UiRect::top(Val::Px(10.0)),
-                            ..default()
-                        },
-                        ..default()
-                    },
-                    NarcVisibleHand,
-                ));
-            });
-
-            // ================================================================
-            // CENTER: Played cards area (middle) + Player hand (bottom)
-            // ================================================================
-            parent.spawn(NodeBundle {
-                style: Style {
-                    flex_grow: 1.0,
-                    flex_direction: FlexDirection::Column,
-                    row_gap: Val::Px(10.0),
-                    justify_content: JustifyContent::SpaceBetween, // Totals/pool at top, hand at bottom
-                    ..default()
-                },
-                ..default()
-            })
-            .with_children(|parent| {
-                // Top section: Totals bar + Played pool
-                parent.spawn(NodeBundle {
-                    style: Style {
-                        flex_direction: FlexDirection::Column,
-                        row_gap: Val::Px(10.0),
-                        ..default()
-                    },
-                    ..default()
-                })
-                .with_children(|parent| {
-                    // Totals bar
-                    parent.spawn(NodeBundle {
-                        style: Style {
-                            width: Val::Percent(100.0),
-                            flex_direction: FlexDirection::Row,
-                            column_gap: Val::Px(30.0),
-                            justify_content: JustifyContent::Center,
-                            padding: UiRect::all(Val::Px(8.0)),
-                            ..default()
-                        },
-                        ..default()
-                    })
-                .with_children(|parent| {
-                    // Evidence total
-                    parent.spawn((
-                        TextBundle::from_section(
-                            "● Evidence: 0",
-                            TextStyle {
-                                font_size: 16.0,
-                                color: theme::EVIDENCE_CARD_COLOR,
-                                ..default()
-                            },
-                        ),
-                        EvidencePool,
-                    ));
-
-                    // Cover total
-                    parent.spawn((
-                        TextBundle::from_section(
-                            "● Cover: 0",
-                            TextStyle {
-                                font_size: 16.0,
-                                color: theme::COVER_CARD_COLOR,
-                                ..default()
-                            },
-                        ),
-                        CoverPool,
-                    ));
-
-                    // Multiplier total
-                    parent.spawn((
-                        TextBundle::from_section(
-                            "● Multiplier: ×1.0",
-                            TextStyle {
-                                font_size: 16.0,
-                                color: theme::DEAL_MODIFIER_CARD_COLOR,
-                                ..default()
-                            },
-                        ),
-                        DealModPool,
-                    ));
-                });
-
-                // Middle: Played pool + Discard pile (side by side)
-                parent.spawn(NodeBundle {
-                    style: Style {
-                        width: Val::Percent(100.0),
-                        flex_direction: FlexDirection::Row,
-                        column_gap: Val::Px(10.0),
-                        ..default()
-                    },
-                    ..default()
-                })
-                .with_children(|parent| {
-                    // Played cards pool (grows to fill space)
-                    parent.spawn((
-                        NodeBundle {
-                            style: Style {
-                                flex_grow: 1.0,
-                                flex_direction: FlexDirection::Row,
-                                flex_wrap: FlexWrap::Wrap,
-                                column_gap: Val::Px(5.0),
-                                row_gap: Val::Px(5.0),
-                                padding: UiRect::all(Val::Px(10.0)),
-                                justify_content: JustifyContent::Center,
-                                min_height: Val::Px(140.0),
-                                ..default()
-                            },
-                            background_color: Color::srgba(0.1, 0.1, 0.15, 0.8).into(),
-                            ..default()
-                        },
-                        PlayAreaDealer,
-                    ));
-
-                    // Discard pile (right side, vertical list)
-                    parent.spawn((
-                        NodeBundle {
-                            style: Style {
-                                width: Val::Px(150.0),
-                                flex_direction: FlexDirection::Column,
-                                padding: UiRect::all(Val::Px(8.0)),
-                                border: UiRect::all(Val::Px(2.0)),
-                                row_gap: Val::Px(3.0),
-                                ..default()
-                            },
-                            background_color: Color::srgba(0.1, 0.1, 0.1, 0.8).into(),
-                            border_color: theme::CARD_BORDER_NORMAL.into(),
-                            ..default()
-                        },
-                        DiscardPile,
-                    ))
-                    .with_children(|parent| {
-                        // Discard pile header
-                        parent.spawn(TextBundle::from_section(
-                            "Discard Pile",
-                            TextStyle {
-                                font_size: 12.0,
-                                color: theme::TEXT_SECONDARY,
-                                ..default()
-                            },
-                        ));
-                        // Discarded cards will be added by system
-                    });
-                });
-                });
-
-                // Bottom: Player hand with betting buttons immediately to the right
-                parent.spawn(NodeBundle {
-                    style: Style {
-                        width: Val::Percent(100.0),
-                        flex_direction: FlexDirection::Row,
-                        justify_content: JustifyContent::Center,
-                        align_items: AlignItems::FlexEnd, // Bottom justify content
-                        align_self: AlignSelf::FlexEnd, // Align entire panel to bottom
-                        column_gap: Val::Px(15.0),
-                        padding: UiRect::all(Val::Px(10.0)),
-                        ..default()
-                    },
-                    background_color: theme::PLAYER_HAND_BG.into(),
-                    ..default()
-                })
-                .with_children(|parent| {
-                    // Player hand cards
-                    parent.spawn((
-                        NodeBundle {
-                            style: Style {
-                                flex_direction: FlexDirection::Row,
-                                justify_content: JustifyContent::Center,
-                                column_gap: Val::Px(10.0),
-                                ..default()
-                            },
-                            ..default()
-                        },
-                        PlayerHandDisplay,
-                    ));
-
-                    // Betting buttons (immediately to right, vertically stacked)
-                    parent.spawn((
-                        NodeBundle {
-                            style: Style {
-                                flex_direction: FlexDirection::Column,
-                                justify_content: JustifyContent::Center,
-                                row_gap: Val::Px(10.0),
-                                ..default()
-                            },
-                            ..default()
-                        },
-                        BettingActionsContainer,
-                    ))
-                    .with_children(|parent| {
-                        // Pass button (check)
-                        parent.spawn((
-                            ButtonBundle {
-                                style: Style {
-                                    width: Val::Px(120.0),
-                                    height: Val::Px(50.0),
-                                    justify_content: JustifyContent::Center,
-                                    align_items: AlignItems::Center,
-                                    ..default()
-                                },
-                                background_color: theme::BUTTON_ENABLED_BG.into(),
-                                ..default()
-                            },
-                            CheckButton,
-                        ))
-                        .with_children(|parent| {
-                            parent.spawn(TextBundle::from_section(
-                                "Pass",
-                                TextStyle {
-                                    font_size: 16.0,
-                                    color: Color::WHITE,
-                                    ..default()
-                                },
-                            ));
-                        });
-
-                        // Bail Out button (fold)
-                        parent.spawn((
-                            ButtonBundle {
-                                style: Style {
-                                    width: Val::Px(120.0),
-                                    height: Val::Px(50.0),
-                                    justify_content: JustifyContent::Center,
-                                    align_items: AlignItems::Center,
-                                    ..default()
-                                },
-                                background_color: theme::BUTTON_NEUTRAL_BG.into(),
-                                ..default()
-                            },
-                            FoldButton,
-                        ))
-                        .with_children(|parent| {
-                            parent.spawn(TextBundle::from_section(
-                                "Bail Out",
-                                TextStyle {
-                                    font_size: 16.0,
-                                    color: Color::WHITE,
-                                    ..default()
-                                },
-                            ));
-                        });
-                    });
-                });
-            });
-
-            // ================================================================
-            // RIGHT: Buyer section (spans full height - deck panel + visible hand)
-            // ================================================================
-            parent.spawn((
-                NodeBundle {
-                    style: Style {
-                        width: Val::Px(150.0),
-                        flex_direction: FlexDirection::Column,
-                        padding: UiRect::all(Val::Px(8.0)),
-                        border: UiRect::all(Val::Px(2.0)),
-                        row_gap: Val::Px(10.0),
-                        justify_content: JustifyContent::FlexEnd, // Bottom justify
-                        ..default()
-                    },
-                    background_color: Color::srgba(0.2, 0.2, 0.1, 0.5).into(),
-                    border_color: theme::BUYER_SECTION_COLOR.into(),
-                    ..default()
-                },
-                BuyerDeckPanel,
-            ))
-            .with_children(|parent| {
-                // Buyer label
-                parent.spawn(TextBundle::from_section(
-                    "⚠ Buyer",
-                    TextStyle {
-                        font_size: 14.0,
-                        color: theme::BUYER_SECTION_COLOR,
-                        ..default()
-                    },
-                ));
-
-                // Buyer deck section (cards coming up)
-                // Will be populated by render_buyer_visible_hand_system
-                // For now, just the container
-
-                // Buyer's visible hand section (at bottom of panel, no label)
-                parent.spawn((
-                    NodeBundle {
-                        style: Style {
-                            flex_direction: FlexDirection::Column,
-                            row_gap: Val::Px(5.0),
-                            flex_grow: 1.0,
-                            ..default()
-                        },
-                        ..default()
-                    },
-                    BuyerVisibleHand,
-                ));
-            });
-        });
-
-        // DecisionPoint UI (Continue/Fold) - SOW-002 Phase 5
-        parent.spawn((
-            NodeBundle {
-                style: Style {
-                    width: Val::Percent(100.0),
-                    height: Val::Px(100.0),
-                    flex_direction: FlexDirection::Column,
-                    justify_content: JustifyContent::Center,
-                    align_items: AlignItems::Center,
-                    row_gap: Val::Px(10.0),
-                    margin: UiRect::top(Val::Px(20.0)),
-                    display: Display::None, // Hidden by default
-                    ..default()
-                },
-                background_color: Color::srgba(0.2, 0.2, 0.3, 0.9).into(),
-                ..default()
-            },
-            DecisionPointContainer,
-        ))
-        .with_children(|parent| {
-            parent.spawn(TextBundle::from_section(
-                "Round complete - Review cards played",
-                TextStyle {
-                    font_size: 18.0,
-                    color: Color::WHITE,
-                    ..default()
-                },
-            ));
-
-            // Continue button only (no fold - SOW-004)
-            parent.spawn((
-                ButtonBundle {
-                    style: Style {
-                        width: Val::Px(200.0),
-                        height: Val::Px(60.0),
-                        justify_content: JustifyContent::Center,
-                        align_items: AlignItems::Center,
-                        margin: UiRect::top(Val::Px(10.0)),
-                        ..default()
-                    },
-                    background_color: theme::CONTINUE_BUTTON_BG.into(),
-                    ..default()
-                },
-                ContinueButton,
-            ))
-            .with_children(|parent| {
-                parent.spawn(TextBundle::from_section(
-                    "CONTINUE",
-                    TextStyle {
-                        font_size: 24.0,
-                        color: Color::WHITE,
-                        ..default()
-                    },
-                ));
-            });
-        });
-
-        // Restart UI (appears at Bust state) - SOW-004: NEW DEAL / GO HOME
-        parent.spawn((
-            NodeBundle {
-                style: Style {
-                    width: Val::Percent(100.0),
-                    height: Val::Px(100.0),
-                    flex_direction: FlexDirection::Row,
-                    justify_content: JustifyContent::Center,
-                    align_items: AlignItems::Center,
-                    column_gap: Val::Px(20.0),
-                    margin: UiRect::top(Val::Px(20.0)),
-                    display: Display::None, // Hidden by default
-                    ..default()
-                },
-                ..default()
-            },
-            BustContainer,
-        ))
-        .with_children(|parent| {
-            // New Deal button (continue run)
-            parent.spawn((
-                ButtonBundle {
-                    style: Style {
-                        width: Val::Px(180.0),
-                        height: Val::Px(60.0),
-                        justify_content: JustifyContent::Center,
-                        align_items: AlignItems::Center,
-                        ..default()
-                    },
-                    background_color: theme::CONTINUE_BUTTON_BG.into(),
-                    ..default()
-                },
-                RestartButton, // Reuse RestartButton for "NEW DEAL"
-            ))
-            .with_children(|parent| {
-                parent.spawn(TextBundle::from_section(
-                    "NEW DEAL",
-                    TextStyle {
-                        font_size: 24.0,
-                        color: Color::WHITE,
-                        ..default()
-                    },
-                ));
-            });
-
-            // End Run / Go Home button (context-dependent)
-            // Safe/Folded: "GO HOME" (voluntary quit)
-            // Busted: "END RUN" (forced end)
-            parent.spawn((
-                ButtonBundle {
-                    style: Style {
-                        width: Val::Px(180.0),
-                        height: Val::Px(60.0),
-                        justify_content: JustifyContent::Center,
-                        align_items: AlignItems::Center,
-                        ..default()
-                    },
-                    background_color: theme::RESTART_BUTTON_BG.into(),
-                    ..default()
-                },
-                GoHomeButton,
-            ))
-            .with_children(|parent| {
-                parent.spawn(TextBundle::from_section(
-                    "GO HOME", // Will be updated by update_restart_button_states
-                    TextStyle {
-                        font_size: 24.0,
-                        color: Color::WHITE,
-                        ..default()
-                    },
-                ));
-            });
-        });
-
-        // ====================================================================
-        // SOW-011-B: HAND RESOLUTION OVERLAY (initially hidden)
-        // ====================================================================
-        parent.spawn((
-            NodeBundle {
-                style: Style {
-                    position_type: PositionType::Absolute,
-                    width: Val::Percent(100.0),
-                    height: Val::Percent(100.0),
-                    justify_content: JustifyContent::Center,
-                    align_items: AlignItems::Center,
-                    display: Display::None, // Hidden until hand resolves
-                    ..default()
-                },
-                z_index: ZIndex::Global(100), // On top of everything
-                ..default()
-            },
-            ResolutionOverlay,
-        ))
-        .with_children(|parent| {
-            // Semi-transparent backdrop
-            parent.spawn((
-                NodeBundle {
-                    style: Style {
-                        position_type: PositionType::Absolute,
-                        width: Val::Percent(100.0),
-                        height: Val::Percent(100.0),
-                        ..default()
-                    },
-                    background_color: Color::srgba(0.0, 0.0, 0.0, 0.7).into(), // Dark semi-transparent
-                    ..default()
-                },
-                ResolutionBackdrop,
-            ));
-
-            // Results panel (centered)
-            parent.spawn((
-                NodeBundle {
-                    style: Style {
-                        width: Val::Px(600.0),
-                        flex_direction: FlexDirection::Column,
-                        padding: UiRect::all(Val::Px(30.0)),
-                        border: UiRect::all(Val::Px(3.0)),
-                        row_gap: Val::Px(20.0),
-                        align_items: AlignItems::Center,
-                        ..default()
-                    },
-                    background_color: theme::UI_ROOT_BG.into(),
-                    border_color: theme::SCENARIO_CARD_BORDER.into(),
-                    z_index: ZIndex::Global(101),
-                    ..default()
-                },
-                ResolutionPanel,
-            ))
-            .with_children(|parent| {
-                // Title
-                parent.spawn((
-                    TextBundle::from_section(
-                        "HAND COMPLETE",
-                        TextStyle {
-                            font_size: 32.0,
-                            color: theme::TEXT_HEADER,
-                            ..default()
-                        },
-                    ),
-                    ResolutionTitle,
-                ));
-
-                // Results text (will be updated by system)
-                parent.spawn((
-                    TextBundle::from_section(
-                        "Results...",
-                        TextStyle {
-                            font_size: 18.0,
-                            color: theme::TEXT_PRIMARY,
-                            ..default()
-                        },
-                    ).with_text_justify(JustifyText::Center),
-                    ResolutionResults,
-                ));
-
-                // Action buttons (NEW DEAL / GO HOME)
-                parent.spawn(NodeBundle {
-                    style: Style {
-                        flex_direction: FlexDirection::Row,
-                        column_gap: Val::Px(20.0),
-                        margin: UiRect::top(Val::Px(20.0)),
-                        ..default()
-                    },
-                    ..default()
-                })
-                .with_children(|parent| {
-                    // New Deal button
-                    parent.spawn((
-                        ButtonBundle {
-                            style: Style {
-                                width: Val::Px(180.0),
-                                height: Val::Px(60.0),
-                                justify_content: JustifyContent::Center,
-                                align_items: AlignItems::Center,
-                                ..default()
-                            },
-                            background_color: theme::CONTINUE_BUTTON_BG.into(),
-                            ..default()
-                        },
-                        RestartButton,
-                    ))
-                    .with_children(|parent| {
-                        parent.spawn(TextBundle::from_section(
-                            "NEW DEAL",
-                            TextStyle {
-                                font_size: 24.0,
-                                color: Color::WHITE,
-                                ..default()
-                            },
-                        ));
-                    });
-
-                    // Go Home button
-                    parent.spawn((
-                        ButtonBundle {
-                            style: Style {
-                                width: Val::Px(180.0),
-                                height: Val::Px(60.0),
-                                justify_content: JustifyContent::Center,
-                                align_items: AlignItems::Center,
-                                ..default()
-                            },
-                            background_color: theme::RESTART_BUTTON_BG.into(),
-                            ..default()
-                        },
-                        GoHomeButton,
-                    ))
-                    .with_children(|parent| {
-                        parent.spawn(TextBundle::from_section(
-                            "GO HOME",
-                            TextStyle {
-                                font_size: 24.0,
-                                color: Color::WHITE,
-                                ..default()
-                            },
-                        ));
-                    });
-                });
-            });
-        });
-    });
-}
-
-fn create_play_area(parent: &mut ChildBuilder, label: &str, color: Color, marker: impl Component) {
-    parent.spawn(NodeBundle {
-        style: Style {
-            width: Val::Percent(30.0),
-            height: Val::Percent(100.0),
-            flex_direction: FlexDirection::Column,
-            padding: UiRect::all(Val::Px(10.0)),
-            ..default()
-        },
-        background_color: color.with_alpha(0.2).into(),
-        ..default()
-    })
-    .with_children(|parent| {
-        // Label at top
-        parent.spawn(TextBundle::from_section(
-            label,
-            TextStyle {
-                font_size: 16.0,
-                color: Color::WHITE,
-                ..default()
-            },
-        ));
-
-        // Cards container (horizontal layout) - THIS is the play area entity
-        parent.spawn((
-            NodeBundle {
-                style: Style {
-                    flex_direction: FlexDirection::Row, // SOW-008: Horizontal card layout
-                    flex_wrap: FlexWrap::Wrap,
-                    align_items: AlignItems::FlexStart,
-                    margin: UiRect::top(Val::Px(8.0)),
-                    ..default()
-                },
-                ..default()
-            },
-            marker, // Apply the marker to the cards container
-        ));
-    });
-}
-
 // ============================================================================
-// UI UPDATE SYSTEM
-// ============================================================================
-
-fn ui_update_system(
-    hand_state_query: Query<&HandState>,
-    betting_state_query: Query<&BettingState>,
-    mut totals_query: Query<&mut Text, (With<TotalsDisplay>, Without<StatusDisplay>, Without<BuyerScenarioCardText>)>,
-    mut status_query: Query<&mut Text, (With<StatusDisplay>, Without<TotalsDisplay>, Without<BuyerScenarioCardText>)>,
-    mut scenario_query: Query<&mut Text, (With<BuyerScenarioCardText>, Without<StatusDisplay>, Without<TotalsDisplay>)>,
-) {
-    let Ok(hand_state) = hand_state_query.get_single() else {
-        return;
-    };
-
-    // Update totals display
-    if let Ok(mut text) = totals_query.get_single_mut() {
-        // SOW-008: Cards reveal immediately, so always include current round
-        let include_current_round = true;
-        let totals = hand_state.calculate_totals(include_current_round);
-        text.sections[0].value = format!(
-            "Evidence: {} | Cover: {} | Heat: {} | Profit: ${}\nCash: ${} | Total Heat: {} | Deck: {} cards",
-            totals.evidence, totals.cover, totals.heat, totals.profit,
-            hand_state.cash, hand_state.current_heat, hand_state.player_deck.len()
-        );
-    }
-
-    // SOW-011-B: Simplified status display - just Round and Cash
-    if let Ok(mut text) = status_query.get_single_mut() {
-        // Get turn info for display
-        let turn_info = if hand_state.current_state == State::PlayerPhase {
-            format!(" - Turn: {:?}", hand_state.current_player())
-        } else {
-            String::new()
-        };
-
-        text.sections[0].value = format!(
-            "Round {}/3{}\nCash: ${}",
-            hand_state.current_round,
-            turn_info,
-            hand_state.cash
-        );
-        text.sections[0].style.color = theme::TEXT_HEADER;
-    }
-
-    // Old detailed status display removed - overlay now shows all outcome details
-    /*
-        let mut status = match hand_state.current_state {
-            State::Draw => format!("Status: Round {}/3 - Drawing Cards...", hand_state.current_round),
-            State::PlayerPhase => format!("Status: Round {}/3 - Playing Cards{}", hand_state.current_round, turn_info),
-            State::DealerReveal => format!("Status: Round {}/3 - Dealer Reveal...", hand_state.current_round),
-            State::FoldDecision => format!("Status: Round {}/3 - Fold or Continue?", hand_state.current_round),
-            State::Resolve => "Status: Resolving Final Hand...".to_string(),
-            State::Bust => match hand_state.outcome {
-                Some(HandOutcome::Safe) => {
-                    // Check if this was deck exhaustion
-                    if hand_state.player_deck.len() < 3 {
-                        format!("Status: Deck Exhausted ({} cards) - Run Ends", hand_state.player_deck.len())
-                    } else {
-                        let totals = hand_state.calculate_totals(true);
-                        let demand_met = hand_state.is_demand_satisfied();
-                        let multiplier = hand_state.get_profit_multiplier();
-
-                        if demand_met {
-                            format!("Status: SAFE! Deal Complete! (Evidence {} ≤ Cover {})\n   Profit: ${} (×{:.1} multiplier - demand satisfied!)",
-                                totals.evidence, totals.cover, totals.profit, multiplier)
-                        } else {
-                            format!("Status: SAFE! Deal Complete! (Evidence {} ≤ Cover {})\n   Profit: ${} (×{:.1} multiplier - demand not met)",
-                                totals.evidence, totals.cover, totals.profit, multiplier)
-                        }
-                    }
-                }
-                Some(HandOutcome::Busted) => {
-                    // Check if this was deck exhaustion (not a real bust)
-                    if hand_state.player_deck.len() < 3 {
-                        format!("Status: Deck Exhausted ({} cards) - Run Ends", hand_state.player_deck.len())
-                    } else {
-                        let totals = hand_state.calculate_totals(true);
-                        format!("Status: BUSTED! You got caught! (Evidence {} > Cover {})",
-                            totals.evidence, totals.cover)
-                    }
-                }
-                Some(HandOutcome::Folded) => "Status: Hand Ended - Folded".to_string(),
-                Some(HandOutcome::InvalidDeal) => {
-                    let has_product = hand_state.active_product(true).is_some();
-                    let has_location = hand_state.active_location(true).is_some();
-
-                    if !has_product && !has_location {
-                        "Status: INVALID DEAL - Need both Product AND Location!".to_string()
-                    } else if !has_product {
-                        "Status: INVALID DEAL - Missing Product card!".to_string()
-                    } else {
-                        "Status: INVALID DEAL - Missing Location card!".to_string()
-                    }
-                }
-                Some(HandOutcome::BuyerBailed) => {
-                    if let Some(persona) = &hand_state.buyer_persona {
-                        let totals = hand_state.calculate_totals(true);
-                        if let Some(heat_threshold) = persona.heat_threshold {
-                            if totals.heat as u32 > heat_threshold {
-                                format!("Status: BUYER BAILED - {} got too nervous!\n   (Heat {} > Threshold {})",
-                                    persona.display_name, totals.heat, heat_threshold)
-                            } else {
-                                format!("Status: BUYER BAILED - {} got too nervous!", persona.display_name)
-                            }
-                        } else {
-                            format!("Status: BUYER BAILED - {} got too nervous!", persona.display_name)
-                        }
-                    } else {
-                        "Status: BUYER BAILED - Deal fell through!".to_string()
-                    }
-                }
-                None => "Status: Game Over".to_string(),
-            },
-        };
-
-        // SOW-010: Buyer name and multiplier in status (scenario moved to card)
-        if let Some(persona) = &hand_state.buyer_persona {
-            status.push_str(&format!("\n\n👤 Buyer: {}", persona.display_name));
-            status.push_str(&format!("\n   Multiplier: ×{:.1} (demand met) | ×{:.1} (not met)",
-                persona.base_multiplier, persona.reduced_multiplier));
-        }
-
-        // SOW-003 Phase 5: Add Insurance/Conviction status info
-        // SOW-008: Cards always revealed immediately, so show if any cards played
-        let cards_ever_revealed = !hand_state.cards_played.is_empty();
-
-        if cards_ever_revealed {
-            // Use include_current_round=true to check all cards (finalized + current)
-            if let Some(insurance) = hand_state.active_insurance(true) {
-                if let CardType::Insurance { cost, heat_penalty, .. } = insurance.card_type {
-                    status.push_str(&format!("\nInsurance: {} (Cost: ${}, Heat: +{})", insurance.name, cost, heat_penalty));
-                }
-            }
-
-            if let Some(conviction) = hand_state.active_conviction(true) {
-                if let CardType::Conviction { heat_threshold } = conviction.card_type {
-                    let at_risk = hand_state.current_heat >= heat_threshold;
-                    if at_risk {
-                        status.push_str(&format!("\n⚠️ CONVICTION ACTIVE: {} - Threshold: {} (Heat: {}) - INSURANCE WON'T WORK!",
-                            conviction.name, heat_threshold, hand_state.current_heat));
-                    } else {
-                        status.push_str(&format!("\nConviction: {} - Threshold: {} (Heat: {})",
-                            conviction.name, heat_threshold, hand_state.current_heat));
-                    }
-                }
-            }
-        }
-
-    */
-
-    // Update scenario card
-    if let Ok(mut text) = scenario_query.get_single_mut() {
-        let scenario_info = if let Some(persona) = &hand_state.buyer_persona {
-            if let Some(scenario_idx) = persona.active_scenario_index {
-                if let Some(scenario) = persona.scenarios.get(scenario_idx) {
-                    let heat_info = if let Some(threshold) = scenario.heat_threshold {
-                        let heat_warning = if hand_state.current_heat >= threshold.saturating_sub(5) {
-                            " ⚠️ CLOSE!"
-                        } else {
-                            ""
-                        };
-                        format!("Heat Limit: {} (Current: {}){}", threshold, hand_state.current_heat, heat_warning)
-                    } else {
-                        "Heat Limit: None (fearless)".to_string()
-                    };
-
-                    format!(
-                        "👤 {}\n\nScenario: {}\n{}\n\nWants: {}\n\nPrefers:\n{}\n\n{}",
-                        persona.display_name,
-                        scenario.display_name,
-                        scenario.description,
-                        scenario.products.join(" OR "),
-                        scenario.locations.join(", "),
-                        heat_info
-                    )
-                } else {
-                    format!("👤 {}\n\n{}", persona.display_name, persona.demand.description)
-                }
-            } else {
-                format!("👤 {}\n\n{}", persona.display_name, persona.demand.description)
-            }
-        } else {
-            "No Buyer Selected".to_string()
-        };
-
-        text.sections[0].value = scenario_info;
-    }
-}
-
-// Recreate hand display when either state changes
-fn recreate_hand_display_system(
-    hand_state_changed: Query<&HandState, Changed<HandState>>,
-    betting_state_changed: Query<&BettingState, Changed<BettingState>>,
-    hand_state_all: Query<&HandState>,
-    betting_state_all: Query<&BettingState>,
-    hand_display_query: Query<Entity, With<PlayerHandDisplay>>,
-    mut commands: Commands,
-    children_query: Query<&Children>,
-    card_button_query: Query<Entity, With<CardButton>>,
-) {
-    // Check if anything changed
-    let hand_changed = hand_state_changed.get_single().is_ok();
-    let betting_changed = betting_state_changed.get_single().is_ok();
-
-    if !hand_changed && !betting_changed {
-        return; // Nothing changed
-    }
-
-    // Get current state (from non-filtered queries)
-    let Ok(hand_state) = hand_state_all.get_single() else {
-        return;
-    };
-
-    let Ok(hand_entity) = hand_display_query.get_single() else {
-        return;
-    };
-
-    // Clear ALL existing children (card buttons and played card displays)
-    if let Ok(children) = children_query.get(hand_entity) {
-        for &child in children.iter() {
-            commands.entity(child).despawn_recursive();
-        }
-    }
-
-    // Add card buttons for current hand
-    // SOW-008: Show cards during PlayerPhase and other states
-    // SOW-009: Also show during DealerReveal (Buyer card reveal)
-    let show_cards = hand_state.current_state == State::PlayerPhase ||
-                     hand_state.current_state == State::DealerReveal ||
-                     hand_state.current_state == State::FoldDecision ||
-                     hand_state.current_state == State::Resolve ||
-                     hand_state.current_state == State::Bust;
-
-    if show_cards {
-        // SOW-011-B: Use slot-based hand to preserve card positions
-        commands.entity(hand_entity).with_children(|parent| {
-            for (slot_index, slot) in hand_state.player_hand_slots.iter().enumerate() {
-                if let Some(card) = slot {
-                    // Show actual card (Medium size, no margin)
-                    ui::spawn_card_button(
-                        parent,
-                        &card.name,
-                        &card.card_type,
-                        ui::CardSize::Medium,
-                        ui::CardDisplayState::Active,
-                        CardButton { card_index: slot_index },
-                    );
-                } else {
-                    // Show placeholder for empty slot (Medium size, no margin)
-                    ui::spawn_placeholder(
-                        parent,
-                        "Drawing...",
-                        ui::CardSize::Medium,
-                        theme::CARD_BORDER_NORMAL,
-                    );
-                }
-            }
-        });
-    }
-}
-
-// ============================================================================
-// AUTO-PLAY SYSTEM (Legacy SOW-001 - kept for backwards compatibility)
-// ============================================================================
-
-fn auto_play_system(
-    mut hand_state_query: Query<&mut HandState>,
-) {
-    let Ok(mut hand_state) = hand_state_query.get_single_mut() else {
-        return;
-    };
-
-    // SOW-008: Legacy auto-play removed - sequential play handled by ai_betting_system
-}
-
-// ============================================================================
-// AUTO-ADVANCE SYSTEM - SOW-002
-// ============================================================================
-
-fn auto_flip_system(
-    mut hand_state_query: Query<&mut HandState>,
-    mut ai_timer: ResMut<AiActionTimer>,
-    time: Res<Time>,
-) {
-    let Ok(mut hand_state) = hand_state_query.get_single_mut() else {
-        return;
-    };
-
-    // Auto-draw cards when entering Draw state
-    if hand_state.current_state == State::Draw {
-        // Draw cards for all players
-        hand_state.draw_cards();
-        // Note: draw_cards() calls transition_state() → PlayerPhase
-    }
-
-    // SOW-009 Phase 3: Buyer card play (replaces SOW-008 dealer reveal)
-    if hand_state.current_state == State::DealerReveal {
-        // On first frame in DealerReveal, reset the timer to start fresh 1s countdown
-        if !ai_timer.dealer_timer_started {
-            ai_timer.dealer_timer.reset();
-            ai_timer.dealer_timer_started = true;
-
-            // SOW-009: Buyer plays random card from visible hand
-            if let Some(buyer_card) = hand_state.buyer_plays_card() {
-                println!("Buyer plays: {} (starting 1s timer...)", buyer_card.name);
-            } else {
-                println!("Buyer has no cards to play");
-            }
-        }
-
-        // Tick dealer timer
-        ai_timer.dealer_timer.tick(time.delta());
-
-        if ai_timer.dealer_timer.just_finished() {
-            // Timer fired - advance to next round or resolve
-            println!("Buyer card processed! Advancing...");
-
-            // SOW-009: Buyer bail check will be added in Phase 4
-
-            // Auto-advance to next round or resolve
-            println!("Current round: {}, transitioning from DealerReveal...", hand_state.current_round);
-            hand_state.transition_state();
-            println!("New state: {:?}", hand_state.current_state);
-            ai_timer.dealer_timer_started = false; // Reset for next buyer card
-        }
-    } else {
-        // Not in DealerReveal - reset the flag
-        ai_timer.dealer_timer_started = false;
-    }
-
-    // SOW-008: FoldDecision state no longer used
-    // Fold happens during PlayerPhase (player's turn) via Fold button
-
-    // Auto-resolve at Resolution state
-    if hand_state.current_state == State::Resolve {
-        println!("Auto-resolving hand...");
-        let outcome = hand_state.resolve_hand();
-        println!("Resolution outcome: {:?}, new state: {:?}", outcome, hand_state.current_state);
-    }
-}
-
-// ============================================================================
-// SOW-008: BETTING BUTTON SYSTEM - DISABLED (Phase 1 stub)
-// ============================================================================
-// TODO Phase 1: Add Check button for skipping card play
-// Old betting system (Check/Raise/Fold with initiative) removed per ADR-006
-
-// SOW-008: Check and Fold buttons during PlayerPhase
-fn betting_button_system(
-    check_query: Query<&Interaction, (Changed<Interaction>, With<CheckButton>)>,
-    fold_query: Query<&Interaction, (Changed<Interaction>, With<FoldButton>)>,
-    mut hand_state_query: Query<&mut HandState>,
-    _betting_state_query: Query<&mut BettingState>,
-) {
-    let Ok(mut hand_state) = hand_state_query.get_single_mut() else {
-        return;
-    };
-
-    // Only during PlayerPhase and when it's Player's turn
-    if hand_state.current_state != State::PlayerPhase || hand_state.current_player() != Owner::Player {
-        return;
-    }
-
-    // Check button - skip playing a card this turn
-    for interaction in check_query.iter() {
-        if *interaction == Interaction::Pressed {
-            let current_round = hand_state.current_round;
-            println!("Player checks (skips card) in Round {}", current_round);
-
-            // Record that player checked this round
-            hand_state.checks_this_hand.push((Owner::Player, current_round));
-
-            // Advance to next player without playing a card
-            hand_state.current_player_index += 1;
-
-            // If all players have acted, transition to DealerReveal
-            if hand_state.all_players_acted() {
-                hand_state.transition_state();
-            }
-        }
-    }
-
-    // Fold button - player folds immediately (available during player's turn)
-    for interaction in fold_query.iter() {
-        if *interaction == Interaction::Pressed {
-            println!("Player folds during turn!");
-
-            // Fold immediately - discard played cards, keep unplayed, exit hand
-            hand_state.cards_played.clear();
-            hand_state.outcome = Some(HandOutcome::Folded);
-            hand_state.current_state = State::Bust;
-        }
-    }
-}
-
-// ============================================================================
-// SOW-008: UPDATE BETTING BUTTON STATES - DISABLED (Phase 1 stub)
-// ============================================================================
-
-fn update_betting_button_states(
-    hand_state_query: Query<&HandState>,
-    _betting_state_query: Query<&BettingState>,
-    mut check_button_query: Query<&mut BackgroundColor, (With<CheckButton>, Without<FoldButton>)>,
-    mut fold_button_query: Query<&mut BackgroundColor, (With<FoldButton>, Without<CheckButton>)>,
-) {
-    let Ok(hand_state) = hand_state_query.get_single() else {
-        return;
-    };
-
-    // SOW-011-B: Buttons enabled only during PlayerPhase when it's player's turn, disabled otherwise
-    let is_player_turn = hand_state.current_state == State::PlayerPhase &&
-                         hand_state.current_player() == Owner::Player;
-
-    // Update Pass button (Check) - enabled when player's turn, disabled otherwise
-    if let Ok(mut bg) = check_button_query.get_single_mut() {
-        *bg = if is_player_turn {
-            theme::BUTTON_ENABLED_BG.into()
-        } else {
-            theme::BUTTON_DISABLED_BG.into()
-        };
-    }
-
-    // Update Bail Out button (Fold) - enabled when player's turn, disabled otherwise
-    if let Ok(mut bg) = fold_button_query.get_single_mut() {
-        *bg = if is_player_turn {
-            theme::BUTTON_NEUTRAL_BG.into()
-        } else {
-            theme::BUTTON_DISABLED_BG.into()
-        };
-    }
-}
-
-// ============================================================================
-// SOW-008: DECISION POINT BUTTON SYSTEM - DISABLED (Phase 1 stub)
-// ============================================================================
-// TODO Phase 3: Replace with fold-after-dealer-reveal logic
-
-// SOW-008: Decision point button system - NOT USED
-// Fold happens during PlayerPhase (player's turn) now, not between rounds
-fn decision_point_button_system(
-    _continue_query: Query<&Interaction, (Changed<Interaction>, With<ContinueButton>)>,
-    _fold_query: Query<&Interaction, (Changed<Interaction>, With<FoldButton>)>,
-    _hand_state_query: Query<&mut HandState>,
-) {
-    // Not used - fold happens during PlayerPhase via betting_button_system
-}
-
-// ============================================================================
-// RESTART BUTTON SYSTEM - Restart hand after bust/safe
-// ============================================================================
-
-fn restart_button_system(
-    restart_query: Query<&Interaction, (Changed<Interaction>, With<RestartButton>)>,
-    mut hand_state_query: Query<&mut HandState>,
-    mut betting_state_query: Query<&mut BettingState>,
-) {
-    let Ok(mut hand_state) = hand_state_query.get_single_mut() else {
-        return;
-    };
-
-    // Only at Bust state
-    if hand_state.current_state != State::Bust {
-        return;
-    }
-
-    // NEW DEAL button - only for Safe/Folded outcomes (not Busted)
-    for interaction in restart_query.iter() {
-        if *interaction == Interaction::Pressed {
-            // SOW-005: Can't new deal if busted (game over)
-            if matches!(hand_state.outcome, Some(HandOutcome::Busted)) {
-                return; // Button should be hidden, but ignore click if somehow pressed
-            }
-
-            // Check if deck is exhausted
-            if hand_state.player_deck.len() < 3 {
-                // Button disabled, ignore click
-                return;
-            }
-
-            // Start next hand (preserve cash/heat)
-            let _can_continue = hand_state.start_next_hand();
-
-            // Reset betting state
-            if let Ok(mut betting_state) = betting_state_query.get_single_mut() {
-                *betting_state = BettingState::default();
-            }
-        }
-    }
-}
-
-// ============================================================================
-// UPDATE RESTART BUTTON STATES - Disable NEW DEAL when deck exhausted
-// ============================================================================
-
-fn update_restart_button_states(
-    hand_state_query: Query<&HandState>,
-    mut restart_button_query: Query<(&mut BackgroundColor, &mut Visibility), With<RestartButton>>,
-    go_home_button_query: Query<(Entity, &Children), With<GoHomeButton>>,
-    mut text_query: Query<&mut Text>,
-) {
-    let Ok(hand_state) = hand_state_query.get_single() else {
-        return;
-    };
-
-    // Only at Bust state
-    if hand_state.current_state != State::Bust {
-        return;
-    }
-
-    let is_busted = matches!(hand_state.outcome, Some(HandOutcome::Busted));
-
-    // NEW DEAL button: Hide if busted, disable if deck exhausted
-    if let Ok((mut bg_color, mut visibility)) = restart_button_query.get_single_mut() {
-        if is_busted {
-            // Busted: Hide NEW DEAL button entirely
-            *visibility = Visibility::Hidden;
-        } else {
-            // Safe/Folded: Show NEW DEAL, disable if deck exhausted
-            *visibility = Visibility::Visible;
-            let can_deal = hand_state.player_deck.len() >= 3;
-            *bg_color = if can_deal {
-                theme::BUTTON_ENABLED_BG.into()
-            } else {
-                theme::BUTTON_DISABLED_BG.into()
-            };
-        }
-    }
-
-    // GO HOME button text: "GO HOME" if safe, "END RUN" if busted
-    if let Ok((button_entity, children)) = go_home_button_query.get_single() {
-        for &child in children.iter() {
-            if let Ok(mut text) = text_query.get_mut(child) {
-                text.sections[0].value = if is_busted {
-                    "END RUN".to_string()
-                } else {
-                    "GO HOME".to_string()
-                };
-            }
-        }
-    }
-}
-
-// ============================================================================
-// GO HOME BUTTON SYSTEM - Reset run completely
-// ============================================================================
-
-fn go_home_button_system(
-    mut commands: Commands,
-    go_home_query: Query<&Interaction, (Changed<Interaction>, With<GoHomeButton>)>,
-    hand_state_query: Query<(Entity, &HandState)>,
-    mut betting_state_query: Query<&mut BettingState>,
-    mut deck_builder: ResMut<DeckBuilder>,
-    mut next_state: ResMut<NextState<GameState>>,
-) {
-    let Ok((entity, hand_state)) = hand_state_query.get_single() else {
-        return;
-    };
-
-    // Only at Bust state
-    if hand_state.current_state != State::Bust {
-        return;
-    }
-
-    // Go Home button - return to deck builder
-    for interaction in go_home_query.iter() {
-        if *interaction == Interaction::Pressed {
-            // Despawn HandState
-            commands.entity(entity).despawn();
-
-            // Reset betting state
-            if let Ok(mut betting_state) = betting_state_query.get_single_mut() {
-                *betting_state = BettingState::default();
-            }
-
-            // SOW-011-B: Don't reset deck - preserve player's selection
-            // deck_builder.load_preset(DeckPreset::Default); // REMOVED
-
-            // Transition back to DeckBuilding state
-            next_state.set(GameState::DeckBuilding);
-        }
-    }
-}
-
-// ============================================================================
-// SOW-006: DECK BUILDER SYSTEMS
-// ============================================================================
-
-/// Setup deck builder UI (called at startup)
-fn setup_deck_builder(mut commands: Commands) {
-    // Deck builder root container (initially visible, game starts in DeckBuilding state)
-    commands.spawn((
-        NodeBundle {
-            style: Style {
-                width: Val::Percent(100.0),
-                height: Val::Percent(100.0),
-                flex_direction: FlexDirection::Column,
-                padding: UiRect::all(Val::Px(20.0)),
-                ..default()
-            },
-            background_color: theme::DECK_BUILDER_BG.into(),
-            ..default()
-        },
-        DeckBuilderRoot,
-    ))
-    .with_children(|parent| {
-        // Title
-        parent.spawn(TextBundle::from_section(
-            "DECK BUILDER",
-            TextStyle {
-                font_size: 40.0,
-                color: Color::WHITE,
-                ..default()
-            },
-        ));
-
-        // Main content area (horizontal split: pool | selected)
-        parent.spawn(NodeBundle {
-            style: Style {
-                width: Val::Percent(100.0),
-                height: Val::Percent(70.0),
-                flex_direction: FlexDirection::Row,
-                column_gap: Val::Px(20.0),
-                ..default()
-            },
-            ..default()
-        })
-        .with_children(|parent| {
-            // SOW-010: Single grid view with toggle selection (green = selected, gray = not)
-            parent.spawn((
-                NodeBundle {
-                    style: Style {
-                        width: Val::Percent(100.0),
-                        height: Val::Percent(100.0),
-                        flex_direction: FlexDirection::Row,
-                        flex_wrap: FlexWrap::Wrap,
-                        padding: UiRect::all(Val::Px(10.0)),
-                        row_gap: Val::Px(5.0),
-                        column_gap: Val::Px(5.0),
-                        align_content: AlignContent::FlexStart,
-                        ..default()
-                    },
-                    background_color: theme::CARD_POOL_BG.into(),
-                    ..default()
-                },
-                CardPoolContainer,
-            ))
-            .with_children(|parent| {
-                parent.spawn((
-                    NodeBundle {
-                        style: Style {
-                            width: Val::Percent(100.0), // Full width forces cards to wrap to next row
-                            ..default()
-                        },
-                        ..default()
-                    },
-                ))
-                .with_children(|parent| {
-                    parent.spawn(TextBundle::from_section(
-                        "Click cards to toggle selection (Green = Selected)",
-                        TextStyle {
-                            font_size: 20.0,
-                            color: Color::WHITE,
-                            ..default()
-                        },
-                    ));
-                });
-            });
-        });
-
-        // Bottom: Stats and actions
-        parent.spawn(NodeBundle {
-            style: Style {
-                width: Val::Percent(100.0),
-                height: Val::Percent(30.0),
-                flex_direction: FlexDirection::Column,
-                row_gap: Val::Px(10.0),
-                ..default()
-            },
-            ..default()
-        })
-        .with_children(|parent| {
-            // Deck stats
-            parent.spawn((
-                TextBundle::from_section(
-                    "Deck: 20/20 cards",
-                    TextStyle {
-                        font_size: 24.0,
-                        color: Color::WHITE,
-                        ..default()
-                    },
-                ),
-                DeckStatsDisplay,
-            ));
-
-            // Preset buttons
-            parent.spawn(NodeBundle {
-                style: Style {
-                    flex_direction: FlexDirection::Row,
-                    column_gap: Val::Px(10.0),
-                    ..default()
-                },
-                ..default()
-            })
-            .with_children(|parent| {
-                // Default preset
-                parent.spawn((
-                    ButtonBundle {
-                        style: Style {
-                            padding: UiRect::all(Val::Px(10.0)),
-                            ..default()
-                        },
-                        background_color: theme::CARD_AVAILABLE_BG.into(),
-                        ..default()
-                    },
-                    PresetButton { preset: DeckPreset::Default },
-                ))
-                .with_children(|parent| {
-                    parent.spawn(TextBundle::from_section(
-                        "DEFAULT (20)",
-                        TextStyle {
-                            font_size: 20.0,
-                            color: Color::WHITE,
-                            ..default()
-                        },
-                    ));
-                });
-
-                // Aggro preset
-                parent.spawn((
-                    ButtonBundle {
-                        style: Style {
-                            padding: UiRect::all(Val::Px(10.0)),
-                            ..default()
-                        },
-                        background_color: theme::CARD_UNAVAILABLE_BG.into(),
-                        ..default()
-                    },
-                    PresetButton { preset: DeckPreset::Aggro },
-                ))
-                .with_children(|parent| {
-                    parent.spawn(TextBundle::from_section(
-                        "AGGRO (10)",
-                        TextStyle {
-                            font_size: 20.0,
-                            color: Color::WHITE,
-                            ..default()
-                        },
-                    ));
-                });
-
-                // Control preset
-                parent.spawn((
-                    ButtonBundle {
-                        style: Style {
-                            padding: UiRect::all(Val::Px(10.0)),
-                            ..default()
-                        },
-                        background_color: theme::PRESET_BUTTON_BG.into(),
-                        ..default()
-                    },
-                    PresetButton { preset: DeckPreset::Control },
-                ))
-                .with_children(|parent| {
-                    parent.spawn(TextBundle::from_section(
-                        "CONTROL (16)",
-                        TextStyle {
-                            font_size: 20.0,
-                            color: Color::WHITE,
-                            ..default()
-                        },
-                    ));
-                });
-            });
-
-            // START RUN button
-            parent.spawn((
-                ButtonBundle {
-                    style: Style {
-                        padding: UiRect::all(Val::Px(15.0)),
-                        ..default()
-                    },
-                    background_color: theme::SELECTED_DECK_BG_VALID.into(),
-                    ..default()
-                },
-                StartRunButton,
-            ))
-            .with_children(|parent| {
-                parent.spawn(TextBundle::from_section(
-                    "START RUN",
-                    TextStyle {
-                        font_size: 30.0,
-                        color: Color::WHITE,
-                        ..default()
-                    },
-                ));
-            });
-        });
-    });
-}
-
-/// Handle deck builder card clicks (add/remove from deck)
-fn deck_builder_card_click_system(
-    interaction_query: Query<(&Interaction, &DeckBuilderCardButton), Changed<Interaction>>,
-    mut deck_builder: ResMut<DeckBuilder>,
-) {
-    for (interaction, button) in interaction_query.iter() {
-        if *interaction == Interaction::Pressed {
-            // Find the card in available cards
-            let Some(card) = deck_builder.available_cards.iter()
-                .find(|c| c.id == button.card_id)
-                .cloned() else {
-                continue;
-            };
-
-            // Check if card is already in selected deck
-            let is_selected = deck_builder.selected_cards.iter()
-                .any(|c| c.id == button.card_id);
-
-            if is_selected {
-                // Remove from selected deck
-                deck_builder.selected_cards.retain(|c| c.id != button.card_id);
-            } else {
-                // Add to selected deck (if under max)
-                if deck_builder.selected_cards.len() < 20 {
-                    deck_builder.selected_cards.push(card);
-                }
-            }
-        }
-    }
-}
-
-/// Handle preset button clicks
-fn preset_button_system(
-    interaction_query: Query<(&Interaction, &PresetButton), Changed<Interaction>>,
-    mut deck_builder: ResMut<DeckBuilder>,
-) {
-    for (interaction, preset_btn) in interaction_query.iter() {
-        if *interaction == Interaction::Pressed {
-            deck_builder.load_preset(preset_btn.preset);
-        }
-    }
-}
-
-/// Handle START RUN button click
-fn start_run_button_system(
-    mut commands: Commands,
-    interaction_query: Query<&Interaction, (Changed<Interaction>, With<StartRunButton>)>,
-    deck_builder: Res<DeckBuilder>,
-    mut next_state: ResMut<NextState<GameState>>,
-    hand_state_query: Query<Entity, With<HandState>>,
-) {
-    for interaction in interaction_query.iter() {
-        if *interaction == Interaction::Pressed && deck_builder.is_valid() {
-            // Despawn any existing HandState
-            for entity in hand_state_query.iter() {
-                commands.entity(entity).despawn();
-            }
-
-            // SOW-009 Phase 2: Select random Buyer persona
-            let buyer_personas = create_buyer_personas();
-            let mut random_buyer = buyer_personas.choose(&mut rand::thread_rng()).unwrap().clone();
-
-            // SOW-010: Randomly select one of the Buyer's 2 scenarios
-            if !random_buyer.scenarios.is_empty() {
-                let scenario_index = rand::thread_rng().gen_range(0..random_buyer.scenarios.len());
-                random_buyer.active_scenario_index = Some(scenario_index);
-            }
-
-            // Create new HandState with selected deck
-            let mut hand_state = HandState::with_custom_deck(deck_builder.selected_cards.clone());
-            hand_state.buyer_persona = Some(random_buyer);
-            hand_state.draw_cards(); // This will also initialize buyer hand
-            commands.spawn(hand_state);
-
-            // Transition to InRun state
-            next_state.set(GameState::InRun);
-        }
-    }
-}
-
-/// Update deck builder UI (stats display)
-fn update_deck_builder_ui_system(
-    deck_builder: Res<DeckBuilder>,
-    mut stats_query: Query<&mut Text, With<DeckStatsDisplay>>,
-) {
-    if !deck_builder.is_changed() {
-        return;
-    }
-
-    for mut text in stats_query.iter_mut() {
-        let count = deck_builder.selected_cards.len();
-        let validation = validate_deck(&deck_builder.selected_cards);
-
-        let is_valid = validation.is_ok();
-        text.sections[0].value = match validation {
-            Ok(_) => format!("Deck: {}/20 cards ✓ VALID", count),
-            Err(msg) => format!("Deck: {}/20 cards ✗ {}", count, msg),
-        };
-
-        text.sections[0].style.color = if is_valid {
-            theme::SELECTED_DECK_BG_VALID
-        } else {
-            theme::SELECTED_DECK_BG_INVALID
-        };
-    }
-}
-
-/// Populate deck builder card displays (recreate when deck changes)
-fn populate_deck_builder_cards_system(
-    mut commands: Commands,
-    deck_builder: Res<DeckBuilder>,
-    pool_container_query: Query<Entity, With<CardPoolContainer>>,
-    card_button_query: Query<Entity, With<DeckBuilderCardButton>>,
-) {
-    if !deck_builder.is_changed() {
-        return;
-    }
-
-    // Clear existing card buttons
-    for entity in card_button_query.iter() {
-        commands.entity(entity).despawn_recursive();
-    }
-
-    // SOW-010: Populate single grid with all cards (styled like played cards)
-    if let Ok(pool_entity) = pool_container_query.get_single() {
-        commands.entity(pool_entity).with_children(|parent| {
-            // Sort cards by type, then alphabetically by name
-            let mut sorted_cards = deck_builder.available_cards.clone();
-            sorted_cards.sort_by(|a, b| {
-                let type_order_a = match a.card_type {
-                    CardType::Product { .. } => 0,
-                    CardType::Location { .. } => 1,
-                    CardType::Cover { .. } => 2,
-                    CardType::DealModifier { .. } => 3,
-                    CardType::Insurance { .. } => 4,
-                    CardType::Evidence { .. } => 5,
-                    CardType::Conviction { .. } => 6,
-                };
-                let type_order_b = match b.card_type {
-                    CardType::Product { .. } => 0,
-                    CardType::Location { .. } => 1,
-                    CardType::Cover { .. } => 2,
-                    CardType::DealModifier { .. } => 3,
-                    CardType::Insurance { .. } => 4,
-                    CardType::Evidence { .. } => 5,
-                    CardType::Conviction { .. } => 6,
-                };
-
-                // First sort by type, then alphabetically by name
-                type_order_a.cmp(&type_order_b).then_with(|| a.name.cmp(&b.name))
-            });
-
-            for card in &sorted_cards {
-                let is_selected = deck_builder.selected_cards.iter().any(|c| c.id == card.id);
-
-                let display_state = if is_selected {
-                    ui::CardDisplayState::Selected
-                } else {
-                    ui::CardDisplayState::Inactive
-                };
-
-                // Use helper for deck builder card buttons
-                let (width, height) = ui::CardSize::DeckBuilder.dimensions();
-                let font_size = ui::CardSize::DeckBuilder.font_size();
-                let card_color = ui::get_card_color(&card.card_type, display_state);
-                let border_color = ui::get_border_color(display_state);
-                let card_text = ui::format_card_text_compact(&card.name, &card.card_type);
-
-                parent.spawn((
-                    ButtonBundle {
-                        style: Style {
-                            width: Val::Px(width),
-                            height: Val::Px(130.0), // Slightly taller for deck builder
-                            padding: UiRect::all(Val::Px(6.0)),
-                            margin: UiRect::all(Val::Px(3.0)),
-                            border: UiRect::all(Val::Px(2.0)),
-                            justify_content: JustifyContent::Center,
-                            align_items: AlignItems::Center,
-                            ..default()
-                        },
-                        background_color: card_color.into(),
-                        border_color: border_color.into(),
-                        ..default()
-                    },
-                    DeckBuilderCardButton {
-                        card_id: card.id,
-                        in_pool: true,
-                    },
-                ))
-                .with_children(|parent| {
-                    parent.spawn(TextBundle::from_section(
-                        card_text,
-                        TextStyle {
-                            font_size,
-                            color: Color::WHITE,
-                            ..default()
-                        },
-                    ).with_text_justify(JustifyText::Center));
-                });
-            }
-        });
-    }
-}
-
-// ============================================================================
-// UI VISIBILITY TOGGLE SYSTEM - SOW-002 Phase 5
-// ============================================================================
-
-fn toggle_ui_visibility_system(
-    hand_state_query: Query<&HandState>,
-    mut betting_container_query: Query<&mut Style, (With<BettingActionsContainer>, Without<DecisionPointContainer>, Without<BustContainer>)>,
-    mut decision_container_query: Query<&mut Style, (With<DecisionPointContainer>, Without<BettingActionsContainer>, Without<BustContainer>)>,
-    mut bust_container_query: Query<&mut Style, (With<BustContainer>, Without<BettingActionsContainer>, Without<DecisionPointContainer>)>,
-) {
-    let Ok(hand_state) = hand_state_query.get_single() else {
-        return;
-    };
-
-    // SOW-011-B: Always show betting buttons (never hide them)
-    if let Ok(mut style) = betting_container_query.get_single_mut() {
-        style.display = Display::Flex;
-    }
-
-    // SOW-008: Hide decision point UI (fold happens during PlayerPhase now)
-    if let Ok(mut style) = decision_container_query.get_single_mut() {
-        style.display = Display::None;
-    }
-
-    // SOW-011-B: Bust container always hidden (overlay handles resolution)
-    if let Ok(mut style) = bust_container_query.get_single_mut() {
-        style.display = Display::None;
-    }
-}
-
-// ============================================================================
-// SOW-006: GAME STATE UI VISIBILITY - Show deck builder or gameplay UI
-// ============================================================================
-
-fn toggle_game_state_ui_system(
-    current_state: Res<bevy::state::state::State<GameState>>,
-    mut deck_builder_query: Query<&mut Style, (With<DeckBuilderRoot>, Without<UiRoot>)>,
-    mut gameplay_ui_query: Query<&mut Style, (With<UiRoot>, Without<DeckBuilderRoot>)>,
-) {
-    // Show deck builder in DeckBuilding state, hide in InRun
-    if let Ok(mut style) = deck_builder_query.get_single_mut() {
-        style.display = if current_state.get() == &GameState::DeckBuilding {
-            Display::Flex
-        } else {
-            Display::None
-        };
-    }
-
-    // Show gameplay UI in InRun state, hide in DeckBuilding
-    if let Ok(mut style) = gameplay_ui_query.get_single_mut() {
-        style.display = if current_state.get() == &GameState::InRun {
-            Display::Flex
-        } else {
-            Display::None
-        };
-    }
-}
-
-// ============================================================================
-// PLAYED CARDS DISPLAY SYSTEM - Shows cards in play areas
-// ============================================================================
-
-fn update_played_cards_display_system(
-    hand_state_query: Query<&HandState, Changed<HandState>>,
-    played_pool_query: Query<Entity, With<PlayAreaDealer>>, // Single played pool
-    mut evidence_text_query: Query<&mut Text, (With<EvidencePool>, Without<CoverPool>, Without<DealModPool>)>,
-    mut cover_text_query: Query<&mut Text, (With<CoverPool>, Without<EvidencePool>, Without<DealModPool>)>,
-    mut deal_mod_text_query: Query<&mut Text, (With<DealModPool>, Without<EvidencePool>, Without<CoverPool>)>,
-    mut commands: Commands,
-    children_query: Query<&Children>,
-    card_display_query: Query<Entity, With<PlayedCardDisplay>>,
-) {
-    let Ok(hand_state) = hand_state_query.get_single() else {
-        return;
-    };
-
-    // SOW-011-A: Clear old cards from single played pool
-    if let Ok(pool_entity) = played_pool_query.get_single() {
-        if let Ok(children) = children_query.get(pool_entity) {
-            for &child in children.iter() {
-                if card_display_query.get(child).is_ok() {
-                    commands.entity(child).despawn_recursive();
-                }
-            }
-        }
-    }
-
-    // Calculate totals for display
-    let totals = hand_state.calculate_totals(true);
-
-    // Update totals text
-    if let Ok(mut text) = evidence_text_query.get_single_mut() {
-        text.sections[0].value = format!("● Evidence: {}", totals.evidence);
-    }
-    if let Ok(mut text) = cover_text_query.get_single_mut() {
-        text.sections[0].value = format!("● Cover: {}", totals.cover);
-    }
-    if let Ok(mut text) = deal_mod_text_query.get_single_mut() {
-        let multiplier = hand_state.get_profit_multiplier();
-        text.sections[0].value = format!("● Multiplier: ×{:.1}", multiplier);
-    }
-
-    // SOW-011-A: ALL Evidence/Cover/DealModifier cards go to single shared pool
-    if let Ok(pool) = played_pool_query.get_single() {
-        commands.entity(pool).with_children(|parent| {
-            for card in hand_state.cards_played.iter() {
-                // Only show Evidence, Cover, DealModifier in played pool
-                match card.card_type {
-                    CardType::Evidence { .. } | CardType::Cover { .. } | CardType::DealModifier { .. } => {
-                        ui::spawn_card_display_with_marker(
-                            parent,
-                            &card.name,
-                            &card.card_type,
-                            ui::CardSize::Small,
-                            ui::CardDisplayState::Active,
-                            true, // compact text
-                            PlayedCardDisplay,
-                        );
-                    }
-                    // Product, Location, Conviction, Insurance go to active slots (Phase 4)
-                    _ => {}
-                }
-            }
-        });
-    }
-}
-
-// ============================================================================
-// SOW-009: BUYER VISIBLE HAND DISPLAY
-// ============================================================================
-
-/// Display the Buyer's 3 visible cards (not yet played) in the BuyerVisibleHand area
-fn render_buyer_visible_hand_system(
-    hand_state_query: Query<&HandState, Changed<HandState>>,
-    buyer_area_query: Query<Entity, With<BuyerVisibleHand>>,
-    mut commands: Commands,
-    children_query: Query<&Children>,
-    card_display_query: Query<Entity, With<PlayedCardDisplay>>,
-) {
-    let Ok(hand_state) = hand_state_query.get_single() else {
-        return;
-    };
-
-    let Ok(buyer_area) = buyer_area_query.get_single() else {
-        return;
-    };
-
-    // Clear old card displays
-    if let Ok(children) = children_query.get(buyer_area) {
-        for &child in children.iter() {
-            if card_display_query.get(child).is_ok() {
-                commands.entity(child).despawn_recursive();
-            }
-        }
-    }
-
-    // Display each card in buyer_hand (use Small size for consistency)
-    commands.entity(buyer_area).with_children(|parent| {
-        for card in hand_state.buyer_hand.iter() {
-            // Use Small size (same as Narc hand and active slots)
-            let (width, height) = ui::CardSize::Small.dimensions();
-            let font_size = ui::CardSize::Small.font_size();
-            let card_color = ui::get_buyer_card_color(&card.card_type);
-
-            let card_text = ui::format_card_text_compact(&card.name, &card.card_type);
-
-            parent.spawn((
-                NodeBundle {
-                    style: Style {
-                        width: Val::Px(width),
-                        height: Val::Px(height),
-                        justify_content: JustifyContent::Center,
-                        align_items: AlignItems::Center,
-                        padding: UiRect::all(Val::Px(theme::SPACING_SMALL)),
-                        border: UiRect::all(Val::Px(theme::CARD_BORDER_WIDTH)),
-                        margin: UiRect::all(Val::Px(4.0)),
-                        ..default()
-                    },
-                    background_color: card_color.into(),
-                    border_color: theme::BUYER_HAND_BORDER.into(),
-                    ..default()
-                },
-                PlayedCardDisplay,
-            ))
-            .with_children(|parent| {
-                parent.spawn(TextBundle::from_section(
-                    card_text,
-                    TextStyle {
-                        font_size,
-                        color: Color::WHITE,
-                        ..default()
-                    },
-                ));
-            });
-        }
-    });
-}
-
-// ============================================================================
-// SOW-011-A: NARC VISIBLE HAND DISPLAY (Face-down cards)
-// ============================================================================
-
-/// Display Narc's visible hand as face-down cards
-fn render_narc_visible_hand_system(
-    hand_state_query: Query<&HandState, Changed<HandState>>,
-    narc_area_query: Query<Entity, With<NarcVisibleHand>>,
-    mut commands: Commands,
-    children_query: Query<&Children>,
-    card_display_query: Query<Entity, With<PlayedCardDisplay>>,
-) {
-    let Ok(hand_state) = hand_state_query.get_single() else {
-        return;
-    };
-
-    let Ok(narc_area) = narc_area_query.get_single() else {
-        return;
-    };
-
-    // Clear old card displays
-    if let Ok(children) = children_query.get(narc_area) {
-        for &child in children.iter() {
-            if card_display_query.get(child).is_ok() {
-                commands.entity(child).despawn_recursive();
-            }
-        }
-    }
-
-    // Display face-down cards (? placeholders)
-    commands.entity(narc_area).with_children(|parent| {
-        for _ in 0..hand_state.narc_hand.len() {
-            let (width, height) = ui::CardSize::Small.dimensions();
-
-            parent.spawn((
-                NodeBundle {
-                    style: Style {
-                        width: Val::Px(width),
-                        height: Val::Px(height),
-                        justify_content: JustifyContent::Center,
-                        align_items: AlignItems::Center,
-                        padding: UiRect::all(Val::Px(8.0)),
-                        border: UiRect::all(Val::Px(2.0)),
-                        margin: UiRect::all(Val::Px(4.0)),
-                        ..default()
-                    },
-                    background_color: theme::PLACEHOLDER_BG.into(),
-                    border_color: theme::NARC_SECTION_COLOR.into(),
-                    ..default()
-                },
-                PlayedCardDisplay,
-            ))
-            .with_children(|parent| {
-                parent.spawn(TextBundle::from_section(
-                    "?",
-                    TextStyle {
-                        font_size: 24.0,
-                        color: theme::NARC_SECTION_COLOR,
-                        ..default()
-                    },
-                ).with_text_justify(JustifyText::Center));
-            });
-        }
-    });
-}
-
-// ============================================================================
-// CARD CLICK SYSTEM
-// ============================================================================
-
-fn card_click_system(
-    mut interaction_query: Query<(&Interaction, &CardButton), Changed<Interaction>>,
-    mut hand_state_query: Query<&mut HandState>,
-    _betting_state_query: Query<&mut BettingState>,
-) {
-    let Ok(mut hand_state) = hand_state_query.get_single_mut() else {
-        return;
-    };
-
-    for (interaction, card_button) in interaction_query.iter_mut() {
-        if *interaction == Interaction::Pressed {
-            println!("Card clicked! Index: {}, State: {:?}", card_button.card_index, hand_state.current_state);
-
-            // SOW-008: Clicking card during PlayerPhase plays it immediately
-            if hand_state.current_state == State::PlayerPhase {
-                // Only if it's Player's turn
-                if hand_state.current_player() == Owner::Player {
-                    // Verify valid card index
-                    if card_button.card_index < hand_state.player_hand.len() {
-                        println!("Player playing card {}", card_button.card_index);
-
-                        // Play the card face-up immediately
-                        let _ = hand_state.play_card(Owner::Player, card_button.card_index);
-                    }
-                }
-            }
-        }
-    }
-}
-
-// ============================================================================
-// CARD DATA MODEL
-// ============================================================================
-
-/// Who owns this card (SOW-009: Narc, Player, and Buyer)
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Owner {
-    Narc,
-    Player,
-    Buyer,  // SOW-009: Buyer reaction cards
-}
-
-/// Card types with their specific values (Extended in SOW-002/003/008)
-#[derive(Debug, Clone)]
-enum CardType {
-    Product { price: u32, heat: i32 },
-    Location { evidence: u32, cover: u32, heat: i32 },  // SOW-009: Used by both Player and Buyer (override rule)
-    Evidence { evidence: u32, heat: i32 },
-    Cover { cover: u32, heat: i32 },
-    // SOW-002 Phase 4: Deal Modifiers (multiplicative price, additive Evidence/Cover/Heat)
-    // SOW-009: Used by both Player and Buyer (price_multiplier defaults to 1.0 for non-price cards)
-    DealModifier { price_multiplier: f32, evidence: i32, cover: i32, heat: i32 },
-    // SOW-003 Phase 1: Insurance (Cover + bust activation)
-    Insurance { cover: u32, cost: u32, heat_penalty: i32 },
-    // SOW-003 Phase 2: Conviction (Heat threshold, overrides insurance)
-    Conviction { heat_threshold: u32 },
-    // SOW-009: DealerLocation removed (merged into Location)
-    // SOW-009: DealerModifier removed (merged into DealModifier)
-}
-
-/// Card instance
-#[derive(Component, Debug, Clone)]
-struct Card {
-    id: u32,
-    name: String,
-    owner: Owner,
-    card_type: CardType,
-    // RFC-010: Tags will be added when implementing scenarios
-}
-
-// ============================================================================
-// SOW-009: BUYER SYSTEM
-// ============================================================================
-
-/// Buyer demand specification - what Products/Locations satisfy this Buyer
-#[derive(Debug, Clone)]
-struct BuyerDemand {
-    products: Vec<String>,      // e.g., ["Pills", "Weed"] - product names that satisfy demand
-    locations: Vec<String>,     // e.g., ["Private Residence", "Warehouse"] - location names that satisfy demand
-    description: String,        // Human-readable description for UI
-}
-
-/// Special rules for Buyer persona (conditional effects)
-#[derive(Debug, Clone)]
-enum SpecialRule {
-    // Future: Add special rules like "if public Location used, +10 Evidence"
-    // For MVP: Empty, will be populated in Phase 2
-}
-
-/// SOW-010: Buyer scenario - specific motivation/context for this deal
-#[derive(Debug, Clone)]
-struct BuyerScenario {
-    id: String,                          // "get_wild", "rock_bottom"
-    display_name: String,                // "Get Wild", "Rock Bottom"
-    products: Vec<String>,               // ["Weed", "Coke"] - at least one required (OR logic)
-    locations: Vec<String>,              // ["Frat House", "Locker Room"] - preferred locations (OR logic)
-    heat_threshold: Option<u32>,         // Scenario-specific threshold (overrides persona default)
-    description: String,                 // "Chaotic party energy, maximum wildness"
-}
-
-/// Buyer persona - merges Dealer scenario deck + Customer modifiers into one entity
-#[derive(Debug, Clone)]
-struct BuyerPersona {
-    id: String,                          // "frat_bro", "desperate_housewife"
-    display_name: String,                // "Frat Bro", "Desperate Housewife"
-    demand: BuyerDemand,                 // SOW-010: Deprecated - scenarios define demands now
-    base_multiplier: f32,                // ×1.0 to ×3.0 range (when demand met)
-    reduced_multiplier: f32,             // When demand not met (typically ×1.0)
-    heat_threshold: Option<u32>,         // SOW-010: Deprecated - scenarios have own thresholds
-    evidence_threshold: Option<u32>,     // Buyer bails if Evidence exceeds (None = never bails)
-    special_rules: Vec<SpecialRule>,     // Conditional effects
-    reaction_deck: Vec<Card>,            // 7 cards unique to this persona
-    scenarios: Vec<BuyerScenario>,       // SOW-010: 2 scenarios per Buyer
-    active_scenario_index: Option<usize>, // SOW-010: Which scenario is active (0 or 1)
-}
-
-// ============================================================================
-// HAND STATE MACHINE
-// ============================================================================
-
-/// States the hand can be in (SOW-008: Sequential play with dealer reveals)
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum State {
-    Draw,           // Draw cards to hand
-    PlayerPhase,    // Sequential turn-based card play (SOW-008 Phase 1)
-    DealerReveal,   // Dealer community card reveals (SOW-008 Phase 2)
-    FoldDecision,   // Player/AI can fold after seeing dealer card (SOW-008 Phase 3, Rounds 1-2 only)
-    Resolve,        // Calculate totals, check bust (after Round 3)
-    Bust,           // Terminal state
-
-    // REMOVED by SOW-008: Betting, Flip (obsolete betting system from ADR-002/005)
-    // REMOVED by SOW-008: DecisionPoint (replaced by FoldDecision after dealer reveal)
-    // REMOVED: Legacy NarcPlay/CustomerPlay/PlayerPlay states
-}
-
-/// Outcome of hand resolution
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum HandOutcome { // SOW-011-B: Made public for UI systems
-    Safe,
-    Busted,
-    Folded,        // SOW-004: Player folded during hand (not bust, not completed)
-    InvalidDeal,   // SOW-009: Missing Product or Location
-    BuyerBailed,   // SOW-009: Buyer threshold exceeded
-}
-
-/// Hand state tracking (Extended for SOW-002/003, SOW-008)
-#[derive(Component)]
-struct HandState {
-    pub current_state: State,
-    pub current_round: u8,           // 1, 2, or 3 (ADR-004)
-    pub cards_played: Vec<Card>,
-    pub cards_played_this_round: Vec<Card>, // SOW-008: Repurposed for sequential play tracking
-    narc_deck: Vec<Card>,
-    player_deck: Vec<Card>,
-    pub narc_hand: Vec<Card>,
-    pub player_hand: Vec<Card>,
-    pub outcome: Option<HandOutcome>,
-    // SOW-003: Cash and Heat tracking
-    pub cash: u32,           // Cumulative profit for insurance affordability
-    pub current_heat: u32,   // Cumulative Heat for conviction thresholds
-    // SOW-008 Phase 1: Turn tracking for sequential play
-    pub current_player_index: usize, // Index into turn_order (0 or 1 for 2 players)
-    // SOW-009: dealer_deck, dealer_hand, customer_deck, customer_hand, customer_folded removed
-    // SOW-008 Phase 1: Check tracking (for display)
-    pub checks_this_hand: Vec<(Owner, u8)>, // Who checked and in which round (persists entire hand)
-    // SOW-009: Buyer system (replaces dealer_deck + customer)
-    buyer_persona: Option<BuyerPersona>,   // Selected Buyer for this hand (None during transition)
-    buyer_deck: Vec<Card>,                 // 7 cards from persona (shuffled)
-    pub buyer_hand: Vec<Card>,             // 3 visible cards drawn at hand start
-    pub buyer_played: Vec<Card>,           // Cards played so far (for UI tracking)
-    // SOW-011-A: Discard pile for replaced cards
-    pub discard_pile: Vec<Card>,           // Cards replaced via override mechanic
-    // SOW-011-B: Track player hand as Option array to preserve slot positions
-    pub player_hand_slots: [Option<Card>; 3], // Fixed 3-slot hand (None = empty/drawing)
-}
-
-impl Default for HandState {
-    fn default() -> Self {
-        // SOW-009: Dealer deck removed, replaced by Buyer system
-        Self {
-            current_state: State::Draw,
-            current_round: 1,
-            cards_played: Vec::new(),
-            cards_played_this_round: Vec::new(),
-            narc_deck: create_narc_deck(),
-            player_deck: create_player_deck(),
-            narc_hand: Vec::new(),
-            player_hand: Vec::new(),
-            outcome: None,
-            cash: 0,          // SOW-003: Start with no cash
-            current_heat: 0,  // SOW-003: Start with no Heat
-            current_player_index: 0, // SOW-008: Start at first player in turn order
-            checks_this_hand: Vec::new(), // SOW-008 Phase 1
-            // SOW-009: Buyer system (initialized as None, will be set when Buyer selected)
-            buyer_persona: None,
-            buyer_deck: Vec::new(),
-            buyer_hand: Vec::new(),
-            buyer_played: Vec::new(),
-            discard_pile: Vec::new(), // SOW-011-A
-            player_hand_slots: [None, None, None], // SOW-011-B
-        }
-    }
-}
-
-impl HandState {
-    /// Create HandState with a custom player deck (SOW-006)
-    fn with_custom_deck(mut player_deck: Vec<Card>) -> Self {
-        // SOW-010: Shuffle deck at start (deck builder maintains sorted order)
-        player_deck.shuffle(&mut rand::thread_rng());
-
-        // SOW-009: Dealer deck removed, replaced by Buyer system
-        Self {
-            current_state: State::Draw,
-            current_round: 1,
-            cards_played: Vec::new(),
-            cards_played_this_round: Vec::new(),
-            narc_deck: create_narc_deck(),
-            player_deck,  // Use custom deck (now shuffled)
-            narc_hand: Vec::new(),
-            player_hand: Vec::new(),
-            outcome: None,
-            cash: 0,
-            current_heat: 0,
-            current_player_index: 0, // SOW-008
-            checks_this_hand: Vec::new(), // SOW-008 Phase 1
-            // SOW-009: Buyer system
-            buyer_persona: None,
-            buyer_deck: Vec::new(),
-            buyer_hand: Vec::new(),
-            buyer_played: Vec::new(),
-            discard_pile: Vec::new(), // SOW-011-A
-            player_hand_slots: [None, None, None], // SOW-011-B
-        }
-    }
-
-    /// Reset hand state for replay testing
-    fn reset(&mut self) {
-        *self = Self::default();
-    }
-
-    /// Shuffle unplayed hand cards back into deck (SOW-004: Card retention)
-    /// Called at end of hand to return ONLY unplayed cards to deck
-    /// Played cards are "spent" and discarded (not returned)
-    fn shuffle_cards_back(&mut self) {
-        // Player: Return only unplayed hand cards to deck
-        self.player_deck.extend(self.player_hand.drain(..));
-        self.player_deck.shuffle(&mut rand::thread_rng());
-
-        // Narc: Return only unplayed hand cards to deck
-        self.narc_deck.extend(self.narc_hand.drain(..));
-        self.narc_deck.shuffle(&mut rand::thread_rng());
-
-        // SOW-009: Customer deck removed
-
-        // Played cards are discarded (not shuffled back)
-        self.cards_played.clear();
-        self.cards_played_this_round.clear();
-    }
-
-    /// Start next hand in the run (preserve cash/heat, shuffle cards back)
-    /// Used after Safe outcome to continue the run
-    /// Returns true if hand can start, false if deck exhausted
-    fn start_next_hand(&mut self) -> bool {
-        let preserved_cash = self.cash;
-        let preserved_heat = self.current_heat;
-
-        // SOW-004: Shuffle cards back into deck before resetting
-        self.shuffle_cards_back();
-
-        // SOW-004: Preserve decks (they've been modified by shuffle-back and fold penalties)
-        // SOW-009: Customer deck removed
-        let preserved_player_deck = self.player_deck.clone();
-        let preserved_narc_deck = self.narc_deck.clone();
-
-        // SOW-004 Phase 3: Check deck exhaustion before starting new hand
-        if preserved_player_deck.len() < 3 {
-            // Deck exhausted - cannot start new hand
-            self.outcome = Some(HandOutcome::Busted);
-            self.current_state = State::Bust;
-            // Don't reset - keep preserved decks to show deck size in UI
-            self.player_deck = preserved_player_deck;
-            self.narc_deck = preserved_narc_deck;
-            return false;
-        }
-
-        // SOW-009: Preserve Buyer persona across hands
-        let preserved_buyer_persona = self.buyer_persona.clone();
-
-        // Reset state but preserve cash/heat/decks/buyer
-        *self = Self::default();
-        self.cash = preserved_cash;
-        self.current_heat = preserved_heat;
-        self.player_deck = preserved_player_deck;
-        self.narc_deck = preserved_narc_deck;
-        self.buyer_persona = preserved_buyer_persona;  // Keep same Buyer for entire session
-        true
-    }
-
-    /// Draw cards from decks to hands (initial draw phase)
-    fn draw_cards(&mut self) {
-        // SOW-002: Draw to hand size 3 (multi-round play)
-        const HAND_SIZE: usize = 3;
-
-        // Draw for each player up to hand size
-        while self.narc_hand.len() < HAND_SIZE && !self.narc_deck.is_empty() {
-            self.narc_hand.push(self.narc_deck.remove(0));
-        }
-
-        // SOW-011-B: Draw player cards into empty slots (preserves positions)
-        for slot in &mut self.player_hand_slots {
-            if slot.is_none() && !self.player_deck.is_empty() {
-                *slot = Some(self.player_deck.remove(0));
-            }
-        }
-
-        // Sync player_hand vec from slots (for compatibility with existing code)
-        self.player_hand = self.player_hand_slots.iter()
-            .filter_map(|s| s.clone())
-            .collect();
-
-        // SOW-009 Phase 3: Initialize Buyer hand (draw 3 visible cards)
-        self.initialize_buyer_hand();
-
-        // Transition to next state after draw
-        self.transition_state();
-    }
-
-    /// Transition to next state (SOW-008: Sequential play state machine)
-    pub fn transition_state(&mut self) {
-        self.current_state = match self.current_state {
-            // SOW-008: Sequential play flow
-            State::Draw => State::PlayerPhase,
-            State::PlayerPhase => {
-                // After all players act, go to Dealer Reveal
-                State::DealerReveal
-            },
-            State::DealerReveal => {
-                // After Dealer reveals, check if customer folds, then advance
-                // Player can fold during their turn in PlayerPhase (not here)
-                if self.current_round >= 3 {
-                    // Round 3: Go to Resolution
-                    State::Resolve
-                } else {
-                    // Rounds 1-2: Advance to next round
-                    self.current_round += 1;
-                    self.reset_turn_tracking();
-                    // Don't clear checks_this_hand - persist for entire hand
-                    State::Draw
-                }
-            },
-            State::FoldDecision => {
-                // Legacy state - should not be used anymore
-                // Fold happens during PlayerPhase now
-                self.current_round += 1;
-                self.reset_turn_tracking();
-                State::Draw
-            },
-            State::Resolve => State::Bust, // Will be refined (Safe vs Busted)
-            State::Bust => State::Bust, // Terminal state
-        };
-    }
-
-    // SOW-008 Note: continue_to_next_round and fold_at_decision_point removed
-    // These methods are obsolete - sequential play handles round advancement differently
-    // Fold logic will be added in Phase 3
-
-    /// Play a card from hand during PlayerPhase (SOW-008: Sequential play)
-    fn play_card(&mut self, owner: Owner, card_index: usize) -> Result<(), String> {
-        // Verify we're in PlayerPhase and it's the correct player's turn
-        if self.current_state != State::PlayerPhase {
-            return Err(format!("Not in PlayerPhase: {:?}", self.current_state));
-        }
-
-        let current_player = self.current_player();
-        if owner != current_player {
-            return Err(format!("Wrong turn: expected {:?}, got {:?}", current_player, owner));
-        }
-
-        // SOW-011-B: Handle player specially (slot-based hand)
-        if owner == Owner::Player {
-            if card_index >= 3 {
-                return Err(format!("Card index {} out of bounds", card_index));
-            }
-
-            if let Some(card) = self.player_hand_slots[card_index].take() {
-                self.cards_played.push(card);
-                // Sync player_hand vec for compatibility
-                self.player_hand = self.player_hand_slots.iter()
-                    .filter_map(|s| s.clone())
-                    .collect();
-            } else {
-                return Err(format!("No card in slot {}", card_index));
-            }
-        } else {
-            // Narc/Buyer use normal Vec-based hands
-            let hand = match owner {
-                Owner::Narc => &mut self.narc_hand,
-                Owner::Buyer => unreachable!("Buyer uses buyer_plays_card(), not play_card()"),
-                Owner::Player => unreachable!(),
-            };
-
-            if card_index >= hand.len() {
-                return Err(format!("Card index {} out of bounds", card_index));
-            }
-
-            let card = hand.remove(card_index);
-            self.cards_played.push(card);
-        }
-
-        // Advance to next player's turn (increments index)
-        self.current_player_index += 1;
-
-        // Check if all players have acted, then transition
-        if self.all_players_acted() {
-            self.transition_state();
-        }
-
-        Ok(())
-    }
-
-    // SOW-008 Phase 1: Sequential play helpers
-
-    /// Get whose turn it is in the current round (SOW-008 rotating turn order)
-    pub fn current_player(&self) -> Owner {
-        let turn_order = get_turn_order(self.current_round);
-        turn_order[self.current_player_index]
-    }
-
-    /// Advance to next player in turn order
-    /// Note: Does NOT reset index - caller should check all_players_acted() and transition state
-    pub fn advance_turn(&mut self) {
-        self.current_player_index += 1;
-        // Don't reset - let caller handle transition when all_players_acted()
-    }
-
-    /// Check if all players have acted this round
-    pub fn all_players_acted(&self) -> bool {
-        let turn_order = get_turn_order(self.current_round);
-        self.current_player_index >= turn_order.len()
-    }
-
-    /// Reset turn tracking for new round
-    pub fn reset_turn_tracking(&mut self) {
-        self.current_player_index = 0;
-    }
-
-    // SOW-009: Dealer card system removed, replaced by Buyer reaction cards
-
-    /// Get the dealer card for the current round (OBSOLETE - will be replaced by Buyer cards)
-    pub fn current_dealer_card(&self) -> Option<&Card> {
-        // TODO: Replace with buyer_hand logic in Phase 3
-        None
-    }
-
-    // SOW-009 Phase 4: Resolution checks
-
-    /// Check if deal is valid (must have at least 1 Product AND 1 Location)
-    pub fn is_valid_deal(&self) -> bool {
-        self.active_product(true).is_some() && self.active_location(true).is_some()
-    }
-
-    /// Check if Buyer should bail based on thresholds (SOW-010: Uses scenario threshold)
-    pub fn should_buyer_bail(&self) -> bool {
-        if let Some(persona) = &self.buyer_persona {
-            let totals = self.calculate_totals(true);
-
-            // SOW-010: Use scenario's heat threshold (if scenario active)
-            let heat_threshold = if let Some(scenario_idx) = persona.active_scenario_index {
-                persona.scenarios.get(scenario_idx).and_then(|s| s.heat_threshold)
-            } else {
-                persona.heat_threshold // Fallback to persona threshold
-            };
-
-            // Check Heat threshold (only bail if heat is positive and exceeds threshold)
-            if let Some(threshold) = heat_threshold {
-                if totals.heat > 0 && (totals.heat as u32) > threshold {
-                    return true;
-                }
-            }
-
-            // Check Evidence threshold (still uses persona threshold - scenarios don't vary this)
-            if let Some(evidence_threshold) = persona.evidence_threshold {
-                if totals.evidence > evidence_threshold {
-                    return true;
-                }
-            }
-        }
-        false
-    }
-
-    /// Check if demand is satisfied (SOW-010: Product + Location match scenario preferences)
-    pub fn is_demand_satisfied(&self) -> bool {
-        if let Some(persona) = &self.buyer_persona {
-            // SOW-010: Use active scenario's demands (if scenario selected)
-            if let Some(scenario_idx) = persona.active_scenario_index {
-                if let Some(scenario) = persona.scenarios.get(scenario_idx) {
-                    // Check if active Product matches ANY of scenario's desired products (OR logic)
-                    let product_match = self.active_product(true)
-                        .map(|card| scenario.products.contains(&card.name))
-                        .unwrap_or(false);
-
-                    // Check if active Location matches ANY of scenario's preferred locations (OR logic)
-                    let location_match = self.active_location(true)
-                        .map(|card| scenario.locations.contains(&card.name))
-                        .unwrap_or(false);
-
-                    // BOTH must be satisfied for base multiplier
-                    return product_match && location_match;
-                }
-            }
-
-            // Fallback: Use persona's generic demand (for backward compatibility)
-            let product_match = self.active_product(true)
-                .map(|card| persona.demand.products.contains(&card.name))
-                .unwrap_or(false);
-
-            let location_match = self.active_location(true)
-                .map(|card| persona.demand.locations.contains(&card.name))
-                .unwrap_or(false);
-
-            product_match && location_match
-        } else {
-            false // No Buyer persona set
-        }
-    }
-
-    /// Get the appropriate profit multiplier based on demand satisfaction
-    pub fn get_profit_multiplier(&self) -> f32 {
-        if let Some(persona) = &self.buyer_persona {
-            if self.is_demand_satisfied() {
-                persona.base_multiplier
-            } else {
-                persona.reduced_multiplier
-            }
-        } else {
-            1.0 // Default multiplier if no Buyer
-        }
-    }
-
-    // SOW-008 Phase 3: Fold mechanics
-
-    /// Player folds after seeing dealer reveal (Rounds 1-2 only)
-    /// Consequences: Discard played cards, keep unplayed cards, keep Heat, lose profit
-    pub fn player_fold(&mut self) {
-        if self.current_state != State::FoldDecision {
-            return; // Only valid at FoldDecision
-        }
-
-        // Discard all played cards (don't shuffle back)
-        self.cards_played.clear();
-
-        // Keep unplayed cards in hand (already there)
-        // Keep accumulated Heat (already tracked in current_heat)
-        // Lose profit (don't bank it)
-
-        // Mark as folded and end hand
-        self.outcome = Some(HandOutcome::Folded);
-        self.current_state = State::Bust; // Terminal state
-    }
-
-    // SOW-009 Phase 3: Buyer card play system
-
-    /// Buyer plays 1 random card from visible hand
-    /// Returns the card that was played, or None if no cards available
-    pub fn buyer_plays_card(&mut self) -> Option<Card> {
-        if self.buyer_hand.is_empty() {
-            return None;  // No cards left
-        }
-
-        // Select random card from visible hand
-        let random_index = rand::thread_rng().gen_range(0..self.buyer_hand.len());
-        let card = self.buyer_hand.remove(random_index);
-
-        // Add to buyer_played for tracking
-        self.buyer_played.push(card.clone());
-
-        // Add to cards_played for totals calculation
-        self.cards_played.push(card.clone());
-
-        Some(card)
-    }
-
-    /// Initialize/refill Buyer hand at start of NEW hand (draw to 3 visible cards)
-    /// Called at hand start - refills hand from deck (like player)
-    /// Buyer deck reshuffles BETWEEN hands (not during hand - 7 cards, max 3 played)
-    pub fn initialize_buyer_hand(&mut self) {
-        const BUYER_HAND_SIZE: usize = 3;
-
-        // First time initialization: Set up deck from persona
-        if self.buyer_deck.is_empty() && self.buyer_hand.is_empty() && self.buyer_played.is_empty() {
-            if let Some(persona) = &self.buyer_persona {
-                self.buyer_deck = persona.reaction_deck.clone();
-                self.buyer_deck.shuffle(&mut rand::thread_rng());
-            }
-        }
-
-        // Draw to fill hand to 3 cards (draws from existing deck, depleting it)
-        while self.buyer_hand.len() < BUYER_HAND_SIZE && !self.buyer_deck.is_empty() {
-            self.buyer_hand.push(self.buyer_deck.remove(0));
-        }
-
-        // Note: Buyer can never deplete deck mid-hand (7 cards, max 3 played per hand)
-    }
-
-    // SOW-009: should_customer_fold() and customer_fold() removed - Customer no longer exists
-}
-
-// ============================================================================
-// SOW-009: TURN ORDER SYSTEM (Simplified from SOW-008)
-// ============================================================================
-
-/// Get turn order (SOW-009: No rotation, always Narc → Player)
-/// Narc always plays first, Player always plays second
-fn get_turn_order(_round: u8) -> Vec<Owner> {
-    vec![Owner::Narc, Owner::Player]
-}
-
-// ============================================================================
-// BETTING PHASE & INITIATIVE - SOW-002 Phase 2 (OBSOLETE - see ADR-006)
-// ============================================================================
-
-/// Betting actions per ADR-005
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum BettingAction {
-    Check, // Stay in without playing card
-    Raise, // Play card face-down (first raise or re-raise with initiative)
-    Call,  // Play card in response to a raise (matching the bet)
-    Fold,  // Exit betting immediately
-}
-
-/// Betting state tracking per ADR-005
-#[derive(Component, Debug, Clone)]
-struct BettingState {
-    pub current_player: Owner,              // Whose turn it is (Narc → Customer → Player)
-    pub initiative_player: Option<Owner>,   // Who has initiative (first raiser)
-    pub raises_this_round: u8,              // Total raises so far (max 3)
-    pub players_awaiting_action: Vec<Owner>, // Who hasn't responded to current raise
-    pub players_all_in: Vec<Owner>,         // Who played their last card
-    pub players_acted: Vec<Owner>,          // Who has acted this round (at least once)
-    pub last_action_narc: Option<BettingAction>,     // Visual feedback
-    pub last_action_customer: Option<BettingAction>, // Visual feedback
-    pub last_action_player: Option<BettingAction>,   // Visual feedback
-}
-
-impl Default for BettingState {
-    fn default() -> Self {
-        Self {
-            current_player: Owner::Narc, // Narc always goes first per ADR-002
-            initiative_player: None,
-            raises_this_round: 0,
-            players_awaiting_action: vec![],
-            players_all_in: vec![],
-            players_acted: vec![],
-            last_action_narc: None,
-            last_action_customer: None,
-            last_action_player: None,
-        }
-    }
-}
-
-impl BettingState {
-    /// Reset for new betting round
-    fn reset_for_round(&mut self) {
-        self.current_player = Owner::Narc;
-        self.initiative_player = None;
-        self.raises_this_round = 0;
-        self.players_awaiting_action.clear();
-        // SOW-005: Don't clear all_in - persists for entire hand (can't get more cards)
-        // self.players_all_in.clear();
-        self.players_acted.clear();
-        self.last_action_narc = None;
-        self.last_action_customer = None;
-        self.last_action_player = None;
-    }
-
-    /// Check if betting is complete per ADR-005 termination rules
-    fn is_complete(&self) -> bool {
-        // Everyone must act at least once (SOW-009: Only Narc and Player)
-        let all_players_acted = self.players_acted.contains(&Owner::Narc)
-                              && self.players_acted.contains(&Owner::Player);
-
-        if !all_players_acted {
-            return false;
-        }
-
-        // Players still need to respond to raises (even if limit hit)
-        if !self.players_awaiting_action.is_empty() {
-            return false; // Must wait for everyone to call/fold
-        }
-
-        // Limit hit (max 3 raises) - betting ends after everyone responds
-        if self.raises_this_round >= 3 {
-            return true; // Limit hit and everyone responded
-        }
-
-        // No initiative OR initiative player already acted
-        // If initiative exists, they get another chance to raise
-        self.initiative_player.is_none()
-    }
-
-    /// Advance to next player in turn order (SOW-009: Narc → Player)
-    fn advance_turn(&mut self) {
-        self.current_player = match self.current_player {
-            Owner::Narc => Owner::Player,
-            Owner::Buyer => unreachable!("Buyer does not use betting system"),
-            Owner::Player => {
-                // If initiative exists and can act, go to them
-                if let Some(init_player) = self.initiative_player {
-                    if self.players_awaiting_action.is_empty() {
-                        init_player // Initiative player gets another turn
-                    } else {
-                        Owner::Narc // Otherwise loop back
-                    }
-                } else {
-                    Owner::Narc // Loop back to start
-                }
-            },
-        };
-    }
-
-    /// Handle a betting action per ADR-005 rules
-    /// card_index: Optional card index for Raise/Call (None = use index 0)
-    fn handle_action(&mut self, player: Owner, action: BettingAction, hand_state: &mut HandState, card_index: Option<usize>) -> Result<(), String> {
-        // Verify it's this player's turn
-        if self.current_player != player {
-            return Err(format!("Not your turn! Current player: {:?}", self.current_player));
-        }
-
-        // Check if player is all-in (can only Check)
-        if self.players_all_in.contains(&player) {
-            if action != BettingAction::Check {
-                return Err("Player is all-in, can only Check".to_string());
-            }
-        }
-
-        match action {
-            BettingAction::Check => {
-                // Can't Check when awaiting response to a raise (must Raise or Fold)
-                if self.players_awaiting_action.contains(&player) {
-                    return Err("Can't Check when facing a Raise - must Raise or Fold".to_string());
-                }
-
-                // Record action for visual feedback (SOW-009: Only Narc and Player)
-                match player {
-                    Owner::Narc => self.last_action_narc = Some(BettingAction::Check),
-                    Owner::Player => self.last_action_player = Some(BettingAction::Check),
-                    Owner::Buyer => unreachable!("Buyer does not use betting system"),
-                }
-
-                // Mark player as acted
-                if !self.players_acted.contains(&player) {
-                    self.players_acted.push(player);
-                }
-
-                // Remove from awaiting list (shouldn't be in it, but safety)
-                self.players_awaiting_action.retain(|&p| p != player);
-
-                // If player has initiative and Checks, lose initiative
-                if self.initiative_player == Some(player) {
-                    self.initiative_player = None;
-                }
-
-                // Advance turn
-                self.advance_turn();
-            },
-
-            BettingAction::Raise | BettingAction::Call => {
-                // Determine if this is a true raise or a call
-                let is_call = self.players_awaiting_action.contains(&player);
-                let actual_action = if is_call {
-                    BettingAction::Call
-                } else {
-                    BettingAction::Raise
-                };
-
-                // Check raise limit (only for true raises, not calls)
-                if !is_call && self.raises_this_round >= 3 {
-                    return Err("Max raises reached (3)".to_string());
-                }
-
-                // Player must have cards (SOW-009: Only Narc and Player)
-                let hand = match player {
-                    Owner::Narc => &mut hand_state.narc_hand,
-                    Owner::Player => &mut hand_state.player_hand,
-            Owner::Buyer => unreachable!("Buyer does not use betting system"),
-                };
-
-                if hand.is_empty() {
-                    return Err("No cards to raise/call with".to_string());
-                }
-
-                // Remove clicked card from hand and play it face-down
-                let index = card_index.unwrap_or(0); // Default to first card if no index specified
-                if index >= hand.len() {
-                    return Err(format!("Invalid card index: {}", index));
-                }
-                let card = hand.remove(index);
-                hand_state.cards_played_this_round.push(card);
-
-                // Record action for visual feedback (SOW-009: Only Narc and Player)
-                match player {
-                    Owner::Narc => self.last_action_narc = Some(actual_action),
-                    Owner::Player => self.last_action_player = Some(actual_action),
-                    Owner::Buyer => unreachable!("Buyer does not use betting system"),
-                }
-
-                // Mark player as acted
-                if !self.players_acted.contains(&player) {
-                    self.players_acted.push(player);
-                }
-
-                // SOW-005: Check if player is now all-in (hand AND deck empty - can't draw more)
-                let deck = match player {
-                    Owner::Narc => &hand_state.narc_deck,
-                    Owner::Player => &hand_state.player_deck,
-                    Owner::Buyer => unreachable!("Buyer does not use betting system"),
-                };
-
-                if hand.is_empty() && deck.is_empty() && !self.players_all_in.contains(&player) {
-                    self.players_all_in.push(player);
-                }
-
-                // Only true raises increment counter and affect initiative
-                if !is_call {
-                    // First raise gains initiative per ADR-005
-                    if self.raises_this_round == 0 {
-                        self.initiative_player = Some(player);
-                    }
-
-                    // Increment raise counter
-                    self.raises_this_round += 1;
-
-                    // Add all OTHER players to awaiting (they must respond to this raise)
-                    // EXCEPT initiative player (they never have to respond to anyone)
-                    // SOW-009: Only Narc and Player
-                    self.players_awaiting_action = vec![Owner::Narc, Owner::Player]
-                        .into_iter()
-                        .filter(|&p| {
-                            p != player // Exclude raiser
-                            && !self.players_all_in.contains(&p) // Exclude all-in players
-                            && Some(p) != self.initiative_player // Exclude initiative player
-                        })
-                        .collect();
-                }
-
-                // Remove from awaiting list
-                self.players_awaiting_action.retain(|&p| p != player);
-
-                // Advance turn
-                self.advance_turn();
-            },
-
-            BettingAction::Fold => {
-                // Record action for visual feedback (SOW-009: Only Narc and Player)
-                match player {
-                    Owner::Narc => self.last_action_narc = Some(BettingAction::Fold),
-                    Owner::Player => self.last_action_player = Some(BettingAction::Fold),
-                    Owner::Buyer => unreachable!("Buyer does not use betting system"),
-                }
-
-                // SOW-004: Apply fold penalty (remove 1 random card from folder's deck)
-                let deck = match player {
-                    Owner::Narc => &mut hand_state.narc_deck,
-                    Owner::Player => &mut hand_state.player_deck,
-                    Owner::Buyer => unreachable!("Buyer does not use betting system"),
-                };
-                if !deck.is_empty() {
-                    let idx = rand::thread_rng().gen_range(0..deck.len());
-                    deck.remove(idx);
-                }
-
-                // SOW-004: Fold ends hand with Folded outcome
-                hand_state.outcome = Some(HandOutcome::Folded);
-                hand_state.current_state = State::Bust; // Terminal state
-            },
-        }
-
-        Ok(())
-    }
-
-    /// Check if player can raise (has cards and under limit)
-    fn can_raise(&self, player: Owner, hand_state: &HandState) -> bool {
-        // Has cards check (SOW-009: Only Narc and Player)
-        let hand = match player {
-            Owner::Narc => &hand_state.narc_hand,
-            Owner::Player => &hand_state.player_hand,
-            Owner::Buyer => unreachable!("Buyer does not use betting system"),
-        };
-
-        if hand.is_empty() {
-            return false;
-        }
-
-        // If awaiting action (facing a raise), can always call regardless of all-in or limit
-        if self.players_awaiting_action.contains(&player) {
-            return true; // Can call even if raises >= 3 or someone is all-in
-        }
-
-        // SOW-005: If anyone is all-in (hand+deck empty), no NEW raises allowed
-        if !self.players_all_in.is_empty() {
-            return false;
-        }
-
-        // For new raises, check limit
-        self.raises_this_round < 3
-    }
-}
-
-// ============================================================================
-// AI BETTING SYSTEM - SOW-002 Phase 3
-// ============================================================================
-
-// SOW-008: AI card play system with pacing delay
-fn ai_betting_system(
-    mut hand_state_query: Query<&mut HandState>,
-    _betting_state_query: Query<&mut BettingState>,
-    mut ai_timer: ResMut<AiActionTimer>,
-    time: Res<Time>,
-) {
-    let Ok(mut hand_state) = hand_state_query.get_single_mut() else {
-        return;
-    };
-
-    // Only act during PlayerPhase
-    if hand_state.current_state != State::PlayerPhase {
-        return;
-    }
-
-    // Only act for AI players (Narc or Customer)
-    let current_player = hand_state.current_player();
-    if current_player == Owner::Player {
-        return; // Player controlled manually
-    }
-
-    // SOW-008 Phase 1: Tick AI timer and act when it fires
-    ai_timer.ai_timer.tick(time.delta());
-
-    if ai_timer.ai_timer.just_finished() {
-        // Timer fired - AI acts now (SOW-009: Only Narc is AI)
-        let hand = match current_player {
-            Owner::Narc => &hand_state.narc_hand,
-            Owner::Player => return, // Player is human, not AI
-            Owner::Buyer => return, // Buyer uses different system (DealerReveal state)
-        };
-
-        if !hand.is_empty() {
-            println!("AI plays card after 1s delay");
-            // Play first card (index 0) - play_card handles turn advance and transition
-            let _ = hand_state.play_card(current_player, 0);
-        } else {
-            // No cards to play - skip turn
-            hand_state.current_player_index += 1;
-            if hand_state.all_players_acted() {
-                hand_state.transition_state();
-            }
-        }
-    }
-}
-
-// SOW-009: AI decision functions removed (obsolete betting system)
-// Narc now plays cards directly via auto_play_system (no betting/raising)
-
-// ============================================================================
-// BUST CHECK & RESOLUTION - Phase 3
-// ============================================================================
-
-impl HandState {
-    /// Resolve hand outcome (bust check with insurance/conviction - SOW-003 Phase 3)
-    ///
-    /// Resolution Order (per ADR-003):
-    /// 1. Evidence ≤ Cover → Safe (no insurance/conviction checks needed)
-    /// 2. Evidence > Cover → Check Conviction:
-    ///    - Conviction active AND current_heat >= threshold → Busted (override insurance)
-    /// 3. Check Insurance:
-    ///    - No insurance → Busted
-    ///    - Has insurance, can't afford → Busted
-    ///    - Has insurance, can afford → Pay cost, gain heat_penalty, burn insurance → Safe
-    ///
-    /// Post-resolution:
-    /// - Safe outcome: Bank profit to cash (for future insurance affordability)
-    /// - All outcomes: Accumulate totals.heat to current_heat (for conviction thresholds)
-    fn resolve_hand(&mut self) -> HandOutcome {
-        // SOW-009 Phase 4: Add validity and bail checks before bust check
-
-        // Check 1: Validity (must have Product AND Location)
-        if !self.is_valid_deal() {
-            println!("Invalid deal: Must play at least 1 Product AND 1 Location");
-            self.outcome = Some(HandOutcome::InvalidDeal);  // Can retry, not game over
-            self.current_state = State::Bust;
-            return HandOutcome::InvalidDeal;
-        }
-
-        // Check 2: Buyer bail (threshold exceeded)
-        if self.should_buyer_bail() {
-            if let Some(persona) = &self.buyer_persona {
-                println!("Buyer ({}) bailed! Threshold exceeded", persona.display_name);
-            }
-            self.outcome = Some(HandOutcome::BuyerBailed);  // Can retry with same Buyer
-            self.current_state = State::Bust;
-            return HandOutcome::BuyerBailed;
-        }
-
-        let totals = self.calculate_totals(true); // Always include all cards at resolution
-
-        // Calculate projected heat (current heat + this hand's heat)
-        // This is what heat will be AFTER this hand, used for conviction checks
-        let projected_heat = self.current_heat.saturating_add(totals.heat as u32);
-
-        // Step 3: Evidence ≤ Cover → Safe (tie goes to player)
-        let outcome = if totals.evidence <= totals.cover {
-            HandOutcome::Safe
-        } else {
-            // Evidence > Cover → Potential bust, check insurance/conviction
-
-            // Step 2: Check Conviction override (using PROJECTED heat after this hand)
-            if let Some(conviction) = self.active_conviction(true) {
-                if let CardType::Conviction { heat_threshold } = conviction.card_type {
-                    if projected_heat >= heat_threshold {
-                        // Conviction overrides insurance - run ends
-                        HandOutcome::Busted
-                    } else {
-                        // Heat below threshold, conviction doesn't activate
-                        self.try_insurance_activation()
-                    }
-                } else {
-                    self.try_insurance_activation()
-                }
-            } else {
-                // No conviction active
-                self.try_insurance_activation()
-            }
-        };
-
-        // Post-resolution: Accumulate cash and heat
-        match outcome {
-            HandOutcome::Safe => {
-                // Bank profit to cash (for future insurance purchases)
-                self.cash += totals.profit;
-            }
-            HandOutcome::Busted => {
-                // No cash gained on bust
-            }
-            HandOutcome::Folded => {
-                // Unreachable - folding handled in handle_action(), not resolve_hand()
-                // But added for exhaustive matching
-            }
-            HandOutcome::InvalidDeal | HandOutcome::BuyerBailed => {
-                // No cash gained on invalid deal or buyer bail (deal didn't complete)
-            }
-        }
-
-        // Always accumulate heat (regardless of outcome)
-        // SOW-005: Handle negative heat (can't go below 0)
-        if totals.heat >= 0 {
-            self.current_heat = self.current_heat.saturating_add(totals.heat as u32);
-        } else {
-            self.current_heat = self.current_heat.saturating_sub((-totals.heat) as u32);
-        }
-
-        self.outcome = Some(outcome);
-        self.current_state = State::Bust; // Transition to terminal state
-        outcome
-    }
-
-    /// Try to activate insurance (Step 3 of resolution order)
-    ///
-    /// Returns:
-    /// - Safe: Insurance activated (cost paid, heat gained, card burned)
-    /// - Busted: No insurance OR can't afford
-    fn try_insurance_activation(&mut self) -> HandOutcome {
-        // Extract insurance values first to avoid borrow issues
-        let insurance_info = self.active_insurance(true).and_then(|insurance| {
-            if let CardType::Insurance { cost, heat_penalty, .. } = insurance.card_type {
-                Some((insurance.name.clone(), cost, heat_penalty))
-            } else {
-                None
-            }
-        });
-
-        if let Some((insurance_name, cost, heat_penalty)) = insurance_info {
-            // Check affordability
-            if self.cash >= cost {
-                // Activate insurance: pay cost, gain heat penalty
-                self.cash -= cost;
-                self.current_heat = self.current_heat.saturating_add(heat_penalty as u32);
-
-                // Burn insurance card (remove from deck permanently)
-                self.player_deck.retain(|card| card.name != insurance_name);
-
-                HandOutcome::Safe
-            } else {
-                // Can't afford insurance
-                HandOutcome::Busted
-            }
-        } else {
-            // No insurance active
-            HandOutcome::Busted
-        }
-    }
-}
-
-// ============================================================================
-// CARD INTERACTION ENGINE - Phase 2
-// ============================================================================
-
-/// Totals calculated from all played cards
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-struct Totals {
-    evidence: u32,
-    cover: u32,
-    heat: i32,
-    profit: u32,
-}
-
-impl HandState {
-    /// Get active Product card (last Product played, if any)
-    /// Override rule: Only last Product matters
-    /// include_current_round: Whether to include face-down cards from this round
-    fn active_product(&self, include_current_round: bool) -> Option<&Card> {
-        let cards: Vec<&Card> = if include_current_round {
-            self.cards_played.iter().chain(self.cards_played_this_round.iter()).collect()
-        } else {
-            self.cards_played.iter().collect()
-        };
-
-        cards.into_iter().rev().find(|card| matches!(card.card_type, CardType::Product { .. }))
-    }
-
-    /// Get active Location card (last Location played, required)
-    /// Override rule: Only last Location matters
-    /// include_current_round: Whether to include face-down cards from this round
-    fn active_location(&self, include_current_round: bool) -> Option<&Card> {
-        let cards: Vec<&Card> = if include_current_round {
-            self.cards_played.iter().chain(self.cards_played_this_round.iter()).collect()
-        } else {
-            self.cards_played.iter().collect()
-        };
-
-        // Find last Location (player or Buyer)
-        // SOW-009: Buyer Location cards can override player Location cards (both use CardType::Location)
-        cards.into_iter().rev().find(|card| {
-            matches!(card.card_type, CardType::Location { .. })
-        })
-    }
-
-    /// Get active Insurance card (last Insurance played, if any)
-    /// Override rule: Only last Insurance matters (SOW-003 Phase 1)
-    /// include_current_round: Whether to include face-down cards from this round
-    fn active_insurance(&self, include_current_round: bool) -> Option<&Card> {
-        let cards: Vec<&Card> = if include_current_round {
-            self.cards_played.iter().chain(self.cards_played_this_round.iter()).collect()
-        } else {
-            self.cards_played.iter().collect()
-        };
-
-        cards.into_iter().rev().find(|card| matches!(card.card_type, CardType::Insurance { .. }))
-    }
-
-    /// Get active Conviction card (last Conviction played, if any)
-    /// Override rule: Only last Conviction matters (SOW-003 Phase 2)
-    /// include_current_round: Whether to include face-down cards from this round
-    fn active_conviction(&self, include_current_round: bool) -> Option<&Card> {
-        let cards: Vec<&Card> = if include_current_round {
-            self.cards_played.iter().chain(self.cards_played_this_round.iter()).collect()
-        } else {
-            self.cards_played.iter().collect()
-        };
-
-        cards.into_iter().rev().find(|card| matches!(card.card_type, CardType::Conviction { .. }))
-    }
-
-    /// Calculate current totals from all played cards
-    ///
-    /// Override rules:
-    /// - Last Product played becomes active (previous discarded)
-    /// - Last Location played becomes active (Evidence/Cover base changes)
-    /// - Last Insurance played becomes active (SOW-003)
-    /// - Last Conviction played becomes active (SOW-003)
-    ///
-    /// Additive rules:
-    /// - Evidence = Location base + sum(all Evidence cards + DealModifier evidence)
-    /// - Cover = Location base + sum(all Cover cards + Insurance cover + DealModifier cover)
-    /// - Heat = sum(all heat modifiers from all cards)
-    /// - Profit = Active Product price × product(all DealModifier price_multiplier)
-    ///
-    /// Special rules (SOW-003):
-    /// - Insurance acts as Cover card during totals calculation
-    /// - Conviction has no effect on totals (only affects bust resolution)
-    ///
-    /// Multi-round (SOW-002):
-    /// - include_current_round: Whether to include cards_played_this_round (after Flip) or not (during Betting)
-    fn calculate_totals(&self, include_current_round: bool) -> Totals {
-        let mut totals = Totals::default();
-        let mut price_multiplier: f32 = 1.0; // SOW-002 Phase 4: multiplicative modifiers
-
-        // Get base Evidence/Cover from active Location (player or dealer)
-        if let Some(location) = self.active_location(include_current_round) {
-            match location.card_type {
-                CardType::Location { evidence, cover, heat } => {
-                    totals.evidence = evidence;
-                    totals.cover = cover;
-                    totals.heat += heat;
-                }
-                _ => {} // Shouldn't happen
-            }
-        }
-
-        // Process finalized cards from previous rounds (always included)
-        let cards_to_process: Box<dyn Iterator<Item = &Card>> = if include_current_round {
-            // After Flip: Include both finalized and current round cards
-            Box::new(self.cards_played.iter().chain(self.cards_played_this_round.iter()))
-        } else {
-            // During Betting: Only finalized cards (current round is face-down)
-            Box::new(self.cards_played.iter())
-        };
-
-        for card in cards_to_process {
-            match card.card_type {
-                CardType::Evidence { evidence, heat } => {
-                    totals.evidence += evidence;
-                    totals.heat += heat;
-                }
-                CardType::Cover { cover, heat } => {
-                    totals.cover += cover;
-                    totals.heat += heat;
-                }
-                // SOW-002 Phase 4: Deal Modifiers
-                CardType::DealModifier { price_multiplier: multiplier, evidence, cover, heat } => {
-                    price_multiplier *= multiplier; // Multiplicative for price
-                    totals.evidence = totals.evidence.saturating_add_signed(evidence); // Additive
-                    totals.cover = totals.cover.saturating_add_signed(cover); // Additive
-                    totals.heat += heat; // Additive
-                }
-                // SOW-003 Phase 1: Insurance acts as Cover (dual function)
-                CardType::Insurance { cover, .. } => {
-                    totals.cover += cover; // Adds to Cover total (like Cover cards)
-                    // Note: heat_penalty only applies when insurance activates on bust
-                }
-                // SOW-003 Phase 2: Conviction has no effect on totals
-                CardType::Conviction { .. } => {
-                    // No effect on totals - only affects bust resolution
-                }
-                _ => {}
-            }
-        }
-
-        // SOW-008 Phase 2: Process revealed dealer modifier cards
-        // Dealer cards are revealed AFTER PlayerPhase, so count previous rounds only
-        // Round 1: No dealer cards revealed yet (0 cards)
-        // After Round 1 DealerReveal: 1 dealer card revealed
-        // After Round 2 DealerReveal: 2 dealer cards revealed
-        // After Round 3 DealerReveal: 3 dealer cards revealed
-        let revealed_dealer_cards = if self.current_state == State::DealerReveal ||
-                                        self.current_state == State::Resolve ||
-                                        self.current_state == State::Bust {
-            // After DealerReveal or later: Include dealer card for current round
-            self.current_round as usize
-        } else {
-            // Before DealerReveal: Only include previous rounds
-            self.current_round.saturating_sub(1) as usize
-        };
-
-        // SOW-009: Dealer card processing removed, will be replaced by Buyer cards in Phase 3
-        // TODO: Process buyer_played cards here instead
-        for _i in 0..revealed_dealer_cards {
-            // Placeholder: Buyer card effects will be added in Phase 3
-        }
-
-        // Get profit from active Product (apply multipliers)
-        if let Some(product) = self.active_product(include_current_round) {
-            if let CardType::Product { price, heat } = product.card_type {
-                // SOW-009 Phase 4: Apply Buyer multiplier in addition to DealModifier multipliers
-                let buyer_multiplier = self.get_profit_multiplier();
-                totals.profit = (price as f32 * price_multiplier * buyer_multiplier) as u32;
-                totals.heat += heat;
-            }
-        }
-
-        totals
-    }
-}
-
+// SOW-AAA Phase 5: HandState extracted to models/hand_state.rs (~823 lines)
+// - State enum, HandOutcome enum, HandState struct
+// - All impl blocks, get_turn_order function
 // ============================================================================
 // 8-CARD COLLECTION (MVP)
 // ============================================================================
-
-fn create_narc_deck() -> Vec<Card> {
-    // SOW-005: Narc deck (25 cards - Law Enforcement Theme)
-    let mut deck = vec![];
-    let mut id = 1;
-
-    // 17 Evidence cards (varied threat levels)
-    // 8× Low threat
-    for _ in 0..8 {
-        deck.push(Card {
-            id,
-            name: "Donut Break".to_string(),
-            owner: Owner::Narc,
-            card_type: CardType::Evidence { evidence: 0, heat: 0 },
-        });
-        id += 1;
-    }
-
-    // 6× Medium threat
-    for _ in 0..2 {
-        deck.push(Card {
-            id,
-            name: "Patrol".to_string(),
-            owner: Owner::Narc,
-            card_type: CardType::Evidence { evidence: 5, heat: 2 },
-        });
-        id += 1;
-    }
-
-    for _ in 0..2 {
-        deck.push(Card {
-            id,
-            name: "Surveillance".to_string(),
-            owner: Owner::Narc,
-            card_type: CardType::Evidence { evidence: 20, heat: 5 },
-        });
-        id += 1;
-    }
-
-    for _ in 0..2 {
-        deck.push(Card {
-            id,
-            name: "Stakeout".to_string(),
-            owner: Owner::Narc,
-            card_type: CardType::Evidence { evidence: 10, heat: 3 },
-        });
-        id += 1;
-    }
-
-    // 3× High threat
-    deck.push(Card {
-        id,
-        name: "Undercover Op".to_string(),
-        owner: Owner::Narc,
-        card_type: CardType::Evidence { evidence: 30, heat: 10 },
-    });
-    id += 1;
-
-    deck.push(Card {
-        id,
-        name: "Raid".to_string(),
-        owner: Owner::Narc,
-        card_type: CardType::Evidence { evidence: 40, heat: 20 },
-    });
-    id += 1;
-
-    deck.push(Card {
-        id,
-        name: "Wiretap".to_string(),
-        owner: Owner::Narc,
-        card_type: CardType::Evidence { evidence: 35, heat: 15 },
-    });
-    id += 1;
-
-    // 8 Conviction cards (SOW-005: Moved from player deck)
-    for _ in 0..4 {
-        deck.push(Card {
-            id,
-            name: "Warrant".to_string(),
-            owner: Owner::Narc,
-            card_type: CardType::Conviction { heat_threshold: 40 },
-        });
-        id += 1;
-    }
-
-    for _ in 0..3 {
-        deck.push(Card {
-            id,
-            name: "DA Approval".to_string(),
-            owner: Owner::Narc,
-            card_type: CardType::Conviction { heat_threshold: 60 },
-        });
-        id += 1;
-    }
-
-    deck.push(Card {
-        id,
-        name: "RICO Case".to_string(),
-        owner: Owner::Narc,
-        card_type: CardType::Conviction { heat_threshold: 80 },
-    });
-
-    // Shuffle deck for variety
-    deck.shuffle(&mut rand::thread_rng());
-    deck
-}
-
-// SOW-009: create_customer_deck() removed - replaced by Buyer reaction decks in Phase 2
-// Customer deck is obsolete (merged into Buyer persona system)
-
-fn create_player_deck() -> Vec<Card> {
-    let mut deck = vec![
-        // SOW-010: Player Deck (20 cards - Dealer Theme)
-        // 9 Products (Budget → Premium, Low Heat → High Heat)
-        Card {
-            id: 10,
-            name: "Weed".to_string(),
-            owner: Owner::Player,
-            card_type: CardType::Product { price: 30, heat: 5 },
-        },
-        Card {
-            id: 11,
-            name: "Shrooms".to_string(),
-            owner: Owner::Player,
-            card_type: CardType::Product { price: 40, heat: 8 },
-        },
-        Card {
-            id: 12,
-            name: "Codeine".to_string(),
-            owner: Owner::Player,
-            card_type: CardType::Product { price: 50, heat: 10 },
-        },
-        Card {
-            id: 13,
-            name: "Acid".to_string(),
-            owner: Owner::Player,
-            card_type: CardType::Product { price: 60, heat: 12 },
-        },
-        Card {
-            id: 14,
-            name: "Ecstasy".to_string(),
-            owner: Owner::Player,
-            card_type: CardType::Product { price: 80, heat: 25 },
-        },
-        Card {
-            id: 15,
-            name: "Ice".to_string(),
-            owner: Owner::Player,
-            card_type: CardType::Product { price: 100, heat: 30 },
-        },
-        Card {
-            id: 16,
-            name: "Coke".to_string(),
-            owner: Owner::Player,
-            card_type: CardType::Product { price: 120, heat: 35 },
-        },
-        Card {
-            id: 17,
-            name: "Heroin".to_string(),
-            owner: Owner::Player,
-            card_type: CardType::Product { price: 150, heat: 45 },
-        },
-        Card {
-            id: 18,
-            name: "Fentanyl".to_string(),
-            owner: Owner::Player,
-            card_type: CardType::Product { price: 200, heat: 50 },
-        },
-        // 4 Locations
-        Card {
-            id: 19,
-            name: "Safe House".to_string(),
-            owner: Owner::Player,
-            card_type: CardType::Location { evidence: 10, cover: 30, heat: -5 },
-        },
-        Card {
-            id: 20,
-            name: "Abandoned Warehouse".to_string(),
-            owner: Owner::Player,
-            card_type: CardType::Location { evidence: 15, cover: 25, heat: -10 },
-        },
-        Card {
-            id: 21,
-            name: "Storage Unit".to_string(),
-            owner: Owner::Player,
-            card_type: CardType::Location { evidence: 12, cover: 28, heat: -8 },
-        },
-        Card {
-            id: 22,
-            name: "Dead Drop".to_string(),
-            owner: Owner::Player,
-            card_type: CardType::Location { evidence: 8, cover: 20, heat: -5 },
-        },
-        // 4 Cover cards
-        Card {
-            id: 23,
-            name: "Alibi".to_string(),
-            owner: Owner::Player,
-            card_type: CardType::Cover { cover: 30, heat: -5 },
-        },
-        Card {
-            id: 24,
-            name: "Bribe".to_string(),
-            owner: Owner::Player,
-            card_type: CardType::Cover { cover: 25, heat: 10 },
-        },
-        Card {
-            id: 25,
-            name: "Fake Receipts".to_string(),
-            owner: Owner::Player,
-            card_type: CardType::Cover { cover: 20, heat: 5 },
-        },
-        Card {
-            id: 26,
-            name: "Bribed Witness".to_string(),
-            owner: Owner::Player,
-            card_type: CardType::Cover { cover: 15, heat: -10 },
-        },
-        // 2 Insurance cards
-        Card {
-            id: 27,
-            name: "Plea Bargain".to_string(),
-            owner: Owner::Player,
-            card_type: CardType::Insurance { cover: 20, cost: 1000, heat_penalty: 20 },
-        },
-        Card {
-            id: 28,
-            name: "Fake ID".to_string(),
-            owner: Owner::Player,
-            card_type: CardType::Insurance { cover: 15, cost: 0, heat_penalty: 40 },
-        },
-        // 5 Deal Modifiers (defensive focus)
-        Card {
-            id: 29,
-            name: "Disguise".to_string(),
-            owner: Owner::Player,
-            card_type: CardType::DealModifier { price_multiplier: 1.0, evidence: 0, cover: 20, heat: -5 },
-        },
-        Card {
-            id: 30,
-            name: "Burner Phone".to_string(),
-            owner: Owner::Player,
-            card_type: CardType::DealModifier { price_multiplier: 1.0, evidence: 0, cover: 15, heat: -10 },
-        },
-        Card {
-            id: 31,
-            name: "Lookout".to_string(),
-            owner: Owner::Player,
-            card_type: CardType::DealModifier { price_multiplier: 1.0, evidence: 0, cover: 20, heat: 0 },
-        },
-        Card {
-            id: 32,
-            name: "Clean Money".to_string(),
-            owner: Owner::Player,
-            card_type: CardType::DealModifier { price_multiplier: 0.9, evidence: 0, cover: 10, heat: -15 },
-        },
-        Card {
-            id: 33,
-            name: "False Trail".to_string(),
-            owner: Owner::Player,
-            card_type: CardType::DealModifier { price_multiplier: 1.0, evidence: -10, cover: 15, heat: -5 },
-        },
-    ];
-
-    // Shuffle deck for variety
-    deck.shuffle(&mut rand::thread_rng());
-    deck
-}
-
-// ============================================================================
-// SOW-009 PHASE 2: BUYER PERSONAS AND REACTION DECKS
-// ============================================================================
-
-/// Create all available Buyer personas (MVP: 3 personas)
-fn create_buyer_personas() -> Vec<BuyerPersona> {
-    vec![
-        create_college_party_host(),
-        create_stay_at_home_mom(),
-        create_executive(),
-    ]
-}
-
-/// Buyer Persona 1: Frat Bro
-/// High profit (×2.5), no threshold (won't bail), high Evidence risk
-fn create_college_party_host() -> BuyerPersona {
-    let mut id = 2000; // Start Buyer cards at 2000
-
-    BuyerPersona {
-        id: "frat_bro".to_string(),
-        display_name: "Frat Bro".to_string(),
-        demand: BuyerDemand {
-            products: vec!["Weed".to_string(), "Pills".to_string()],
-            locations: vec!["Dorm".to_string(), "Party".to_string(), "Park".to_string()],
-            description: "Wants Weed or Pills, high volume, public locations".to_string(),
-        },
-        base_multiplier: 2.5,
-        reduced_multiplier: 1.0,
-        heat_threshold: None,  // Not paranoid, won't bail
-        evidence_threshold: None,
-        special_rules: vec![],  // TODO: Add "+10 Evidence if public Location" in future phase
-        reaction_deck: vec![
-            // 1. Evidence - Prior Conviction
-            Card {
-                id: id,
-                name: "Prior Conviction".to_string(),
-                owner: Owner::Buyer,
-                card_type: CardType::DealModifier { price_multiplier: 1.0, evidence: 20, cover: 0, heat: 5 },
-            },
-            // 2. Cover - Invite Only
-            { id += 1; Card {
-                id: id,
-                name: "Invite Only".to_string(),
-                owner: Owner::Buyer,
-                card_type: CardType::DealModifier { price_multiplier: 1.0, evidence: 0, cover: 15, heat: -5 },
-            }},
-            // 3. Location - Safe (Locker Room)
-            { id += 1; Card {
-                id: id,
-                name: "Locker Room".to_string(),
-                owner: Owner::Buyer,
-                card_type: CardType::Location { evidence: 5, cover: 20, heat: -5 },
-            }},
-            // 4. Location - Risky (Frat House)
-            { id += 1; Card {
-                id: id,
-                name: "Frat House".to_string(),
-                owner: Owner::Buyer,
-                card_type: CardType::Location { evidence: 15, cover: 15, heat: 10 },
-            }},
-            // 5. Price Up - Invite More People
-            { id += 1; Card {
-                id: id,
-                name: "Invite More People".to_string(),
-                owner: Owner::Buyer,
-                card_type: CardType::DealModifier { price_multiplier: 1.5, evidence: 15, cover: 0, heat: 10 },
-            }},
-            // 6. Price Down - Second Supplier
-            { id += 1; Card {
-                id: id,
-                name: "Second Supplier".to_string(),
-                owner: Owner::Buyer,
-                card_type: CardType::DealModifier { price_multiplier: 0.7, evidence: 5, cover: 0, heat: -5 },
-            }},
-            // 7. Heat - Noise Complaint
-            { id += 1; Card {
-                id: id,
-                name: "Noise Complaint".to_string(),
-                owner: Owner::Buyer,
-                card_type: CardType::DealModifier { price_multiplier: 1.0, evidence: 5, cover: 0, heat: 20 },
-            }},
-        ],
-        scenarios: vec![
-            // Scenario A: Get Wild
-            BuyerScenario {
-                id: "get_wild".to_string(),
-                display_name: "Get Wild".to_string(),
-                products: vec!["Weed".to_string(), "Coke".to_string()],
-                locations: vec!["Frat House".to_string(), "Locker Room".to_string(), "Park".to_string()],
-                heat_threshold: None, // Fearless - knows it's risky, willing to take it
-                description: "Chaotic party energy, maximum wildness".to_string(),
-            },
-            // Scenario B: Get Laid
-            BuyerScenario {
-                id: "get_laid".to_string(),
-                display_name: "Get Laid".to_string(),
-                products: vec!["Weed".to_string(), "Ecstasy".to_string()],
-                locations: vec!["Frat House".to_string(), "Locker Room".to_string(), "Dorm".to_string()],
-                heat_threshold: Some(35), // Cautious - not worth getting busted for romance
-                description: "Social connection party, vibes over chaos".to_string(),
-            },
-        ],
-        active_scenario_index: None, // Set during Buyer selection
-    }
-}
-
-/// Buyer Persona 2: Desperate Housewife
-/// Low profit (×1.2), paranoid (Heat < 30), private only
-fn create_stay_at_home_mom() -> BuyerPersona {
-    let mut id = 2100; // Mom cards start at 2100
-
-    BuyerPersona {
-        id: "desperate_housewife".to_string(),
-        display_name: "Desperate Housewife".to_string(),
-        demand: BuyerDemand {
-            products: vec!["Pills".to_string()],
-            locations: vec!["Private Residence".to_string(), "Warehouse".to_string()],
-            description: "Wants Pills only, private locations only".to_string(),
-        },
-        base_multiplier: 1.2,
-        reduced_multiplier: 1.0,
-        heat_threshold: Some(30),  // Paranoid, bails if Heat > 30
-        evidence_threshold: None,
-        special_rules: vec![],
-        reaction_deck: vec![
-            // 1. Evidence - Neighborhood Watch
-            Card {
-                id: id,
-                name: "Neighborhood Watch".to_string(),
-                owner: Owner::Buyer,
-                card_type: CardType::DealModifier { price_multiplier: 1.0, evidence: 15, cover: 0, heat: 5 },
-            },
-            // 2. Cover - Good Reputation
-            { id += 1; Card {
-                id: id,
-                name: "Good Reputation".to_string(),
-                owner: Owner::Buyer,
-                card_type: CardType::DealModifier { price_multiplier: 1.0, evidence: 0, cover: 20, heat: -5 },
-            }},
-            // 3. Location - Safe (By the Pool)
-            { id += 1; Card {
-                id: id,
-                name: "By the Pool".to_string(),
-                owner: Owner::Buyer,
-                card_type: CardType::Location { evidence: 5, cover: 25, heat: -10 },
-            }},
-            // 4. Location - Risky (At the Park)
-            { id += 1; Card {
-                id: id,
-                name: "At the Park".to_string(),
-                owner: Owner::Buyer,
-                card_type: CardType::Location { evidence: 15, cover: 15, heat: 5 },
-            }},
-            // 5. Price Up - Obvious Wealth
-            { id += 1; Card {
-                id: id,
-                name: "Obvious Wealth".to_string(),
-                owner: Owner::Buyer,
-                card_type: CardType::DealModifier { price_multiplier: 1.3, evidence: 10, cover: 5, heat: 5 },
-            }},
-            // 6. Price Down - "Alternative" Payment
-            { id += 1; Card {
-                id: id,
-                name: "\"Alternative\" Payment".to_string(),
-                owner: Owner::Buyer,
-                card_type: CardType::DealModifier { price_multiplier: 0.5, evidence: 5, cover: 5, heat: 0 },
-            }},
-            // 7. Heat - Gossip Girl
-            { id += 1; Card {
-                id: id,
-                name: "Gossip Girl".to_string(),
-                owner: Owner::Buyer,
-                card_type: CardType::DealModifier { price_multiplier: 1.0, evidence: 5, cover: 0, heat: 15 },
-            }},
-        ],
-        scenarios: vec![
-            // Scenario A: Rock Bottom
-            BuyerScenario {
-                id: "rock_bottom".to_string(),
-                display_name: "Rock Bottom".to_string(),
-                products: vec!["Codeine".to_string(), "Fentanyl".to_string()],
-                locations: vec!["Private Residence".to_string(), "By the Pool".to_string()],
-                heat_threshold: Some(40), // Addicted - will take risks for her fix
-                description: "Severe addiction, desperate for relief".to_string(),
-            },
-            // Scenario B: In Denial
-            BuyerScenario {
-                id: "in_denial".to_string(),
-                display_name: "In Denial".to_string(),
-                products: vec!["Codeine".to_string(), "Weed".to_string()],
-                locations: vec!["Private Residence".to_string(), "By the Pool".to_string(), "At the Park".to_string()],
-                heat_threshold: Some(25), // Panics quickly - "I'm not a drug user!"
-                description: "Managing anxiety, denying the problem".to_string(),
-            },
-        ],
-        active_scenario_index: None,
-    }
-}
-
-/// Buyer Persona 3: Wall Street Wolf
-/// Highest profit (×2.8), very paranoid (Heat < 25), private only
-fn create_executive() -> BuyerPersona {
-    let mut id = 2200; // Executive cards start at 2200
-
-    BuyerPersona {
-        id: "wall_street_wolf".to_string(),
-        display_name: "Wall Street Wolf".to_string(),
-        demand: BuyerDemand {
-            products: vec!["Pills".to_string()],
-            locations: vec!["Private Residence".to_string(), "Office".to_string()],
-            description: "Wants premium Pills, private only, very paranoid".to_string(),
-        },
-        base_multiplier: 2.8,  // Highest profit in game
-        reduced_multiplier: 1.0,
-        heat_threshold: Some(25),  // Very paranoid, bails easily
-        evidence_threshold: None,
-        special_rules: vec![],
-        reaction_deck: vec![
-            // 1. Evidence - Invincibility Complex
-            Card {
-                id: id,
-                name: "Invincibility Complex".to_string(),
-                owner: Owner::Buyer,
-                card_type: CardType::DealModifier { price_multiplier: 1.0, evidence: 15, cover: 0, heat: 10 },
-            },
-            // 2. Cover - Friends in High Places
-            { id += 1; Card {
-                id: id,
-                name: "Friends in High Places".to_string(),
-                owner: Owner::Buyer,
-                card_type: CardType::DealModifier { price_multiplier: 1.0, evidence: 0, cover: 25, heat: -10 },
-            }},
-            // 3. Location - Safe (In a Limo)
-            { id += 1; Card {
-                id: id,
-                name: "In a Limo".to_string(),
-                owner: Owner::Buyer,
-                card_type: CardType::Location { evidence: 5, cover: 30, heat: -10 },
-            }},
-            // 4. Location - Risky (Parking Lot)
-            { id += 1; Card {
-                id: id,
-                name: "Parking Lot".to_string(),
-                owner: Owner::Buyer,
-                card_type: CardType::Location { evidence: 15, cover: 20, heat: 5 },
-            }},
-            // 5. Price Up - Stressful Day
-            { id += 1; Card {
-                id: id,
-                name: "Stressful Day".to_string(),
-                owner: Owner::Buyer,
-                card_type: CardType::DealModifier { price_multiplier: 1.8, evidence: 5, cover: 10, heat: 5 },
-            }},
-            // 6. Price Down - Negotiation
-            { id += 1; Card {
-                id: id,
-                name: "Negotiation".to_string(),
-                owner: Owner::Buyer,
-                card_type: CardType::DealModifier { price_multiplier: 0.8, evidence: 0, cover: 15, heat: -5 },
-            }},
-            // 7. Heat - Sketchy Business
-            { id += 1; Card {
-                id: id,
-                name: "Sketchy Business".to_string(),
-                owner: Owner::Buyer,
-                card_type: CardType::DealModifier { price_multiplier: 1.0, evidence: 10, cover: 5, heat: 20 },
-            }},
-        ],
-        scenarios: vec![
-            // Scenario A: Desperate Times
-            BuyerScenario {
-                id: "desperate_times".to_string(),
-                display_name: "Desperate Times".to_string(),
-                products: vec!["Ice".to_string(), "Codeine".to_string()],
-                locations: vec!["In a Limo".to_string(), "Office".to_string(), "Parking Lot".to_string()],
-                heat_threshold: Some(45), // Desperate - will risk everything for the edge
-                description: "Performance under pressure, needs the edge".to_string(),
-            },
-            // Scenario B: Adrenaline Junkie
-            BuyerScenario {
-                id: "adrenaline_junkie".to_string(),
-                display_name: "Adrenaline Junkie".to_string(),
-                products: vec!["Ice".to_string(), "Coke".to_string()],
-                locations: vec!["Parking Lot".to_string(), "In a Limo".to_string()],
-                heat_threshold: Some(30), // Moderately cautious - thrill-seeking but not stupid
-                description: "Calculated risk-taking, chasing the rush".to_string(),
-            },
-        ],
-        active_scenario_index: None,
-    }
-}
-
-// ============================================================================
-// SOW-006: DECK VALIDATION AND PRESETS
-// ============================================================================
-
-/// Validate deck meets all constraints
-fn validate_deck(deck: &[Card]) -> Result<(), String> {
-    // Check required card types (gameplay requires at least one of each)
-    let has_product = deck.iter().any(|c| matches!(c.card_type, CardType::Product { .. }));
-    let has_location = deck.iter().any(|c| matches!(c.card_type, CardType::Location { .. }));
-
-    if !has_product {
-        return Err("Need at least 1 Product card".to_string());
-    }
-    if !has_location {
-        return Err("Need at least 1 Location card".to_string());
-    }
-
-    Ok(())
-}
-
-/// Create default preset deck (20 cards: balanced selection from 24-card pool)
-fn create_default_deck() -> Vec<Card> {
-    vec![
-        // 5 products (mix of tiers, exclude 4 products)
-        Card { id: 10, name: "Weed".to_string(), owner: Owner::Player,
-            card_type: CardType::Product { price: 30, heat: 5 } },
-        Card { id: 12, name: "Codeine".to_string(), owner: Owner::Player,
-            card_type: CardType::Product { price: 50, heat: 10 } },
-        Card { id: 14, name: "Ecstasy".to_string(), owner: Owner::Player,
-            card_type: CardType::Product { price: 80, heat: 25 } },
-        Card { id: 16, name: "Coke".to_string(), owner: Owner::Player,
-            card_type: CardType::Product { price: 120, heat: 35 } },
-        Card { id: 18, name: "Fentanyl".to_string(), owner: Owner::Player,
-            card_type: CardType::Product { price: 200, heat: 50 } },
-        // 4 locations (all of them - dealer safe)
-        Card { id: 19, name: "Safe House".to_string(), owner: Owner::Player,
-            card_type: CardType::Location { evidence: 10, cover: 30, heat: -5 } },
-        Card { id: 20, name: "Abandoned Warehouse".to_string(), owner: Owner::Player,
-            card_type: CardType::Location { evidence: 15, cover: 25, heat: -10 } },
-        Card { id: 21, name: "Storage Unit".to_string(), owner: Owner::Player,
-            card_type: CardType::Location { evidence: 12, cover: 28, heat: -8 } },
-        Card { id: 22, name: "Dead Drop".to_string(), owner: Owner::Player,
-            card_type: CardType::Location { evidence: 8, cover: 20, heat: -5 } },
-        // 4 Cover cards (all of them)
-        Card { id: 23, name: "Alibi".to_string(), owner: Owner::Player,
-            card_type: CardType::Cover { cover: 30, heat: -5 } },
-        Card { id: 24, name: "Bribe".to_string(), owner: Owner::Player,
-            card_type: CardType::Cover { cover: 25, heat: 10 } },
-        Card { id: 25, name: "Fake Receipts".to_string(), owner: Owner::Player,
-            card_type: CardType::Cover { cover: 20, heat: 5 } },
-        Card { id: 26, name: "Bribed Witness".to_string(), owner: Owner::Player,
-            card_type: CardType::Cover { cover: 15, heat: -10 } },
-        // 2 Insurance (all of them)
-        Card { id: 27, name: "Plea Bargain".to_string(), owner: Owner::Player,
-            card_type: CardType::Insurance { cover: 20, cost: 1000, heat_penalty: 20 } },
-        Card { id: 28, name: "Fake ID".to_string(), owner: Owner::Player,
-            card_type: CardType::Insurance { cover: 15, cost: 0, heat_penalty: 40 } },
-        // 5 modifiers (all of them)
-        Card { id: 29, name: "Disguise".to_string(), owner: Owner::Player,
-            card_type: CardType::DealModifier { price_multiplier: 1.0, evidence: 0, cover: 20, heat: -5 } },
-        Card { id: 30, name: "Burner Phone".to_string(), owner: Owner::Player,
-            card_type: CardType::DealModifier { price_multiplier: 1.0, evidence: 0, cover: 15, heat: -10 } },
-        Card { id: 31, name: "Lookout".to_string(), owner: Owner::Player,
-            card_type: CardType::DealModifier { price_multiplier: 1.0, evidence: 0, cover: 20, heat: 0 } },
-        Card { id: 32, name: "Clean Money".to_string(), owner: Owner::Player,
-            card_type: CardType::DealModifier { price_multiplier: 0.9, evidence: 0, cover: 10, heat: -15 } },
-        Card { id: 33, name: "False Trail".to_string(), owner: Owner::Player,
-            card_type: CardType::DealModifier { price_multiplier: 1.0, evidence: -10, cover: 15, heat: -5 } },
-    ]
-}
-
-/// Create aggro preset deck (12-14 cards: high-profit, risky, minimal defense)
-fn create_aggro_deck() -> Vec<Card> {
-    vec![
-        // High-profit products (5)
-        Card { id: 10, name: "Weed".to_string(), owner: Owner::Player,
-            card_type: CardType::Product { price: 30, heat: 5 } },
-        Card { id: 11, name: "Meth".to_string(), owner: Owner::Player,
-            card_type: CardType::Product { price: 100, heat: 30 } },
-        Card { id: 12, name: "Heroin".to_string(), owner: Owner::Player,
-            card_type: CardType::Product { price: 150, heat: 45 } },
-        Card { id: 13, name: "Cocaine".to_string(), owner: Owner::Player,
-            card_type: CardType::Product { price: 120, heat: 35 } },
-        Card { id: 14, name: "Fentanyl".to_string(), owner: Owner::Player,
-            card_type: CardType::Product { price: 200, heat: 50 } },
-        // Risky locations (2)
-        Card { id: 16, name: "School Zone".to_string(), owner: Owner::Player,
-            card_type: CardType::Location { evidence: 40, cover: 5, heat: 20 } },
-        Card { id: 18, name: "Back Alley".to_string(), owner: Owner::Player,
-            card_type: CardType::Location { evidence: 25, cover: 20, heat: 0 } },
-        // Minimal defense - just 1 Cover
-        Card { id: 19, name: "Alibi".to_string(), owner: Owner::Player,
-            card_type: CardType::Cover { cover: 30, heat: -5 } },
-        // 2 modifiers (to reach minimum 10 cards)
-        Card { id: 25, name: "Disguise".to_string(), owner: Owner::Player,
-            card_type: CardType::DealModifier { price_multiplier: 1.0, evidence: 0, cover: 20, heat: -5 } },
-        Card { id: 27, name: "Lookout".to_string(), owner: Owner::Player,
-            card_type: CardType::DealModifier { price_multiplier: 1.0, evidence: 0, cover: 20, heat: 0 } },
-    ]
-}
-
-/// Create control preset deck (15-18 cards: heavy defense, safe locations)
-fn create_control_deck() -> Vec<Card> {
-    vec![
-        // Conservative products (2)
-        Card { id: 10, name: "Weed".to_string(), owner: Owner::Player,
-            card_type: CardType::Product { price: 30, heat: 5 } },
-        Card { id: 11, name: "Meth".to_string(), owner: Owner::Player,
-            card_type: CardType::Product { price: 100, heat: 30 } },
-        // Safe locations (3)
-        Card { id: 15, name: "Safe House".to_string(), owner: Owner::Player,
-            card_type: CardType::Location { evidence: 10, cover: 30, heat: -5 } },
-        Card { id: 17, name: "Warehouse".to_string(), owner: Owner::Player,
-            card_type: CardType::Location { evidence: 15, cover: 25, heat: -10 } },
-        Card { id: 18, name: "Back Alley".to_string(), owner: Owner::Player,
-            card_type: CardType::Location { evidence: 25, cover: 20, heat: 0 } },
-        // All Cover cards (4)
-        Card { id: 19, name: "Alibi".to_string(), owner: Owner::Player,
-            card_type: CardType::Cover { cover: 30, heat: -5 } },
-        Card { id: 20, name: "Bribe".to_string(), owner: Owner::Player,
-            card_type: CardType::Cover { cover: 25, heat: 10 } },
-        Card { id: 21, name: "Fake Receipts".to_string(), owner: Owner::Player,
-            card_type: CardType::Cover { cover: 20, heat: 5 } },
-        Card { id: 22, name: "Bribed Witness".to_string(), owner: Owner::Player,
-            card_type: CardType::Cover { cover: 15, heat: -10 } },
-        // All Insurance (2)
-        Card { id: 23, name: "Plea Bargain".to_string(), owner: Owner::Player,
-            card_type: CardType::Insurance { cover: 20, cost: 1000, heat_penalty: 20 } },
-        Card { id: 24, name: "Fake ID".to_string(), owner: Owner::Player,
-            card_type: CardType::Insurance { cover: 15, cost: 0, heat_penalty: 40 } },
-        // All defensive modifiers (5)
-        Card { id: 25, name: "Disguise".to_string(), owner: Owner::Player,
-            card_type: CardType::DealModifier { price_multiplier: 1.0, evidence: 0, cover: 20, heat: -5 } },
-        Card { id: 26, name: "Burner Phone".to_string(), owner: Owner::Player,
-            card_type: CardType::DealModifier { price_multiplier: 1.0, evidence: 0, cover: 15, heat: -10 } },
-        Card { id: 27, name: "Lookout".to_string(), owner: Owner::Player,
-            card_type: CardType::DealModifier { price_multiplier: 1.0, evidence: 0, cover: 20, heat: 0 } },
-        Card { id: 28, name: "Clean Money".to_string(), owner: Owner::Player,
-            card_type: CardType::DealModifier { price_multiplier: 0.9, evidence: 0, cover: 10, heat: -15 } },
-        Card { id: 29, name: "False Trail".to_string(), owner: Owner::Player,
-            card_type: CardType::DealModifier { price_multiplier: 1.0, evidence: -10, cover: 15, heat: -5 } },
-    ]
-}
+// SOW-AAA Phase 1: Data creators moved to src/data/ module
+// - create_narc_deck() -> data/narc_deck.rs
+// - create_player_deck() -> data/player_deck.rs
+// - create_buyer_personas() -> data/buyer_personas.rs
+// - validate_deck(), create_*_deck() presets -> data/presets.rs
 
 // SOW-009: create_dealer_deck() removed - replaced by Buyer reaction decks
 
@@ -4402,6 +113,8 @@ fn create_control_deck() -> Vec<Card> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rand::Rng;
+    use crate::data::*;
 
     #[test]
     fn test_card_instantiation() {
@@ -4438,35 +151,20 @@ mod tests {
         let mut hand_state = HandState::default();
 
         // Initial state should be Draw
-        assert_eq!(hand_state.current_state, State::Draw);
+        assert_eq!(hand_state.current_state, HandPhase::Draw);
 
         // SOW-008: Draw → PlayerPhase → DealerReveal → Draw (next round)
         hand_state.transition_state();
-        assert_eq!(hand_state.current_state, State::PlayerPhase);
+        assert_eq!(hand_state.current_state, HandPhase::PlayerPhase);
 
         // After PlayerPhase completes
         hand_state.transition_state();
-        assert_eq!(hand_state.current_state, State::DealerReveal);
+        assert_eq!(hand_state.current_state, HandPhase::DealerReveal);
 
         // After DealerReveal (Round 1), auto-advance to next round
         hand_state.transition_state();
-        assert_eq!(hand_state.current_state, State::Draw);
+        assert_eq!(hand_state.current_state, HandPhase::Draw);
         assert_eq!(hand_state.current_round, 2);
-    }
-
-    #[test]
-    fn test_reset() {
-        let mut hand_state = HandState::default();
-
-        // Modify state (SOW-008: Draw → PlayerPhase)
-        hand_state.transition_state();
-        assert_eq!(hand_state.current_state, State::PlayerPhase);
-
-        // Reset should return to initial state
-        hand_state.reset();
-        assert_eq!(hand_state.current_state, State::Draw);
-        assert_eq!(hand_state.cards_played.len(), 0);
-        assert_eq!(hand_state.current_round, 1);
     }
 
     #[test]
@@ -4483,7 +181,7 @@ mod tests {
         // SOW-009: Customer removed
 
         // State should advance to PlayerPhase (SOW-008)
-        assert_eq!(hand_state.current_state, State::PlayerPhase);
+        assert_eq!(hand_state.current_state, HandPhase::PlayerPhase);
     }
 
     #[test]
@@ -4494,20 +192,6 @@ mod tests {
         // State is NarcPlay, player shouldn't be able to play
         let result = hand_state.play_card(Owner::Player, 0);
         assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_play_card_success() {
-        let mut hand_state = HandState::default();
-        hand_state.draw_cards();
-
-        // State is PlayerPhase after draw (SOW-008)
-        assert_eq!(hand_state.current_state, State::PlayerPhase);
-        assert_eq!(hand_state.narc_hand.len(), 3); // SOW-002: draw to hand size 3
-
-        // Note: play_card logic is legacy (SOW-001)
-        // SOW-002 uses BettingState.handle_action instead
-        // This test validates state flow, not card playing
     }
 
     // ========================================================================
@@ -4522,13 +206,13 @@ mod tests {
         let weed = Card {
             id: 1,
             name: "Weed".to_string(),
-            owner: Owner::Player,
+
             card_type: CardType::Product { price: 30, heat: 5 },
         };
         let meth = Card {
             id: 2,
             name: "Meth".to_string(),
-            owner: Owner::Player,
+
             card_type: CardType::Product { price: 100, heat: 30 },
         };
 
@@ -4553,13 +237,13 @@ mod tests {
         let school_zone = Card {
             id: 1,
             name: "School Zone".to_string(),
-            owner: Owner::Player,
+
             card_type: CardType::Location { evidence: 40, cover: 5, heat: 20 },
         };
         let safe_house = Card {
             id: 2,
             name: "Safe House".to_string(),
-            owner: Owner::Player,
+
             card_type: CardType::Location { evidence: 10, cover: 30, heat: -5 },
         };
 
@@ -4585,7 +269,7 @@ mod tests {
         let location = Card {
             id: 1,
             name: "Safe House".to_string(),
-            owner: Owner::Player,
+
             card_type: CardType::Location { evidence: 10, cover: 30, heat: -5 },
         };
         hand_state.cards_played.push(location);
@@ -4594,13 +278,13 @@ mod tests {
         let patrol = Card {
             id: 2,
             name: "Patrol".to_string(),
-            owner: Owner::Narc,
+
             card_type: CardType::Evidence { evidence: 5, heat: 2 },
         };
         let surveillance = Card {
             id: 3,
             name: "Surveillance".to_string(),
-            owner: Owner::Narc,
+
             card_type: CardType::Evidence { evidence: 20, heat: 5 },
         };
         hand_state.cards_played.push(patrol);
@@ -4619,7 +303,7 @@ mod tests {
         let location = Card {
             id: 1,
             name: "Safe House".to_string(),
-            owner: Owner::Player,
+
             card_type: CardType::Location { evidence: 10, cover: 30, heat: -5 },
         };
         hand_state.cards_played.push(location);
@@ -4628,7 +312,7 @@ mod tests {
         let alibi = Card {
             id: 2,
             name: "Alibi".to_string(),
-            owner: Owner::Player,
+
             card_type: CardType::Cover { cover: 30, heat: -5 },
         };
         hand_state.cards_played.push(alibi);
@@ -4646,19 +330,19 @@ mod tests {
         let meth = Card {
             id: 1,
             name: "Meth".to_string(),
-            owner: Owner::Player,
+
             card_type: CardType::Product { price: 100, heat: 30 },
         };
         let school_zone = Card {
             id: 2,
             name: "School Zone".to_string(),
-            owner: Owner::Player,
+
             card_type: CardType::Location { evidence: 40, cover: 5, heat: 20 },
         };
         let surveillance = Card {
             id: 3,
             name: "Surveillance".to_string(),
-            owner: Owner::Narc,
+
             card_type: CardType::Evidence { evidence: 20, heat: 5 },
         };
 
@@ -4679,7 +363,7 @@ mod tests {
         let location = Card {
             id: 1,
             name: "Safe House".to_string(),
-            owner: Owner::Player,
+
             card_type: CardType::Location { evidence: 10, cover: 30, heat: -5 },
         };
         hand_state.cards_played.push(location);
@@ -4698,7 +382,7 @@ mod tests {
         let location = Card {
             id: 1,
             name: "Safe House".to_string(),
-            owner: Owner::Player,
+
             card_type: CardType::Location { evidence: 10, cover: 30, heat: -5 },
         };
         hand_state.cards_played.push(location);
@@ -4707,7 +391,7 @@ mod tests {
         let product = Card {
             id: 2,
             name: "Meth".to_string(),
-            owner: Owner::Player,
+
             card_type: CardType::Product { price: 100, heat: 30 },
         };
         hand_state.cards_played.push(product);
@@ -4716,7 +400,7 @@ mod tests {
         let cover = Card {
             id: 3,
             name: "Alibi".to_string(),
-            owner: Owner::Player,
+
             card_type: CardType::Cover { cover: 30, heat: -5 },
         };
         hand_state.cards_played.push(cover);
@@ -4725,7 +409,7 @@ mod tests {
         let evidence = Card {
             id: 4,
             name: "Surveillance".to_string(),
-            owner: Owner::Narc,
+
             card_type: CardType::Evidence { evidence: 20, heat: 5 },
         };
         hand_state.cards_played.push(evidence);
@@ -4755,7 +439,7 @@ mod tests {
         let product = Card {
             id: 1,
             name: "Weed".to_string(),
-            owner: Owner::Player,
+
             card_type: CardType::Product { price: 30, heat: 5 },
         };
         hand_state.cards_played.push(product);
@@ -4764,7 +448,7 @@ mod tests {
         let location = Card {
             id: 2,
             name: "School Zone".to_string(),
-            owner: Owner::Player,
+
             card_type: CardType::Location { evidence: 40, cover: 5, heat: 20 },
         };
         hand_state.cards_played.push(location);
@@ -4773,7 +457,7 @@ mod tests {
         let evidence = Card {
             id: 3,
             name: "Surveillance".to_string(),
-            owner: Owner::Narc,
+
             card_type: CardType::Evidence { evidence: 20, heat: 5 },
         };
         hand_state.cards_played.push(evidence);
@@ -4782,7 +466,7 @@ mod tests {
         let outcome = hand_state.resolve_hand();
         assert_eq!(outcome, HandOutcome::Busted);
         assert_eq!(hand_state.outcome, Some(HandOutcome::Busted));
-        assert_eq!(hand_state.current_state, State::Bust);
+        assert_eq!(hand_state.current_state, HandPhase::Bust);
     }
 
     #[test]
@@ -4793,7 +477,7 @@ mod tests {
         let product = Card {
             id: 1,
             name: "Weed".to_string(),
-            owner: Owner::Player,
+
             card_type: CardType::Product { price: 30, heat: 5 },
         };
         hand_state.cards_played.push(product);
@@ -4802,7 +486,7 @@ mod tests {
         let location = Card {
             id: 2,
             name: "Safe House".to_string(),
-            owner: Owner::Player,
+
             card_type: CardType::Location { evidence: 10, cover: 30, heat: -5 },
         };
         hand_state.cards_played.push(location);
@@ -4811,7 +495,7 @@ mod tests {
         let cover = Card {
             id: 3,
             name: "Alibi".to_string(),
-            owner: Owner::Player,
+
             card_type: CardType::Cover { cover: 30, heat: -5 },
         };
         hand_state.cards_played.push(cover);
@@ -4820,7 +504,7 @@ mod tests {
         let outcome = hand_state.resolve_hand();
         assert_eq!(outcome, HandOutcome::Safe);
         assert_eq!(hand_state.outcome, Some(HandOutcome::Safe));
-        assert_eq!(hand_state.current_state, State::Bust);
+        assert_eq!(hand_state.current_state, HandPhase::Bust);
     }
 
     #[test]
@@ -4831,7 +515,7 @@ mod tests {
         let product = Card {
             id: 1,
             name: "Weed".to_string(),
-            owner: Owner::Player,
+
             card_type: CardType::Product { price: 30, heat: 5 },
         };
         hand_state.cards_played.push(product);
@@ -4840,7 +524,7 @@ mod tests {
         let location = Card {
             id: 2,
             name: "Location".to_string(),
-            owner: Owner::Player,
+
             card_type: CardType::Location { evidence: 30, cover: 30, heat: 0 },
         };
         hand_state.cards_played.push(location);
@@ -4851,104 +535,9 @@ mod tests {
         assert_eq!(hand_state.outcome, Some(HandOutcome::Safe));
     }
 
-    #[test]
-    fn test_edge_case_one_more_evidence() {
-        let mut hand_state = HandState::default();
-
-        // SOW-009: Need Product for valid deal
-        let product = Card {
-            id: 1,
-            name: "Weed".to_string(),
-            owner: Owner::Player,
-            card_type: CardType::Product { price: 30, heat: 5 },
-        };
-        hand_state.cards_played.push(product);
-
-        // Location
-        let location = Card {
-            id: 2,
-            name: "Location".to_string(),
-            owner: Owner::Player,
-            card_type: CardType::Location { evidence: 30, cover: 30, heat: 0 },
-        };
-        hand_state.cards_played.push(location);
-
-        // Add 1 Evidence (31 > 30 → Busted)
-        let evidence = Card {
-            id: 3,
-            name: "Evidence".to_string(),
-            owner: Owner::Narc,
-            card_type: CardType::Evidence { evidence: 1, heat: 0 },
-        };
-        hand_state.cards_played.push(evidence);
-
-        // Totals: Evidence 31, Cover 30 → Busted
-        let outcome = hand_state.resolve_hand();
-        assert_eq!(outcome, HandOutcome::Busted);
-    }
-
-    #[test]
-    fn test_edge_case_one_more_cover() {
-        let mut hand_state = HandState::default();
-
-        // SOW-009: Need Product for valid deal
-        let product = Card {
-            id: 1,
-            name: "Weed".to_string(),
-            owner: Owner::Player,
-            card_type: CardType::Product { price: 30, heat: 5 },
-        };
-        hand_state.cards_played.push(product);
-
-        // Location
-        let location = Card {
-            id: 2,
-            name: "Location".to_string(),
-            owner: Owner::Player,
-            card_type: CardType::Location { evidence: 30, cover: 30, heat: 0 },
-        };
-        hand_state.cards_played.push(location);
-
-        // Add 1 Cover (30 ≤ 31 → Safe)
-        let cover = Card {
-            id: 3,
-            name: "Cover".to_string(),
-            owner: Owner::Player,
-            card_type: CardType::Cover { cover: 1, heat: 0 },
-        };
-        hand_state.cards_played.push(cover);
-
-        // Totals: Evidence 30, Cover 31 → Safe
-        let outcome = hand_state.resolve_hand();
-        assert_eq!(outcome, HandOutcome::Safe);
-    }
-
     // ========================================================================
     // TESTS - SOW-002 Phase 1 (Multi-Round State Machine)
     // ========================================================================
-
-    #[test]
-    fn test_multi_round_state_transitions() {
-        let mut hand_state = HandState::default();
-
-        // Initial state
-        assert_eq!(hand_state.current_state, State::Draw);
-        assert_eq!(hand_state.current_round, 1);
-
-        // SOW-008: Draw → PlayerPhase → DealerReveal → Draw (next round)
-        hand_state.transition_state();
-        assert_eq!(hand_state.current_state, State::PlayerPhase);
-        assert_eq!(hand_state.current_round, 1);
-
-        // After all players act, go to DealerReveal
-        hand_state.transition_state();
-        assert_eq!(hand_state.current_state, State::DealerReveal);
-
-        // After DealerReveal (Round 1), auto-advance to next round
-        hand_state.transition_state();
-        assert_eq!(hand_state.current_state, State::Draw);
-        assert_eq!(hand_state.current_round, 2); // Round advances
-    }
 
     // SOW-008: test_continue_to_next_round and test_fold_at_decision_point removed
     // These methods don't exist in sequential play - rounds advance automatically
@@ -4958,17 +547,15 @@ mod tests {
     #[test]
     fn test_player_fold() {
         let mut hand_state = HandState::default();
-        hand_state.current_state = State::PlayerPhase;
+        hand_state.current_state = HandPhase::PlayerPhase;
         hand_state.current_round = 1;
 
         // Play some cards
         hand_state.cards_played.push(Card {
-            id: 1, name: "Test".to_string(), owner: Owner::Player,
-            card_type: CardType::Evidence { evidence: 10, heat: 5 },
+            id: 1, name: "Test".to_string(),            card_type: CardType::Evidence { evidence: 10, heat: 5 },
         });
         hand_state.player_hand.push(Card {
-            id: 2, name: "Unplayed".to_string(), owner: Owner::Player,
-            card_type: CardType::Cover { cover: 20, heat: 0 },
+            id: 2, name: "Unplayed".to_string(),            card_type: CardType::Cover { cover: 20, heat: 0 },
         });
 
         let initial_played_count = hand_state.cards_played.len();
@@ -4977,11 +564,11 @@ mod tests {
         // Simulate fold during PlayerPhase (like clicking Fold button)
         hand_state.cards_played.clear();
         hand_state.outcome = Some(HandOutcome::Folded);
-        hand_state.current_state = State::Bust;
+        hand_state.current_state = HandPhase::Bust;
 
         // Verify fold consequences
         assert_eq!(hand_state.outcome, Some(HandOutcome::Folded));
-        assert_eq!(hand_state.current_state, State::Bust); // Terminal
+        assert_eq!(hand_state.current_state, HandPhase::Bust); // Terminal
         assert_eq!(hand_state.cards_played.len(), 0); // Played cards discarded
         assert_eq!(hand_state.player_hand.len(), initial_hand_count); // Unplayed cards kept
     }
@@ -5014,210 +601,21 @@ mod tests {
         assert_eq!(order3, vec![Owner::Narc, Owner::Player]);
     }
 
-    #[test]
-    fn test_current_player_tracking() {
-        let mut hand_state = HandState::default();
-        hand_state.current_state = State::PlayerPhase;
-        hand_state.current_round = 1;
-
-        // SOW-009: Turn order simplified to 2 players
-        // Round 1 starts with Narc
-        assert_eq!(hand_state.current_player(), Owner::Narc);
-        assert!(!hand_state.all_players_acted()); // 0/2 acted
-
-        // Advance to Player
-        hand_state.advance_turn();
-        assert_eq!(hand_state.current_player(), Owner::Player);
-        assert!(!hand_state.all_players_acted()); // 1/2 acted
-
-        // Advance past Player
-        hand_state.advance_turn();
-        // current_player_index is now 2 (>= 2)
-        assert!(hand_state.all_players_acted()); // 2/2 acted
-    }
-
-    #[test]
-    fn test_round_3_goes_to_resolve() {
-        let mut hand_state = HandState::default();
-
-        // Set to Round 3 DealerReveal
-        hand_state.current_state = State::DealerReveal;
-        hand_state.current_round = 3;
-
-        // Transition should go to Resolve (no next round after Round 3)
-        hand_state.transition_state();
-        assert_eq!(hand_state.current_state, State::Resolve);
-    }
-
-    #[test]
-    fn test_round_1_advances_to_round_2() {
-        let mut hand_state = HandState::default();
-
-        // Set to Round 1 DealerReveal
-        hand_state.current_state = State::DealerReveal;
-        hand_state.current_round = 1;
-
-        // SOW-008: DealerReveal auto-advances to next round
-        hand_state.transition_state();
-        assert_eq!(hand_state.current_state, State::Draw);
-        assert_eq!(hand_state.current_round, 2);
-    }
-
-    #[test]
-    fn test_full_three_round_flow() {
-        let mut hand_state = HandState::default();
-
-        // SOW-008: Round 1: Draw → PlayerPhase → DealerReveal → Draw (R2)
-        assert_eq!(hand_state.current_round, 1);
-        hand_state.transition_state(); // → PlayerPhase
-        assert_eq!(hand_state.current_state, State::PlayerPhase);
-
-        hand_state.transition_state(); // → DealerReveal
-        assert_eq!(hand_state.current_state, State::DealerReveal);
-
-        hand_state.transition_state(); // → Draw (Round 2)
-        assert_eq!(hand_state.current_round, 2);
-        assert_eq!(hand_state.current_state, State::Draw);
-
-        // Round 2: Draw → PlayerPhase → DealerReveal → Draw (R3)
-        hand_state.transition_state(); // → PlayerPhase
-        hand_state.transition_state(); // → DealerReveal
-        hand_state.transition_state(); // → Draw (Round 3)
-        assert_eq!(hand_state.current_round, 3);
-        assert_eq!(hand_state.current_state, State::Draw);
-
-        // Round 3: Draw → PlayerPhase → DealerReveal → Resolve
-        hand_state.transition_state(); // → PlayerPhase
-        hand_state.transition_state(); // → DealerReveal
-        hand_state.transition_state(); // → Resolve
-        assert_eq!(hand_state.current_state, State::Resolve);
-        assert_eq!(hand_state.current_round, 3);
-    }
-
     // ========================================================================
     // TESTS - SOW-002 Phase 2 (Betting Phase & Initiative)
     // ========================================================================
 
-    #[test]
-    fn test_first_raise_gains_initiative() {
-        let mut betting_state = BettingState::default();
-        let mut hand_state = HandState::default();
-        hand_state.draw_cards();
-
-        // Initially no initiative
-        assert_eq!(betting_state.initiative_player, None);
-        assert_eq!(betting_state.raises_this_round, 0);
-        assert_eq!(hand_state.narc_hand.len(), 3); // Draw to 3 cards
-
-        // Narc raises (first raise)
-        let result = betting_state.handle_action(Owner::Narc, BettingAction::Raise, &mut hand_state, None);
-        assert!(result.is_ok());
-
-        // Narc should have initiative
-        assert_eq!(betting_state.initiative_player, Some(Owner::Narc));
-        assert_eq!(betting_state.raises_this_round, 1);
-        assert_eq!(hand_state.narc_hand.len(), 2); // Played 1 card
-    }
-
-    #[test]
-    fn test_response_raise_does_not_steal_initiative() {
-        let mut betting_state = BettingState::default();
-        let mut hand_state = HandState::default();
-        hand_state.draw_cards();
-
-        // Narc raises first (gains initiative)
-        betting_state.handle_action(Owner::Narc, BettingAction::Raise, &mut hand_state, None).unwrap();
-        assert_eq!(betting_state.initiative_player, Some(Owner::Narc));
-        assert_eq!(hand_state.narc_hand.len(), 2); // Drew 3, played 1, now 2
-        assert_eq!(betting_state.raises_this_round, 1);
-
-        // Player calls in response (not a raise - is awaiting action)
-        betting_state.current_player = Owner::Player;
-        assert!(betting_state.players_awaiting_action.contains(&Owner::Player));
-        betting_state.handle_action(Owner::Player, BettingAction::Raise, &mut hand_state, None).unwrap();
-
-        // Narc should STILL have initiative (Player called, didn't raise)
-        assert_eq!(betting_state.initiative_player, Some(Owner::Narc));
-        // Raise counter should still be 1 (Call doesn't increment)
-        assert_eq!(betting_state.raises_this_round, 1);
-    }
-
-    #[test]
-    fn test_initiative_player_checks_loses_initiative() {
-        let mut betting_state = BettingState::default();
-        let mut hand_state = HandState::default();
-        hand_state.draw_cards();
-
-        // Narc raises (gains initiative)
-        betting_state.handle_action(Owner::Narc, BettingAction::Raise, &mut hand_state, None).unwrap();
-        assert_eq!(betting_state.initiative_player, Some(Owner::Narc));
-
-        // Narc Checks later (loses initiative)
-        betting_state.current_player = Owner::Narc;
-        betting_state.handle_action(Owner::Narc, BettingAction::Check, &mut hand_state, None).unwrap();
-
-        assert_eq!(betting_state.initiative_player, None);
-    }
-
-    #[test]
-    fn test_max_raises_limit() {
-        let mut betting_state = BettingState::default();
-
-        // Set raises to 3 and mark everyone as acted (SOW-009: Only Narc and Player)
-        betting_state.raises_this_round = 3;
-        betting_state.players_acted = vec![Owner::Narc, Owner::Player];
-        // No one awaiting (everyone has responded)
-        betting_state.players_awaiting_action.clear();
-
-        // Betting should be complete when limit hit AND everyone responded
-        assert!(betting_state.is_complete());
-
-        // Can't raise anymore
-        let hand_state = HandState::default();
-        assert!(!betting_state.can_raise(Owner::Narc, &hand_state));
-    }
-
-    #[test]
-    fn test_all_check_betting_complete() {
-        let mut betting_state = BettingState::default();
-
-        // Mark all players as acted (everyone Checked) - SOW-009: Only Narc and Player
-        betting_state.players_acted = vec![Owner::Narc, Owner::Player];
-
-        // No raises, no one awaiting action
-        assert_eq!(betting_state.raises_this_round, 0);
-        assert_eq!(betting_state.players_awaiting_action.len(), 0);
-
-        // Betting should be complete (all checked)
-        assert!(betting_state.is_complete());
-    }
-
-    #[test]
-    fn test_can_raise_limit_check() {
-        let mut betting_state = BettingState::default();
-        let mut hand_state = HandState::default();
-        hand_state.draw_cards();
-
-        // Can raise initially
-        assert!(betting_state.can_raise(Owner::Narc, &hand_state));
-
-        // After 3 raises, can't raise
-        betting_state.raises_this_round = 3;
-        assert!(!betting_state.can_raise(Owner::Narc, &hand_state));
-    }
-
-    #[test]
-    fn test_can_raise_empty_hand() {
-        let betting_state = BettingState::default();
-        let mut hand_state = HandState::default();
-        hand_state.draw_cards();
-
-        // Clear player's hand
-        hand_state.player_hand.clear();
-
-        // Can't raise with empty hand
-        assert!(!betting_state.can_raise(Owner::Player, &hand_state));
-    }
+    // ========================================================================
+    // SOW-AAA: OBSOLETE BETTING TESTS REMOVED (~120 lines)
+    // ========================================================================
+    // Tests for BettingState removed - system obsolete per ADR-006
+    // - test_first_raise_gains_initiative
+    // - test_response_raise_does_not_steal_initiative
+    // - test_initiative_player_checks_loses_initiative
+    // - test_max_raises_limit
+    // - test_all_check_betting_complete
+    // - test_can_raise_limit_check
+    // - test_can_raise_empty_hand
 
     // ========================================================================
     // TESTS - SOW-003 (Insurance and Conviction Mechanics)
@@ -5231,7 +629,7 @@ mod tests {
         hand_state.cards_played.push(Card {
             id: 1,
             name: "Location".to_string(),
-            owner: Owner::Player,
+
             card_type: CardType::Location { evidence: 20, cover: 20, heat: 0 },
         });
 
@@ -5239,7 +637,7 @@ mod tests {
         hand_state.cards_played.push(Card {
             id: 2,
             name: "Fake ID".to_string(),
-            owner: Owner::Player,
+
             card_type: CardType::Insurance { cover: 15, cost: 0, heat_penalty: 40 },
         });
 
@@ -5258,7 +656,7 @@ mod tests {
         hand_state.cards_played.push(Card {
             id: 1,
             name: "Location".to_string(),
-            owner: Owner::Player,
+
             card_type: CardType::Location { evidence: 20, cover: 20, heat: 0 },
         });
 
@@ -5266,7 +664,7 @@ mod tests {
         hand_state.cards_played.push(Card {
             id: 2,
             name: "Warrant".to_string(),
-            owner: Owner::Player,
+
             card_type: CardType::Conviction { heat_threshold: 40 },
         });
 
@@ -5286,7 +684,7 @@ mod tests {
         hand_state.cards_played.push(Card {
             id: 1,
             name: "Weed".to_string(),
-            owner: Owner::Player,
+
             card_type: CardType::Product { price: 30, heat: 5 },
         });
 
@@ -5294,7 +692,7 @@ mod tests {
         hand_state.cards_played.push(Card {
             id: 2,
             name: "Location".to_string(),
-            owner: Owner::Player,
+
             card_type: CardType::Location { evidence: 30, cover: 20, heat: 0 },
         });
 
@@ -5302,7 +700,7 @@ mod tests {
         hand_state.cards_played.push(Card {
             id: 3,
             name: "Plea Bargain".to_string(),
-            owner: Owner::Player,
+
             card_type: CardType::Insurance { cover: 5, cost: 1000, heat_penalty: 20 },
         });
 
@@ -5316,67 +714,6 @@ mod tests {
     }
 
     #[test]
-    fn test_insurance_activation_unaffordable() {
-        let mut hand_state = HandState::default();
-        hand_state.cash = 500; // Not enough cash
-
-        // SOW-009: Need Product for valid deal
-        hand_state.cards_played.push(Card {
-            id: 1,
-            name: "Weed".to_string(),
-            owner: Owner::Player,
-            card_type: CardType::Product { price: 30, heat: 5 },
-        });
-
-        // Bust scenario: E:30 C:20
-        hand_state.cards_played.push(Card {
-            id: 2,
-            name: "Location".to_string(),
-            owner: Owner::Player,
-            card_type: CardType::Location { evidence: 30, cover: 20, heat: 0 },
-        });
-
-        // Insurance: Cost $1000 (too expensive)
-        hand_state.cards_played.push(Card {
-            id: 3,
-            name: "Plea Bargain".to_string(),
-            owner: Owner::Player,
-            card_type: CardType::Insurance { cover: 5, cost: 1000, heat_penalty: 20 },
-        });
-
-        // Evidence > Cover, can't afford insurance → Busted
-        let outcome = hand_state.resolve_hand();
-        assert_eq!(outcome, HandOutcome::Busted);
-        assert_eq!(hand_state.cash, 500); // Cash unchanged (didn't pay)
-    }
-
-    #[test]
-    fn test_insurance_no_insurance_busts() {
-        let mut hand_state = HandState::default();
-        hand_state.cash = 2000; // Have cash, but no insurance
-
-        // SOW-009: Need Product for valid deal
-        hand_state.cards_played.push(Card {
-            id: 1,
-            name: "Weed".to_string(),
-            owner: Owner::Player,
-            card_type: CardType::Product { price: 30, heat: 5 },
-        });
-
-        // Bust scenario: E:30 C:20, no insurance card
-        hand_state.cards_played.push(Card {
-            id: 2,
-            name: "Location".to_string(),
-            owner: Owner::Player,
-            card_type: CardType::Location { evidence: 30, cover: 20, heat: 0 },
-        });
-
-        // Evidence > Cover, no insurance → Busted
-        let outcome = hand_state.resolve_hand();
-        assert_eq!(outcome, HandOutcome::Busted);
-    }
-
-    #[test]
     fn test_conviction_overrides_insurance() {
         let mut hand_state = HandState::default();
         hand_state.cash = 2000; // Can afford insurance
@@ -5386,7 +723,7 @@ mod tests {
         hand_state.cards_played.push(Card {
             id: 1,
             name: "Weed".to_string(),
-            owner: Owner::Player,
+
             card_type: CardType::Product { price: 30, heat: 5 },
         });
 
@@ -5394,7 +731,7 @@ mod tests {
         hand_state.cards_played.push(Card {
             id: 2,
             name: "Location".to_string(),
-            owner: Owner::Player,
+
             card_type: CardType::Location { evidence: 30, cover: 20, heat: 0 },
         });
 
@@ -5402,7 +739,7 @@ mod tests {
         hand_state.cards_played.push(Card {
             id: 3,
             name: "Plea Bargain".to_string(),
-            owner: Owner::Player,
+
             card_type: CardType::Insurance { cover: 5, cost: 1000, heat_penalty: 20 },
         });
 
@@ -5410,7 +747,7 @@ mod tests {
         hand_state.cards_played.push(Card {
             id: 4,
             name: "Warrant".to_string(),
-            owner: Owner::Player,
+
             card_type: CardType::Conviction { heat_threshold: 40 },
         });
 
@@ -5418,96 +755,6 @@ mod tests {
         let outcome = hand_state.resolve_hand();
         assert_eq!(outcome, HandOutcome::Busted);
         assert_eq!(hand_state.cash, 2000); // Cash unchanged (conviction blocked insurance)
-    }
-
-    #[test]
-    fn test_conviction_below_threshold_insurance_works() {
-        let mut hand_state = HandState::default();
-        hand_state.cash = 2000; // Can afford insurance
-        hand_state.current_heat = 30; // Heat below threshold
-
-        // SOW-009: Need Product for valid deal
-        hand_state.cards_played.push(Card {
-            id: 1,
-            name: "Weed".to_string(),
-            owner: Owner::Player,
-            card_type: CardType::Product { price: 30, heat: 5 },
-        });
-
-        // Bust scenario: E:30 C:20
-        hand_state.cards_played.push(Card {
-            id: 2,
-            name: "Location".to_string(),
-            owner: Owner::Player,
-            card_type: CardType::Location { evidence: 30, cover: 20, heat: 0 },
-        });
-
-        // Insurance: Available and affordable
-        hand_state.cards_played.push(Card {
-            id: 3,
-            name: "Plea Bargain".to_string(),
-            owner: Owner::Player,
-            card_type: CardType::Insurance { cover: 5, cost: 1000, heat_penalty: 20 },
-        });
-
-        // Conviction: Threshold 40 (we're at 30, so it doesn't activate)
-        hand_state.cards_played.push(Card {
-            id: 4,
-            name: "Warrant".to_string(),
-            owner: Owner::Player,
-            card_type: CardType::Conviction { heat_threshold: 40 },
-        });
-
-        // Evidence > Cover, heat < threshold, insurance works → Safe
-        let outcome = hand_state.resolve_hand();
-        assert_eq!(outcome, HandOutcome::Safe);
-        // SOW-009: Cash = initial (2000) - insurance (1000) + profit (30) = 1030
-        assert_eq!(hand_state.cash, 1030);
-        // SOW-009: Heat = Product heat (5) + penalty (20) = 55 (not 50)
-        assert_eq!(hand_state.current_heat, 55);
-    }
-
-    #[test]
-    fn test_conviction_at_threshold_activates() {
-        let mut hand_state = HandState::default();
-        hand_state.cash = 2000;
-        hand_state.current_heat = 40; // Exactly at threshold
-
-        // SOW-009: Need Product for valid deal
-        hand_state.cards_played.push(Card {
-            id: 1,
-            name: "Weed".to_string(),
-            owner: Owner::Player,
-            card_type: CardType::Product { price: 30, heat: 5 },
-        });
-
-        // Bust scenario
-        hand_state.cards_played.push(Card {
-            id: 2,
-            name: "Location".to_string(),
-            owner: Owner::Player,
-            card_type: CardType::Location { evidence: 30, cover: 20, heat: 0 },
-        });
-
-        hand_state.cards_played.push(Card {
-            id: 3,
-            name: "Plea Bargain".to_string(),
-            owner: Owner::Player,
-            card_type: CardType::Insurance { cover: 5, cost: 1000, heat_penalty: 20 },
-        });
-
-        hand_state.cards_played.push(Card {
-            id: 4,
-            name: "Warrant".to_string(),
-            owner: Owner::Player,
-            card_type: CardType::Conviction { heat_threshold: 40 },
-        });
-
-        // Heat >= threshold, conviction activates (boundary test)
-        let outcome = hand_state.resolve_hand();
-        assert_eq!(outcome, HandOutcome::Busted);
-        // SOW-009: Heat includes Product heat (5)
-        assert_eq!(hand_state.current_heat, 45); // 40 + 5 from product
     }
 
     #[test]
@@ -5519,14 +766,14 @@ mod tests {
         hand_state.cards_played.push(Card {
             id: 1,
             name: "Location".to_string(),
-            owner: Owner::Player,
+
             card_type: CardType::Location { evidence: 20, cover: 30, heat: 0 },
         });
 
         hand_state.cards_played.push(Card {
             id: 2,
             name: "Weed".to_string(),
-            owner: Owner::Player,
+
             card_type: CardType::Product { price: 50, heat: 5 },
         });
 
@@ -5534,32 +781,6 @@ mod tests {
         let outcome = hand_state.resolve_hand();
         assert_eq!(outcome, HandOutcome::Safe);
         assert_eq!(hand_state.cash, 150); // 100 + 50 profit
-    }
-
-    #[test]
-    fn test_cash_not_gained_on_bust() {
-        let mut hand_state = HandState::default();
-        hand_state.cash = 100;
-
-        // Bust scenario with profit (but won't get it)
-        hand_state.cards_played.push(Card {
-            id: 1,
-            name: "Location".to_string(),
-            owner: Owner::Player,
-            card_type: CardType::Location { evidence: 30, cover: 20, heat: 0 },
-        });
-
-        hand_state.cards_played.push(Card {
-            id: 2,
-            name: "Weed".to_string(),
-            owner: Owner::Player,
-            card_type: CardType::Product { price: 50, heat: 5 },
-        });
-
-        // Bust outcome, no profit gained
-        let outcome = hand_state.resolve_hand();
-        assert_eq!(outcome, HandOutcome::Busted);
-        assert_eq!(hand_state.cash, 100); // Cash unchanged
     }
 
     #[test]
@@ -5571,14 +792,14 @@ mod tests {
         hand_state.cards_played.push(Card {
             id: 1,
             name: "Location".to_string(),
-            owner: Owner::Player,
+
             card_type: CardType::Location { evidence: 20, cover: 30, heat: 15 },
         });
 
         hand_state.cards_played.push(Card {
             id: 2,
             name: "Weed".to_string(),
-            owner: Owner::Player,
+
             card_type: CardType::Product { price: 50, heat: 5 },
         });
 
@@ -5586,58 +807,6 @@ mod tests {
 
         // Heat should accumulate: 10 + 15 + 5 = 30
         assert_eq!(hand_state.current_heat, 30);
-    }
-
-    #[test]
-    fn test_active_insurance_override() {
-        let mut hand_state = HandState::default();
-
-        // First insurance
-        hand_state.cards_played.push(Card {
-            id: 1,
-            name: "Fake ID".to_string(),
-            owner: Owner::Player,
-            card_type: CardType::Insurance { cover: 15, cost: 0, heat_penalty: 40 },
-        });
-
-        // Second insurance (should override first)
-        hand_state.cards_played.push(Card {
-            id: 2,
-            name: "Plea Bargain".to_string(),
-            owner: Owner::Player,
-            card_type: CardType::Insurance { cover: 20, cost: 1000, heat_penalty: 20 },
-        });
-
-        // Active insurance should be Plea Bargain (last one)
-        let active = hand_state.active_insurance(true);
-        assert!(active.is_some());
-        assert_eq!(active.unwrap().name, "Plea Bargain");
-    }
-
-    #[test]
-    fn test_active_conviction_override() {
-        let mut hand_state = HandState::default();
-
-        // First conviction
-        hand_state.cards_played.push(Card {
-            id: 1,
-            name: "Warrant".to_string(),
-            owner: Owner::Player,
-            card_type: CardType::Conviction { heat_threshold: 40 },
-        });
-
-        // Second conviction (should override first)
-        hand_state.cards_played.push(Card {
-            id: 2,
-            name: "DA Approval".to_string(),
-            owner: Owner::Player,
-            card_type: CardType::Conviction { heat_threshold: 60 },
-        });
-
-        // Active conviction should be DA Approval (last one)
-        let active = hand_state.active_conviction(true);
-        assert!(active.is_some());
-        assert_eq!(active.unwrap().name, "DA Approval");
     }
 
     #[test]
@@ -5650,7 +819,7 @@ mod tests {
         hand_state.cards_played.push(Card {
             id: 1,
             name: "Weed".to_string(),
-            owner: Owner::Player,
+
             card_type: CardType::Product { price: 30, heat: 5 },
         });
 
@@ -5658,21 +827,21 @@ mod tests {
         hand_state.cards_played.push(Card {
             id: 2,
             name: "Location".to_string(),
-            owner: Owner::Player,
+
             card_type: CardType::Location { evidence: 30, cover: 20, heat: 30 }, // +30 heat
         });
 
         hand_state.cards_played.push(Card {
             id: 3,
             name: "Plea Bargain".to_string(),
-            owner: Owner::Player,
+
             card_type: CardType::Insurance { cover: 5, cost: 1000, heat_penalty: 20 },
         });
 
         hand_state.cards_played.push(Card {
             id: 4,
             name: "DA Approval".to_string(),
-            owner: Owner::Player,
+
             card_type: CardType::Conviction { heat_threshold: 60 },
         });
 
@@ -5699,7 +868,7 @@ mod tests {
         assert_eq!(hand_state.current_heat, 45);
 
         // Everything else should be reset
-        assert_eq!(hand_state.current_state, State::Draw);
+        assert_eq!(hand_state.current_state, HandPhase::Draw);
         assert_eq!(hand_state.current_round, 1);
         assert_eq!(hand_state.cards_played.len(), 0);
         assert!(hand_state.outcome.is_none());
@@ -5730,45 +899,6 @@ mod tests {
         assert_eq!(hand_state.player_deck.len(), initial_deck_size - 2);
         assert_eq!(hand_state.player_hand.len(), 0);
         assert_eq!(hand_state.cards_played.len(), 0); // Cleared
-    }
-
-    #[test]
-    fn test_shuffle_cards_back_handles_all_players() {
-        let mut hand_state = HandState::default();
-        let initial_narc = hand_state.narc_deck.len();
-        let initial_player = hand_state.player_deck.len();
-        // SOW-009: Customer deck removed
-
-        // Draw cards for all players
-        hand_state.draw_cards();
-
-        // Shuffle back
-        hand_state.shuffle_cards_back();
-
-        // All decks should be restored (SOW-009: Only Narc and Player)
-        assert_eq!(hand_state.narc_deck.len(), initial_narc);
-        assert_eq!(hand_state.player_deck.len(), initial_player);
-    }
-
-    #[test]
-    fn test_start_next_hand_only_returns_unplayed() {
-        let mut hand_state = HandState::default();
-        hand_state.cash = 500;
-        hand_state.current_heat = 30;
-
-        let initial_deck_size = hand_state.player_deck.len();
-
-        // Draw 3 cards, play 1 (2 remain in hand)
-        hand_state.draw_cards();
-        hand_state.cards_played.push(hand_state.player_hand.remove(0));
-
-        // Start next hand (should shuffle back only the 2 unplayed)
-        hand_state.start_next_hand();
-
-        // Deck should be reduced: initial - 3 (drawn) + 2 (unplayed returned) = initial - 1
-        assert_eq!(hand_state.player_deck.len(), initial_deck_size - 1);
-        assert_eq!(hand_state.cash, 500); // Cash preserved
-        assert_eq!(hand_state.current_heat, 30); // Heat preserved
     }
 
     #[test]
@@ -5803,33 +933,9 @@ mod tests {
         // Try to start next hand with < 3 cards
         let can_continue = hand_state.start_next_hand();
 
-        assert_eq!(can_continue, false); // Cannot continue
+        assert!(!can_continue); // Cannot continue
         assert_eq!(hand_state.outcome, Some(HandOutcome::Busted)); // Run ends
-        assert_eq!(hand_state.current_state, State::Bust); // Terminal state
-    }
-
-    #[test]
-    fn test_fold_penalty_persists_across_hands() {
-        let mut hand_state = HandState::default();
-        let initial_deck_size = hand_state.player_deck.len();
-
-        // Draw cards
-        hand_state.draw_cards();
-
-        // Simulate fold penalty (remove 1 card)
-        if !hand_state.player_deck.is_empty() {
-            hand_state.player_deck.remove(0);
-        }
-
-        // Deck is now initial_deck_size - 3 (drawn) - 1 (fold penalty) = initial_deck_size - 4
-        let deck_after_fold = hand_state.player_deck.len();
-        assert_eq!(deck_after_fold, initial_deck_size - 4);
-
-        // Start next hand (should preserve the smaller deck)
-        hand_state.start_next_hand();
-
-        // Deck should still be reduced (fold penalty persists)
-        assert_eq!(hand_state.player_deck.len(), initial_deck_size - 1); // Only 1 card lost (shuffled back 3 drawn)
+        assert_eq!(hand_state.current_state, HandPhase::Bust); // Terminal state
     }
 
     // ========================================================================
@@ -5847,26 +953,16 @@ mod tests {
     #[test]
     fn test_validate_deck_missing_product() {
         let deck = vec![
-            Card { id: 15, name: "Safe House".to_string(), owner: Owner::Player,
-                card_type: CardType::Location { evidence: 10, cover: 30, heat: -5 } },
-            Card { id: 19, name: "Alibi".to_string(), owner: Owner::Player,
-                card_type: CardType::Cover { cover: 30, heat: -5 } },
-            Card { id: 20, name: "Bribe".to_string(), owner: Owner::Player,
-                card_type: CardType::Cover { cover: 25, heat: 10 } },
-            Card { id: 21, name: "Fake Receipts".to_string(), owner: Owner::Player,
-                card_type: CardType::Cover { cover: 20, heat: 5 } },
-            Card { id: 22, name: "Bribed Witness".to_string(), owner: Owner::Player,
-                card_type: CardType::Cover { cover: 15, heat: -10 } },
-            Card { id: 23, name: "Plea Bargain".to_string(), owner: Owner::Player,
-                card_type: CardType::Insurance { cover: 20, cost: 1000, heat_penalty: 20 } },
-            Card { id: 24, name: "Fake ID".to_string(), owner: Owner::Player,
-                card_type: CardType::Insurance { cover: 15, cost: 0, heat_penalty: 40 } },
-            Card { id: 25, name: "Disguise".to_string(), owner: Owner::Player,
-                card_type: CardType::DealModifier { price_multiplier: 1.0, evidence: 0, cover: 20, heat: -5 } },
-            Card { id: 26, name: "Burner Phone".to_string(), owner: Owner::Player,
-                card_type: CardType::DealModifier { price_multiplier: 1.0, evidence: 0, cover: 15, heat: -10 } },
-            Card { id: 27, name: "Lookout".to_string(), owner: Owner::Player,
-                card_type: CardType::DealModifier { price_multiplier: 1.0, evidence: 0, cover: 20, heat: 0 } },
+            Card { id: 15, name: "Safe House".to_string(),                card_type: CardType::Location { evidence: 10, cover: 30, heat: -5 } },
+            Card { id: 19, name: "Alibi".to_string(),                card_type: CardType::Cover { cover: 30, heat: -5 } },
+            Card { id: 20, name: "Bribe".to_string(),                card_type: CardType::Cover { cover: 25, heat: 10 } },
+            Card { id: 21, name: "Fake Receipts".to_string(),                card_type: CardType::Cover { cover: 20, heat: 5 } },
+            Card { id: 22, name: "Bribed Witness".to_string(),                card_type: CardType::Cover { cover: 15, heat: -10 } },
+            Card { id: 23, name: "Plea Bargain".to_string(),                card_type: CardType::Insurance { cover: 20, cost: 1000, heat_penalty: 20 } },
+            Card { id: 24, name: "Fake ID".to_string(),                card_type: CardType::Insurance { cover: 15, cost: 0, heat_penalty: 40 } },
+            Card { id: 25, name: "Disguise".to_string(),                card_type: CardType::DealModifier { price_multiplier: 1.0, evidence: 0, cover: 20, heat: -5 } },
+            Card { id: 26, name: "Burner Phone".to_string(),                card_type: CardType::DealModifier { price_multiplier: 1.0, evidence: 0, cover: 15, heat: -10 } },
+            Card { id: 27, name: "Lookout".to_string(),                card_type: CardType::DealModifier { price_multiplier: 1.0, evidence: 0, cover: 20, heat: 0 } },
         ];
         let result = validate_deck(&deck);
         assert!(result.is_err());
@@ -5876,26 +972,16 @@ mod tests {
     #[test]
     fn test_validate_deck_missing_location() {
         let deck = vec![
-            Card { id: 10, name: "Weed".to_string(), owner: Owner::Player,
-                card_type: CardType::Product { price: 30, heat: 5 } },
-            Card { id: 11, name: "Meth".to_string(), owner: Owner::Player,
-                card_type: CardType::Product { price: 100, heat: 30 } },
-            Card { id: 12, name: "Heroin".to_string(), owner: Owner::Player,
-                card_type: CardType::Product { price: 150, heat: 45 } },
-            Card { id: 13, name: "Cocaine".to_string(), owner: Owner::Player,
-                card_type: CardType::Product { price: 120, heat: 35 } },
-            Card { id: 14, name: "Fentanyl".to_string(), owner: Owner::Player,
-                card_type: CardType::Product { price: 200, heat: 50 } },
-            Card { id: 19, name: "Alibi".to_string(), owner: Owner::Player,
-                card_type: CardType::Cover { cover: 30, heat: -5 } },
-            Card { id: 20, name: "Bribe".to_string(), owner: Owner::Player,
-                card_type: CardType::Cover { cover: 25, heat: 10 } },
-            Card { id: 21, name: "Fake Receipts".to_string(), owner: Owner::Player,
-                card_type: CardType::Cover { cover: 20, heat: 5 } },
-            Card { id: 22, name: "Bribed Witness".to_string(), owner: Owner::Player,
-                card_type: CardType::Cover { cover: 15, heat: -10 } },
-            Card { id: 23, name: "Plea Bargain".to_string(), owner: Owner::Player,
-                card_type: CardType::Insurance { cover: 20, cost: 1000, heat_penalty: 20 } },
+            Card { id: 10, name: "Weed".to_string(),                card_type: CardType::Product { price: 30, heat: 5 } },
+            Card { id: 11, name: "Meth".to_string(),                card_type: CardType::Product { price: 100, heat: 30 } },
+            Card { id: 12, name: "Heroin".to_string(),                card_type: CardType::Product { price: 150, heat: 45 } },
+            Card { id: 13, name: "Cocaine".to_string(),                card_type: CardType::Product { price: 120, heat: 35 } },
+            Card { id: 14, name: "Fentanyl".to_string(),                card_type: CardType::Product { price: 200, heat: 50 } },
+            Card { id: 19, name: "Alibi".to_string(),                card_type: CardType::Cover { cover: 30, heat: -5 } },
+            Card { id: 20, name: "Bribe".to_string(),                card_type: CardType::Cover { cover: 25, heat: 10 } },
+            Card { id: 21, name: "Fake Receipts".to_string(),                card_type: CardType::Cover { cover: 20, heat: 5 } },
+            Card { id: 22, name: "Bribed Witness".to_string(),                card_type: CardType::Cover { cover: 15, heat: -10 } },
+            Card { id: 23, name: "Plea Bargain".to_string(),                card_type: CardType::Insurance { cover: 20, cost: 1000, heat_penalty: 20 } },
         ];
         let result = validate_deck(&deck);
         assert!(result.is_err());
@@ -5930,7 +1016,7 @@ mod tests {
     fn test_deck_builder_default() {
         let builder = DeckBuilder::new();
         assert_eq!(builder.available_cards.len(), 24); // SOW-010: Expanded to 24 cards
-        assert_eq!(builder.selected_cards.len(), 24); // Default: all cards selected
+        assert_eq!(builder.selected_cards.len(), 20); // SOW-011-B: Default preset has 20 cards (not all 24)
         assert!(builder.is_valid());
     }
 

@@ -36,9 +36,6 @@ pub struct PlayAreaDealer; // SOW-008: Shows dealer (now buyer) played cards
 pub struct BuyerVisibleHand; // SOW-009: Displays Buyer's 3 visible cards (not yet played)
 
 #[derive(Component)]
-pub struct CardsContainer; // SOW-008: Container for cards within play area (horizontal layout)
-
-#[derive(Component)]
 pub struct PlayerHandDisplay;
 
 #[derive(Component)]
@@ -59,8 +56,7 @@ pub struct BettingActionsContainer;
 #[derive(Component)]
 pub struct CheckButton;
 
-#[derive(Component)]
-pub struct RaiseButton;
+// SOW-AAA: RaiseButton removed (obsolete - ADR-006)
 
 #[derive(Component)]
 pub struct FoldButton;
@@ -74,8 +70,7 @@ pub struct BustContainer;
 #[derive(Component)]
 pub struct ContinueButton;
 
-#[derive(Component)]
-pub struct FoldDecisionButton;
+// SOW-AAA: FoldDecisionButton removed (obsolete - ADR-006)
 
 // ============================================================================
 // Restart/Navigation Buttons (SOW-004)
@@ -97,8 +92,7 @@ pub struct DeckBuilderRoot;
 #[derive(Component)]
 pub struct CardPoolContainer;
 
-#[derive(Component)]
-pub struct SelectedDeckContainer;
+// SOW-AAA: SelectedDeckContainer removed (unused)
 
 #[derive(Component)]
 pub struct DeckStatsDisplay;
@@ -106,7 +100,6 @@ pub struct DeckStatsDisplay;
 #[derive(Component)]
 pub struct DeckBuilderCardButton {
     pub card_id: u32,
-    pub in_pool: bool,  // true = in available pool, false = in selected deck
 }
 
 // Note: DeckPreset enum temporarily in main.rs root, will be moved to game module
@@ -165,8 +158,7 @@ pub struct BuyerDeckPanel;
 #[derive(Component)]
 pub struct NarcVisibleHand;
 
-#[derive(Component)]
-pub struct PlayerHandPanel;
+// SOW-AAA: PlayerHandPanel removed (unused)
 
 // ============================================================================
 // SOW-011-B: Hand Resolution Overlay

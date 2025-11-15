@@ -3,7 +3,7 @@
 // SOW-011-B Phase 1: Resolution overlay system
 
 use bevy::prelude::*;
-use crate::{HandState, CardType, Card, State, HandOutcome};
+use crate::{HandState, CardType, Card, HandPhase, HandOutcome};
 use super::components::*;
 use super::helpers;
 use super::theme;
@@ -15,7 +15,7 @@ pub fn update_active_slots_system(
     discard_pile_query: Query<Entity, With<super::components::DiscardPile>>,
     mut commands: Commands,
     children_query: Query<&Children>,
-    card_display_query: Query<Entity, With<PlayedCardDisplay>>,
+    _card_display_query: Query<Entity, With<PlayedCardDisplay>>,
 ) {
     let Ok(mut hand_state) = hand_state_query.get_single_mut() else {
         return;
@@ -209,7 +209,7 @@ pub fn update_heat_bar_system(
 
     // Update heat bar text
     if let Ok(mut text) = bar_text_query.get_single_mut() {
-        text.sections[0].value = format!("{}/{}", current_heat, heat_threshold);
+        text.sections[0].value = format!("{current_heat}/{heat_threshold}");
     }
 }
 
@@ -229,7 +229,7 @@ pub fn update_resolution_overlay_system(
     };
 
     // Show overlay when hand reaches Bust state
-    if hand_state.current_state == State::Bust {
+    if hand_state.current_state == HandPhase::Bust {
         overlay_style.display = Display::Flex;
 
         // Update title based on outcome
@@ -267,7 +267,7 @@ pub fn update_resolution_overlay_system(
 
                     if hand_state.is_demand_satisfied() {
                         let multiplier = hand_state.get_profit_multiplier();
-                        results.push_str(&format!("\nDemand Met! ×{:.1} multiplier", multiplier));
+                        results.push_str(&format!("\nDemand Met! ×{multiplier:.1} multiplier"));
                     } else {
                         results.push_str("\nDemand Not Met (reduced multiplier)");
                     }
