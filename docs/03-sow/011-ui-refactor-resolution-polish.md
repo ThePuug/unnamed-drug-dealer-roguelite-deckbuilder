@@ -2,7 +2,7 @@
 
 ## Status
 
-**Review** - 2025-11-15 (Implementation complete, awaiting merge)
+**Merged** - 2025-11-15 (Squashed commit: 1698391)
 
 ## References
 
