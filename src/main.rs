@@ -2158,6 +2158,7 @@ struct Card {
     name: String,
     owner: Owner,
     card_type: CardType,
+    // RFC-010: Tags will be added when implementing scenarios
 }
 
 // ============================================================================
@@ -2602,18 +2603,26 @@ impl HandState {
         Some(card)
     }
 
-    /// Initialize Buyer hand at start of hand (draw 3 visible cards)
+    /// Initialize/refill Buyer hand at start of NEW hand (draw to 3 visible cards)
+    /// Called at hand start - refills hand from deck (like player)
+    /// Buyer deck reshuffles BETWEEN hands (not during hand - 7 cards, max 3 played)
     pub fn initialize_buyer_hand(&mut self) {
-        if let Some(persona) = &self.buyer_persona {
-            // Clone the reaction deck from persona
-            self.buyer_deck = persona.reaction_deck.clone();
-            self.buyer_deck.shuffle(&mut rand::thread_rng());
+        const BUYER_HAND_SIZE: usize = 3;
 
-            // Draw 3 cards (all visible to player)
-            let draw_count = std::cmp::min(3, self.buyer_deck.len());
-            self.buyer_hand = self.buyer_deck.drain(0..draw_count).collect();
-            self.buyer_played.clear();
+        // First time initialization: Set up deck from persona
+        if self.buyer_deck.is_empty() && self.buyer_hand.is_empty() && self.buyer_played.is_empty() {
+            if let Some(persona) = &self.buyer_persona {
+                self.buyer_deck = persona.reaction_deck.clone();
+                self.buyer_deck.shuffle(&mut rand::thread_rng());
+            }
         }
+
+        // Draw to fill hand to 3 cards (draws from existing deck, depleting it)
+        while self.buyer_hand.len() < BUYER_HAND_SIZE && !self.buyer_deck.is_empty() {
+            self.buyer_hand.push(self.buyer_deck.remove(0));
+        }
+
+        // Note: Buyer can never deplete deck mid-hand (7 cards, max 3 played per hand)
     }
 
     // SOW-009: should_customer_fold() and customer_fold() removed - Customer no longer exists
@@ -3555,14 +3564,14 @@ fn create_buyer_personas() -> Vec<BuyerPersona> {
     ]
 }
 
-/// Buyer Persona 1: College Party Host
+/// Buyer Persona 1: Frat Bro
 /// High profit (×2.5), no threshold (won't bail), high Evidence risk
 fn create_college_party_host() -> BuyerPersona {
     let mut id = 2000; // Start Buyer cards at 2000
 
     BuyerPersona {
-        id: "college_party_host".to_string(),
-        display_name: "College Party Host".to_string(),
+        id: "frat_bro".to_string(),
+        display_name: "Frat Bro".to_string(),
         demand: BuyerDemand {
             products: vec!["Weed".to_string(), "Pills".to_string()],
             locations: vec!["Dorm".to_string(), "Party".to_string(), "Park".to_string()],
@@ -3574,67 +3583,67 @@ fn create_college_party_host() -> BuyerPersona {
         evidence_threshold: None,
         special_rules: vec![],  // TODO: Add "+10 Evidence if public Location" in future phase
         reaction_deck: vec![
-            // 1. Increase Evidence
+            // 1. Evidence - Prior Conviction
             Card {
                 id: id,
-                name: "Cops Called".to_string(),
+                name: "Prior Conviction".to_string(),
                 owner: Owner::Buyer,
                 card_type: CardType::DealModifier { price_multiplier: 1.0, evidence: 20, cover: 0, heat: 5 },
             },
-            // 2. Increase Cover
+            // 2. Cover - Invite Only
             { id += 1; Card {
                 id: id,
-                name: "VIP Room".to_string(),
+                name: "Invite Only".to_string(),
                 owner: Owner::Buyer,
                 card_type: CardType::DealModifier { price_multiplier: 1.0, evidence: 0, cover: 15, heat: -5 },
             }},
-            // 3. Change Location
+            // 3. Location - Safe (Locker Room)
             { id += 1; Card {
                 id: id,
-                name: "Move to Dorm".to_string(),
+                name: "Locker Room".to_string(),
                 owner: Owner::Buyer,
-                card_type: CardType::Location { evidence: 10, cover: 5, heat: 10 },
+                card_type: CardType::Location { evidence: 5, cover: 20, heat: -5 },
             }},
-            // 4. Volume/Price Up
+            // 4. Location - Risky (Frat House)
+            { id += 1; Card {
+                id: id,
+                name: "Frat House".to_string(),
+                owner: Owner::Buyer,
+                card_type: CardType::Location { evidence: 15, cover: 15, heat: 10 },
+            }},
+            // 5. Price Up - Invite More People
             { id += 1; Card {
                 id: id,
                 name: "Invite More People".to_string(),
                 owner: Owner::Buyer,
                 card_type: CardType::DealModifier { price_multiplier: 1.5, evidence: 15, cover: 0, heat: 10 },
             }},
-            // 5. Volume/Price Down
+            // 6. Price Down - Second Supplier
             { id += 1; Card {
                 id: id,
-                name: "Party Shutdown".to_string(),
+                name: "Second Supplier".to_string(),
                 owner: Owner::Buyer,
                 card_type: CardType::DealModifier { price_multiplier: 0.7, evidence: 5, cover: 0, heat: -5 },
             }},
-            // 6. Thematic card (Heat focus)
-            { id += 1; Card {
-                id: id,
-                name: "Word of Mouth".to_string(),
-                owner: Owner::Buyer,
-                card_type: CardType::DealModifier { price_multiplier: 1.0, evidence: 0, cover: 5, heat: 15 },
-            }},
-            // 7. Thematic card (Mixed)
+            // 7. Heat - Noise Complaint
             { id += 1; Card {
                 id: id,
                 name: "Noise Complaint".to_string(),
                 owner: Owner::Buyer,
-                card_type: CardType::DealModifier { price_multiplier: 1.0, evidence: 10, cover: 0, heat: 10 },
+                card_type: CardType::DealModifier { price_multiplier: 1.0, evidence: 5, cover: 0, heat: 20 },
             }},
         ],
     }
 }
 
-/// Buyer Persona 2: Stay-at-Home Mom
+/// Buyer Persona 2: Desperate Housewife
 /// Low profit (×1.2), paranoid (Heat < 30), private only
 fn create_stay_at_home_mom() -> BuyerPersona {
     let mut id = 2100; // Mom cards start at 2100
 
     BuyerPersona {
-        id: "stay_at_home_mom".to_string(),
-        display_name: "Stay-at-Home Mom".to_string(),
+        id: "desperate_housewife".to_string(),
+        display_name: "Desperate Housewife".to_string(),
         demand: BuyerDemand {
             products: vec!["Pills".to_string()],
             locations: vec!["Private Residence".to_string(), "Warehouse".to_string()],
@@ -3646,67 +3655,67 @@ fn create_stay_at_home_mom() -> BuyerPersona {
         evidence_threshold: None,
         special_rules: vec![],
         reaction_deck: vec![
-            // 1. Increase Evidence
+            // 1. Evidence - Neighborhood Watch
             Card {
                 id: id,
-                name: "Kids Are Watching".to_string(),
+                name: "Neighborhood Watch".to_string(),
                 owner: Owner::Buyer,
                 card_type: CardType::DealModifier { price_multiplier: 1.0, evidence: 15, cover: 0, heat: 5 },
             },
-            // 2. Increase Cover
+            // 2. Cover - Good Reputation
             { id += 1; Card {
                 id: id,
-                name: "Safe Exchange".to_string(),
+                name: "Good Reputation".to_string(),
                 owner: Owner::Buyer,
                 card_type: CardType::DealModifier { price_multiplier: 1.0, evidence: 0, cover: 20, heat: -5 },
             }},
-            // 3. Change Location
+            // 3. Location - Safe (By the Pool)
             { id += 1; Card {
                 id: id,
-                name: "Move Inside".to_string(),
+                name: "By the Pool".to_string(),
                 owner: Owner::Buyer,
-                card_type: CardType::Location { evidence: 5, cover: 15, heat: -5 },
+                card_type: CardType::Location { evidence: 5, cover: 25, heat: -10 },
             }},
-            // 4. Volume/Price Up
+            // 4. Location - Risky (At the Park)
             { id += 1; Card {
                 id: id,
-                name: "Needs Extra".to_string(),
+                name: "At the Park".to_string(),
+                owner: Owner::Buyer,
+                card_type: CardType::Location { evidence: 15, cover: 15, heat: 5 },
+            }},
+            // 5. Price Up - Obvious Wealth
+            { id += 1; Card {
+                id: id,
+                name: "Obvious Wealth".to_string(),
                 owner: Owner::Buyer,
                 card_type: CardType::DealModifier { price_multiplier: 1.3, evidence: 10, cover: 5, heat: 5 },
             }},
-            // 5. Volume/Price Down
+            // 6. Price Down - "Alternative" Payment
             { id += 1; Card {
                 id: id,
-                name: "Can't Afford It".to_string(),
+                name: "\"Alternative\" Payment".to_string(),
                 owner: Owner::Buyer,
-                card_type: CardType::DealModifier { price_multiplier: 0.8, evidence: 5, cover: 5, heat: 0 },
+                card_type: CardType::DealModifier { price_multiplier: 0.5, evidence: 5, cover: 5, heat: 0 },
             }},
-            // 6. Thematic card (Paranoia/Heat)
+            // 7. Heat - Gossip Girl
             { id += 1; Card {
                 id: id,
-                name: "Paranoid Check".to_string(),
+                name: "Gossip Girl".to_string(),
                 owner: Owner::Buyer,
                 card_type: CardType::DealModifier { price_multiplier: 1.0, evidence: 5, cover: 0, heat: 15 },
-            }},
-            // 7. Thematic card (Panic)
-            { id += 1; Card {
-                id: id,
-                name: "Panic Attack".to_string(),
-                owner: Owner::Buyer,
-                card_type: CardType::DealModifier { price_multiplier: 1.0, evidence: 10, cover: 0, heat: 20 },
             }},
         ],
     }
 }
 
-/// Buyer Persona 3: Executive
+/// Buyer Persona 3: Wall Street Wolf
 /// Highest profit (×2.8), very paranoid (Heat < 25), private only
 fn create_executive() -> BuyerPersona {
     let mut id = 2200; // Executive cards start at 2200
 
     BuyerPersona {
-        id: "executive".to_string(),
-        display_name: "Executive".to_string(),
+        id: "wall_street_wolf".to_string(),
+        display_name: "Wall Street Wolf".to_string(),
         demand: BuyerDemand {
             products: vec!["Pills".to_string()],
             locations: vec!["Private Residence".to_string(), "Office".to_string()],
@@ -3718,54 +3727,54 @@ fn create_executive() -> BuyerPersona {
         evidence_threshold: None,
         special_rules: vec![],
         reaction_deck: vec![
-            // 1. Increase Evidence
+            // 1. Evidence - Invincibility Complex
             Card {
                 id: id,
-                name: "Security Check".to_string(),
+                name: "Invincibility Complex".to_string(),
                 owner: Owner::Buyer,
                 card_type: CardType::DealModifier { price_multiplier: 1.0, evidence: 15, cover: 0, heat: 10 },
             },
-            // 2. Increase Cover
+            // 2. Cover - Friends in High Places
             { id += 1; Card {
                 id: id,
-                name: "Discrete Meeting".to_string(),
+                name: "Friends in High Places".to_string(),
                 owner: Owner::Buyer,
                 card_type: CardType::DealModifier { price_multiplier: 1.0, evidence: 0, cover: 25, heat: -10 },
             }},
-            // 3. Change Location
+            // 3. Location - Safe (In a Limo)
             { id += 1; Card {
                 id: id,
-                name: "Move to Office".to_string(),
+                name: "In a Limo".to_string(),
                 owner: Owner::Buyer,
-                card_type: CardType::Location { evidence: 5, cover: 20, heat: -5 },
+                card_type: CardType::Location { evidence: 5, cover: 30, heat: -10 },
             }},
-            // 4. Volume/Price Up
+            // 4. Location - Risky (Parking Lot)
             { id += 1; Card {
                 id: id,
-                name: "Expensive Taste".to_string(),
+                name: "Parking Lot".to_string(),
+                owner: Owner::Buyer,
+                card_type: CardType::Location { evidence: 15, cover: 20, heat: 5 },
+            }},
+            // 5. Price Up - Stressful Day
+            { id += 1; Card {
+                id: id,
+                name: "Stressful Day".to_string(),
                 owner: Owner::Buyer,
                 card_type: CardType::DealModifier { price_multiplier: 1.8, evidence: 5, cover: 10, heat: 5 },
             }},
-            // 5. Volume/Price Down
+            // 6. Price Down - Negotiation
             { id += 1; Card {
                 id: id,
-                name: "Budget Conscious".to_string(),
+                name: "Negotiation".to_string(),
                 owner: Owner::Buyer,
-                card_type: CardType::DealModifier { price_multiplier: 0.6, evidence: 0, cover: 15, heat: -5 },
+                card_type: CardType::DealModifier { price_multiplier: 0.8, evidence: 0, cover: 15, heat: -5 },
             }},
-            // 6. Thematic card (Background check)
+            // 7. Heat - Sketchy Business
             { id += 1; Card {
                 id: id,
-                name: "Background Check".to_string(),
+                name: "Sketchy Business".to_string(),
                 owner: Owner::Buyer,
                 card_type: CardType::DealModifier { price_multiplier: 1.0, evidence: 10, cover: 5, heat: 20 },
-            }},
-            // 7. Thematic card (Disruption)
-            { id += 1; Card {
-                id: id,
-                name: "Assistant Interrupt".to_string(),
-                owner: Owner::Buyer,
-                card_type: CardType::DealModifier { price_multiplier: 1.0, evidence: 5, cover: 0, heat: 15 },
             }},
         ],
     }
@@ -3910,9 +3919,9 @@ mod tests {
         }
 
         // Verify personas have distinct identities
-        assert_eq!(buyer_personas[0].id, "college_party_host");
-        assert_eq!(buyer_personas[1].id, "stay_at_home_mom");
-        assert_eq!(buyer_personas[2].id, "executive");
+        assert_eq!(buyer_personas[0].id, "frat_bro");
+        assert_eq!(buyer_personas[1].id, "desperate_housewife");
+        assert_eq!(buyer_personas[2].id, "wall_street_wolf");
 
         let player_deck = create_player_deck();
         assert_eq!(player_deck.len(), 20); // SOW-005: Rebalanced dealer deck
