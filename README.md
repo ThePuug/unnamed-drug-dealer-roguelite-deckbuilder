@@ -1,8 +1,8 @@
 # Drug Dealer Roguelite Deckbuilder
 
-**Status:** SOW-003 Complete - Insurance, Conviction, and Complete Cards
+**Status:** SOW-011 Complete - UI Refactor with Hand Resolution Overlay
 
-An unnamed drug dealer roguelite deckbuilder game built with Rust and Bevy. Currently implements multi-round hands with betting, AI opponents, insurance mechanics, and conviction system.
+An unnamed drug dealer roguelite deckbuilder game built with Rust and Bevy. Features sequential turn-based play with Buyer personas, scenario-driven deals, active slot system, and hand resolution overlay.
 
 ## Quick Start
 
@@ -18,14 +18,15 @@ cargo run
 ```
 
 **What to expect:**
-1. Window opens showing game UI with 3 rounds of play
-2. **Betting Phase:** Each round, players bet by checking or playing cards (raise)
-3. **Flip Phase:** Cards reveal, totals update with Evidence/Cover/Heat/Profit
-4. **Decision Phase:** After rounds 1-2, choose Continue or Fold
-5. **Resolution:** After round 3, check for bust (Evidence > Cover)
-6. **Insurance:** If you have cash and insurance cards, can survive bust
-7. **Conviction:** High heat blocks insurance at thresholds (Warrant 40, DA Approval 60)
-8. **Multi-Hand Runs:** Safe → "NEXT HAND" (keep cash/heat), Bust → "NEW RUN" (reset)
+1. **Deck Builder:** Choose 10-20 cards from 20-card pool (or use preset)
+2. **Start Run:** Click START RUN to begin with selected Buyer persona
+3. **Sequential Play:** Narc → Player turn order, cards played face-up one at a time
+4. **3 Rounds:** Each hand has 3 rounds (Draw → PlayerPhase → BuyerReveal)
+5. **Active Slots:** Product, Location, Conviction, Insurance slots show what's in play
+6. **Pass/Bail Out:** Check to skip playing a card, or fold to exit hand
+7. **Buyer Scenarios:** 2 scenarios per Buyer with different product demands
+8. **Hand Resolution:** Overlay shows outcome (Safe/Busted/BuyerBailed/etc.)
+9. **Multi-Hand Runs:** NEW DEAL continues with same buyer, GO HOME returns to deck builder
 
 ### Run Tests
 
@@ -33,7 +34,7 @@ cargo run
 cargo test
 ```
 
-**46 unit tests** covering:
+**60+ unit tests** covering:
 - Card mechanics (override rules, additive stacking)
 - Multi-round state machine and betting system
 - AI decision making and initiative
@@ -50,23 +51,22 @@ cargo build
 
 ## Current Features
 
-### Card Collection (SOW-003)
-- **Player Deck (15 cards):**
-  - Products: Weed, Meth, Heroin, Cocaine
-  - Locations: Safe House, School Zone, Warehouse
-  - Cover: Alibi, Bribe
-  - Evidence: Informant
-  - Insurance: Plea Bargain ($1000 cost), Fake ID ($0 cost)
-  - Conviction: Warrant (threshold 40), DA Approval (threshold 60)
-  - Deal Modifier: Disguise
-- **Narc Deck (15 cards):** 10× Donut Break, 3× Patrol, 2× Surveillance
-- **Customer Deck (10 cards):** 5× Regular Order, 5× Haggling
+### Card Collection (SOW-010)
+- **Player Deck Pool (20 cards - choose 10-20):**
+  - Products (9): Weed, Ice (Meth), Heroin, Coke, Fentanyl, Codeine, Ecstasy, Shrooms, Acid
+  - Locations (4): Safe House, Abandoned Warehouse, Storage Unit, Dead Drop
+  - Cover (2): Alibi, Fake Receipts
+  - Insurance (2): Bribed Witness, Clean Money
+  - Deal Modifiers (3): Disguise, Lookout, etc.
+- **Narc Deck (25 cards):** Evidence and Conviction cards
+- **Buyer Deck (7 per persona):** 2 Locations + 5 Deal Modifiers (3 visible, random selection)
 
-### Multi-Round Betting System (SOW-002)
-- **3 Rounds per hand:** Each round has Betting → Flip → Decision
-- **Betting Actions:** Check (pass), Raise (play card), Fold (exit hand)
-- **Initiative System:** First raiser gains initiative (controls turn order)
-- **AI Opponents:** Narc and Customer with weighted decision-making
+### Sequential Turn-Based Play (SOW-008, SOW-009)
+- **3 Rounds per hand:** PlayerPhase (Narc → Player turns) → BuyerReveal
+- **Player Actions:** Play card face-up, Pass (check), or Bail Out (fold)
+- **Fixed Turn Order:** Narc always goes first, then Player
+- **Buyer System:** 3 personas (Frat Bro, Desperate Housewife, Wall Street Wolf)
+- **2 Scenarios per Buyer:** Different product demands, heat thresholds, multipliers
 
 ### Insurance & Conviction System (SOW-003)
 - **Insurance Cards:** Save you from bust if you have cash
@@ -89,23 +89,30 @@ cargo build
   3. Insurance active + affordable → Pay cost, gain heat → Safe
   4. Otherwise → Busted
 
-### UI
-- Real-time totals (Evidence, Cover, Heat, Profit)
-- Cash and cumulative heat display
-- Insurance status (cost, heat penalty)
-- Conviction warnings (threshold alerts)
-- Dynamic button text (CHECK/CALL, NEXT HAND/NEW RUN)
-- Color-coded cards by type
+### UI (SOW-011)
+- **16:9 Optimized Layout:** Active slots + scenario card + heat bar (top), played pool + player hand (bottom)
+- **Active Slot System:** Visual Product/Location/Conviction/Insurance slots
+- **Vertical Heat Bar:** Dynamic fill, color transitions (green/yellow/red)
+- **Hand Resolution Overlay:** Modal with outcome-specific results
+- **Totals Bar:** Evidence, Cover, Multiplier displayed prominently
+- **Discard Pile:** Vertical list of replaced cards
+- **Buyer Scenario Card:** Shows scenario, demands, multipliers, heat limit
+- **Two-tier Card Sizing:** Small (110x140) for visible hands/pool, Medium (120x152) for player hand/slots
 
 ## Controls
 
-- **During Betting:**
-  - Click card to Raise/Call
-  - Click CHECK to check (if no raises)
-  - Click FOLD to fold hand
-- **At Decision Point:** Click CONTINUE or FOLD
-- **At Hand End:** Click NEXT HAND (safe) or NEW RUN (busted)
-- **Close Window:** End game
+- **Deck Builder:**
+  - Click cards to select/deselect for your deck
+  - Click preset buttons (Default/Aggro/Control) to load presets
+  - Click START RUN when deck is valid (10-20 cards)
+- **During Play:**
+  - Click card in your hand to play it face-up
+  - Click PASS to skip playing a card
+  - Click BAIL OUT to fold and exit hand
+- **Hand Resolution:**
+  - Overlay appears automatically when hand completes
+  - Click NEW DEAL to continue run with same deck
+  - Click GO HOME to return to deck builder
 
 ## Card Data
 
@@ -123,7 +130,13 @@ To modify card values, edit these functions and recompile.
 ```
 .
 ├── src/
-│   └── main.rs           # All game logic (single file for MVP)
+│   ├── main.rs           # Core game logic (~5600 lines)
+│   └── ui/               # Modular UI system (SOW-011-A)
+│       ├── mod.rs        # UI module entry point
+│       ├── theme.rs      # Color palette and sizing constants
+│       ├── components.rs # UI component markers
+│       ├── helpers.rs    # Card display helpers
+│       └── systems.rs    # UI update systems
 ├── docs/                 # Game design specs, RFCs, ADRs, SOWs
 ├── ROLES/                # Role-based development guidelines
 ├── Cargo.toml            # Rust dependencies
@@ -140,8 +153,16 @@ To modify card values, edit these functions and recompile.
 ## Implementation Status
 
 - ✅ **SOW-001:** Minimal playable hand (single round, basic mechanics)
-- ✅ **SOW-002:** Betting system and AI opponents (3 rounds, betting, initiative)
+- ✅ **SOW-002:** Betting system and AI opponents (3 rounds, sequential play)
 - ✅ **SOW-003:** Insurance and conviction system (bust survival, heat management)
+- ✅ **SOW-004:** Card retention between hands (persistent hands)
+- ✅ **SOW-005:** Deck balance and card distribution (20-card pool)
+- ✅ **SOW-006:** Run progression and deck building (meta systems)
+- ✅ **SOW-008:** Sequential play with progressive reveals (turn-based)
+- ✅ **SOW-009:** Buyer system (merged Dealer + Customer into Buyer personas)
+- ✅ **SOW-010:** Buyer scenarios and product expansion (9 products, 2 scenarios/buyer)
+- ✅ **SOW-011-A:** UI refactor - Core layout & foundation (modular UI, 16:9 layout)
+- ✅ **SOW-011-B:** UI refactor - Hand resolution & polish (overlay, consistent sizing)
 
 ## Next Steps
 
@@ -149,14 +170,12 @@ See `docs/01-rfc/` for planned features and design documents.
 
 ## Documentation
 
-- **SOWs:** `docs/03-sow/` (implementation plans)
-  - SOW-001: Minimal playable hand (Merged)
-  - SOW-002: Betting system and AI (Merged)
-  - SOW-003: Insurance and conviction (Merged)
-- **RFCs:** `docs/01-rfc/` (feature requirements)
-- **ADRs:** `docs/02-adr/` (architectural decisions)
-- **Specs:** `docs/00-spec/` (game design vision)
+- **SOWs:** `docs/03-sow/` - 11 statements of work (all merged)
+- **RFCs:** `docs/01-rfc/` - 11 feature requests (10 implemented, 1 rejected)
+- **ADRs:** `docs/02-adr/` - 6 architectural decision records
+- **Specs:** `docs/00-spec/` - Game design specifications with feature matrices
 - **CLAUDE.md:** Instructions for Claude Code sessions
+- **ROLES/:** Role-based development guidelines (DEVELOPER, ARCHITECT, PLAYER, DEBUGGER)
 
 ## License
 
