@@ -6,7 +6,7 @@ The game uses **7+ distinct card types** that interact to create drug deals. Car
 
 **Core Mechanic:** Override system for Products and Locations (last played wins) + additive/multiplicative modifiers for everything else.
 
-**Updated:** 2025-11-10 (Reflects RFC-005 deck distributions, RFC-008 Dealer cards)
+**Updated:** 2025-11-15 (Reflects RFC-010 product expansion and tagging system)
 
 ---
 
@@ -28,28 +28,51 @@ This is NOT about memorizing combos or hidden interactions - it's about **transp
 **Player Deck (20 cards - Dealer Theme):**
 - ❌ **NO Evidence cards** (removed per RFC-005 - was creating anti-fun)
 - ❌ **NO Conviction cards** (moved to Narc deck per RFC-005)
-- Products: 4 cards (Weed, Meth, Heroin, Cocaine, etc.)
-- Locations: 3 cards (Safe House, Warehouse, Apartment, etc.)
-- Cover: 10 cards (Alibi, Bribe, various defensive cards)
-- Insurance: 2 cards (Plea Bargain, Fake ID)
-- Deal Modifiers: 1 card (Disguise, etc.)
+- Products: 9 distinct products (RFC-010: expanded variety with tagging system)
+- Locations: 4 safe dealer locations (RFC-010: all have good Cover, low Evidence, negative Heat)
+- Cover: Multiple defensive cards
+- Insurance: Bust protection cards
+- Deal Modifiers: Price multiplier cards
+
+**Product Design Principles (RFC-010):**
+- Each product has distinct identity and thematic purpose
+- Tagged by Drug Class, Use Context, Legal Schedule, Risk Profile, Market Tier
+- Range from Budget/Low-Heat (Weed) to Premium/High-Heat (Fentanyl)
+- 9 total products providing variety without overwhelming choice
+
+**Location Design Principles (RFC-010):**
+- Player locations are dealer's SAFE choices (good Cover, low Evidence)
+- All player locations have negative Heat (dealer picked these for a reason)
+- Tagged by Privacy Level and Location Type
+- Buyer can override with contextual locations (their turf, their terms)
 
 **Narc Deck (25 cards - Law Enforcement Theme):**
 - Evidence: 17 cards (variety of threat levels from Donut Break to Raid)
 - Conviction: 8 cards (Warrant, DA Approval, RICO Case - prevent insurance)
 - ✅ **Conviction moved here** from player deck
 
-**Customer Deck (25 cards - Deal Dynamics Theme):**
-- Products: 5 cards (customer requests specific products)
-- Locations: 5 cards (customer suggests venues)
-- Deal Modifiers: 15 cards (Bulk Order, Haggling, Cash Upfront, etc.)
-- ✅ **Customer now strategic** (was placeholder Evidence before)
+**Buyer Reaction Decks (RFC-009, RFC-010):**
+- 7 cards per Buyer persona (3 visible, played randomly)
+- Each deck follows structured template:
+  - 1 Evidence modifier
+  - 1 Cover modifier
+  - 2 Location cards (1 safe, 1 risky - override player's choice)
+  - 2 Price modifiers (1 up, 1 down - affect profit)
+  - 1 Heat/thematic modifier
+- ✅ **Replaces Customer + Dealer decks** - Simplified from 3 players to 2
 
-**Dealer Deck (20 cards - Community/Scenario Cards per RFC-008):**
-- Location cards: 8 (set base Evidence/Cover, can be overridden)
-- Modifier cards: 8 (adjust totals additively, cannot be overridden)
-- Wild cards: 4 (high-impact swings)
-- ✅ **NEW in RFC-008** - Progressive revelation creates "river tension"
+**Buyer Scenarios (RFC-010):**
+- Each Buyer has 2 scenarios (different Product/Location preferences)
+- Scenario chosen at Buyer selection, persists across hands
+- Scenarios have distinct Heat thresholds (same Buyer, different risk tolerance)
+
+**Demand Validation (two-tier system):**
+- **Deal Validity:** ANY Product + ANY Location makes deal valid ($0 → actual profit)
+- **Demand Satisfaction:** Determines multiplier (base vs reduced)
+  - Product demand satisfied: Active Product matches ANY of scenario's desired products
+  - Location demand satisfied: Active Location matches ANY of scenario's preferred locations
+  - BOTH satisfied → base_multiplier (×2.5, ×1.2, ×2.8)
+  - Either not satisfied → reduced_multiplier (×1.0)
 
 ---
 
@@ -420,6 +443,51 @@ Caught Red-Handed
 - "Evidence: 45 → 75 (+30 from Police Checkpoint)"
 - "Dealer has 2 cards remaining" (unrevealed count)
 - Visual emphasis on Dealer reveals (different from player cards)
+
+---
+
+## Product and Location Tagging System (RFC-010)
+
+### Purpose
+
+Tags enable conditional logic, Buyer preferences, and future mechanics without hardcoding specific card names.
+
+### Product Tags
+
+**Drug Class:** Categorizes pharmacological effects
+- Stimulant, Depressant, Psychedelic, Cannabis, Party
+
+**Use Context:** Why people want this drug
+- Party, Medical/Prescription, Street, Performance-Enhancing
+
+**Legal Schedule:** DEA classification affects penalties
+- Schedule I (highest), Schedule II, Schedule III
+
+**Risk Profile:** How much Heat this drug generates
+- HighHeat, ModerateHeat, LowHeat
+
+**Market Tier:** Price range and accessibility
+- Premium, MidTier, Budget
+
+**Future Applications:**
+- Buyer scenario preferences (wants Stimulants, avoids Psychedelics)
+- Conditional modifiers (Public location + Schedule I = +Evidence)
+- Special events (Fentanyl crisis increases Evidence for Prescription drugs)
+- Deck building hints (show which products satisfy current Buyer)
+
+### Location Tags
+
+**Privacy Level:** How exposed the location is
+- Private, SemiPrivate, Public
+
+**Location Type:** Contextual category
+- Residential, Industrial, Commercial, Educational, Recreational
+
+**Future Applications:**
+- Buyer scenario location preferences
+- Conditional modifiers (Public + HighHeat product = extra Evidence)
+- Heat decay (Private locations cool down faster)
+- Special rules (Educational + Schedule I = severe penalties)
 
 ---
 
