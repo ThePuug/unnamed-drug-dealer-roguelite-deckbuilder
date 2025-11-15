@@ -2,6 +2,7 @@
 
 ## Status
 
+**Merged** - 2025-11-15 (squash merged to main)
 **Approved** - 2025-11-15 (ARCHITECT review complete, ready to merge)
 **Planned** - 2025-11-15 (created from approved RFC-010)
 
