@@ -4,7 +4,7 @@ Implementation tracking for Card System specification.
 
 **Spec:** [card-system.md](card-system.md)
 
-**Last Updated:** 2025-11-10 (Updated to reflect RFC-005, RFC-008 implementations)
+**Last Updated:** 2025-11-15 (Updated to reflect RFC-009, RFC-010, RFC-011 implementations)
 
 ---
 
@@ -17,10 +17,23 @@ Implementation tracking for Card System specification.
 - ✅ Conviction cards moved from player deck to Narc deck
 
 **RFC-008 (Sequential Play - NEW DEALER CARDS):**
-- ✅ **Dealer deck: 20 cards** (8 Locations, 8 Modifiers, 4 Wild)
-- ✅ Dealer cards revealed progressively (one per round)
-- ✅ Dealer Locations can be overridden by player Locations
-- ✅ Dealer Modifiers cannot be overridden
+- ~~Dealer deck: 20 cards~~ → **Superseded by RFC-009 Buyer System**
+
+**RFC-009 (Buyer System):**
+- ✅ **Buyer reaction deck: 7 cards per persona** (2 Locations, 5 Deal Modifiers)
+- ✅ Buyer cards revealed randomly from 3 visible cards
+- ✅ Buyer Locations can override player Locations
+- ✅ Buyer Modifiers additive (stack with player cards)
+
+**RFC-010 (Buyer Scenarios and Product Expansion):**
+- ✅ **9 products total** (expanded from 5)
+- ✅ New products: Codeine, Ecstasy, Shrooms, Acid (in addition to Weed, Ice, Heroin, Coke, Fentanyl)
+- ✅ Product/Location tags for conditional logic
+- ✅ 2 scenarios per Buyer persona (different product demands)
+
+**RFC-011 (UI Refactor):**
+- ✅ Active slot visual system (Product/Location/Conviction/Insurance)
+- ✅ Discard pile tracking (replaced cards visible)
 
 ---
 
@@ -40,33 +53,37 @@ Implementation tracking for Card System specification.
 
 | Category | Complete | Not Started | Deferred |
 |----------|----------|-------------|----------|
-| Product Cards | 5 | 0 | 0 |
-| Location Cards | 6 | 0 | 0 |
+| Product Cards | 9 | 0 | 0 |
+| Location Cards | 10 | 0 | 0 |
 | Deal Modifier Cards | 3 | 3 | 0 |
 | Evidence Cards | 5 | 0 | 0 |
 | Cover Cards | 5 | 0 | 0 |
 | Get Out of Jail Cards | 6 | 0 | 0 |
 | Make It Stick Cards | 3 | 1 | 0 |
-| **Dealer Cards (NEW)** | **3** | **0** | **0** |
+| Buyer Cards | 7 | 0 | 0 |
 | Card Interactions | 7 | 1 | 0 |
 | Edge Cases | 4 | 2 | 0 |
-| **Total** | **51** | **3** | **0** |
+| **Total** | **59** | **7** | **0** |
 
 ---
 
-## Product Cards: 5/5 complete (100%)
+## Product Cards: 9/9 complete (100%)
 
 | Feature | Status | RFC/ADR | Notes |
 |---------|:------:|---------|-------|
 | Product override system | ✅ | SOW-001 | Last Product played = active |
 | Base price calculation | ✅ | SOW-001 | Product defines base, modified by multipliers |
 | Heat modifier application | ✅ | SOW-001 | Products add Heat to hand total |
-| Weed/Meth/Heroin (MVP cards) | ✅ | SOW-001 | Weed: $30/+5, Meth: $100/+30, Heroin: $150/+45 |
-| Pills + 1 variant (MVP cards) | ✅ | SOW-002 | Pills: $60/+15 + additional Products |
+| Product tags system | ✅ | RFC-010, SOW-010 | Drug class, context, schedule tags |
+| Weed, Ice, Heroin, Coke, Fentanyl | ✅ | SOW-001-010 | Original 5 products |
+| Codeine | ✅ | RFC-010, SOW-010 | $50, Heat: 10 (prescription) |
+| Ecstasy | ✅ | RFC-010, SOW-010 | $80, Heat: 25 (party drug) |
+| Shrooms | ✅ | RFC-010, SOW-010 | $40, Heat: 8 (psychedelic) |
+| Acid | ✅ | RFC-010, SOW-010 | $60, Heat: 12 (psychedelic) |
 
 ---
 
-## Location Cards: 6/6 complete (100%)
+## Location Cards: 10/10 complete (100%)
 
 | Feature | Status | RFC/ADR | Notes |
 |---------|:------:|---------|-------|
@@ -74,8 +91,9 @@ Implementation tracking for Card System specification.
 | Base Evidence value | ✅ | SOW-001 | Location defines base Evidence |
 | Base Cover value | ✅ | SOW-001 | Location defines base Cover |
 | Heat modifier application | ✅ | SOW-001 | Locations add/subtract Heat |
-| Safe House/School Zone (MVP) | ✅ | SOW-001 | Safe House: 10 Ev, 30 Cov, -5 Heat | School Zone: 40 Ev, 5 Cov, +20 Heat |
-| Parking Lot (MVP) | ✅ | SOW-002 | Parking Lot: 25 Ev, 15 Cov, 0 Heat |
+| Location tags system | ✅ | RFC-010, SOW-010 | Privacy level, location type tags |
+| Player deck Locations (4 cards) | ✅ | RFC-010, SOW-010 | Safe House, Abandoned Warehouse, Storage Unit, Dead Drop |
+| Buyer Locations (6 cards) | ✅ | RFC-010, SOW-010 | 2 per persona (Frat House, Locker Room, By the Pool, At the Park, In a Limo, Parking Lot) |
 
 ---
 
