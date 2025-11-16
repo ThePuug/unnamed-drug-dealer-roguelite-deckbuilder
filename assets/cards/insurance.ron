@@ -1,6 +1,0 @@
-// Insurance Cards - Player Deck (2 cards for bust protection)
-
-[
-    (id: 27, name: "Plea Bargain", card_type: Insurance(cover: 20, cost: 1000, heat_penalty: 20), narrative_fragments: None),
-    (id: 28, name: "Fake ID", card_type: Insurance(cover: 15, cost: 0, heat_penalty: 40), narrative_fragments: None),
-]

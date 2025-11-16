@@ -1,8 +1,0 @@
-// Cover Cards - Player Deck (4 cards for Evidence mitigation)
-
-[
-    (id: 23, name: "Alibi", card_type: Cover(cover: 30, heat: -5), narrative_fragments: None),
-    (id: 24, name: "Bribe", card_type: Cover(cover: 25, heat: 10), narrative_fragments: None),
-    (id: 25, name: "Fake Receipts", card_type: Cover(cover: 20, heat: 5), narrative_fragments: None),
-    (id: 26, name: "Bribed Witness", card_type: Cover(cover: 15, heat: -10), narrative_fragments: None),
-]
