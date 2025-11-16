@@ -5,7 +5,7 @@ use crate::models::card::Card;
 use crate::assets::GameAssets;
 use rand::seq::SliceRandom;
 
-/// SOW-013-B: Create Player deck from loaded assets (20 cards - Dealer Theme)
+/// SOW-013-B: Create Player available cards from loaded assets (24 cards total for deck building)
 pub fn create_player_deck(assets: &GameAssets) -> Vec<Card> {
     let mut deck = Vec::new();
 
@@ -32,12 +32,9 @@ pub fn create_player_deck(assets: &GameAssets) -> Vec<Card> {
     // 2 Insurance cards
     deck.extend(assets.insurance.clone());
 
-    // 1 Modifier
-    if let Some(modifier) = assets.modifiers.first() {
-        deck.push(modifier.clone());
-    }
+    // 5 Modifiers (ALL available for deck building)
+    deck.extend(assets.modifiers.clone());
 
-    // Shuffle deck for variety
-    deck.shuffle(&mut rand::thread_rng());
+    // Total: 9 + 4 + 4 + 2 + 5 = 24 cards
     deck
 }

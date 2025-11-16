@@ -270,6 +270,7 @@ pub fn start_run_button_system(
     deck_builder: Res<DeckBuilder>,
     mut next_state: ResMut<NextState<GameState>>,
     hand_state_query: Query<Entity, With<HandState>>,
+    game_assets: Res<crate::assets::GameAssets>, // SOW-013-B: Need loaded assets for buyer/narc deck
 ) {
     for interaction in interaction_query.iter() {
         if *interaction == Interaction::Pressed && deck_builder.is_valid() {
@@ -278,9 +279,8 @@ pub fn start_run_button_system(
                 commands.entity(entity).despawn();
             }
 
-            // SOW-013-B: Get assets and select random Buyer persona
-            let empty_assets = crate::assets::GameAssets::default();
-            let buyer_personas = create_buyer_personas(&empty_assets);
+            // SOW-013-B: Select random Buyer persona from loaded assets
+            let buyer_personas = create_buyer_personas(&game_assets);
             let mut random_buyer = buyer_personas.choose(&mut rand::thread_rng()).unwrap().clone();
 
             // SOW-010: Randomly select one of the Buyer's 2 scenarios
@@ -290,7 +290,7 @@ pub fn start_run_button_system(
             }
 
             // Create new HandState with selected deck
-            let mut hand_state = HandState::with_custom_deck(deck_builder.selected_cards.clone(), &empty_assets);
+            let mut hand_state = HandState::with_custom_deck(deck_builder.selected_cards.clone(), &game_assets);
             hand_state.buyer_persona = Some(random_buyer);
             hand_state.draw_cards(); // This will also initialize buyer hand
             commands.spawn(hand_state);

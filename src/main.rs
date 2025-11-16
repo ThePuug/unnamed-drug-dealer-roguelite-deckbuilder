@@ -21,10 +21,10 @@ fn main() {
     app.add_plugins(DefaultPlugins)
         .add_plugins(assets::AssetLoaderPlugin) // SOW-013-A: Load game assets
         .init_state::<GameState>()  // SOW-006: Add state management
-        .insert_resource(DeckBuilder::new())  // SOW-006: Initialize deck builder
         .insert_resource(AiActionTimer::default())  // SOW-008: AI pacing timer
         .add_systems(Startup, setup)
-        .add_systems(Startup, setup_deck_builder.after(setup));  // SOW-006: Setup deck builder UI (after emoji font loads)
+        .add_systems(Startup, initialize_deck_builder_from_assets) // SOW-013-B: Init after assets load
+        .add_systems(Startup, setup_deck_builder.after(initialize_deck_builder_from_assets));  // SOW-006: Setup deck builder UI
 
     app
         .add_systems(Update, toggle_game_state_ui_system)
@@ -56,4 +56,19 @@ fn main() {
             populate_deck_builder_cards_system,
         ).chain())
         .run();
+}
+
+// SOW-013-B: Initialize DeckBuilder from loaded assets
+fn initialize_deck_builder_from_assets(
+    mut commands: Commands,
+    game_assets: Res<assets::GameAssets>,
+) {
+    if game_assets.assets_loaded {
+        let deck_builder = DeckBuilder::from_assets(&game_assets);
+        commands.insert_resource(deck_builder);
+        info!("DeckBuilder initialized from assets");
+    } else {
+        warn!("Assets not loaded yet - DeckBuilder will be empty");
+        commands.insert_resource(DeckBuilder::new());
+    }
 }
