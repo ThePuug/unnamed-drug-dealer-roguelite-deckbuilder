@@ -23,16 +23,6 @@ fn main() {
         .add_systems(Startup, setup)
         .add_systems(Startup, setup_deck_builder);  // SOW-006: Setup deck builder UI
 
-    // Embed custom font as the default font (supports emojis)
-    load_internal_binary_asset!(
-        app,
-        TextStyle::default().font,
-        "../assets/fonts/FiraCode.ttf",
-        |bytes: &[u8], _path: String| {
-            Font::try_from_bytes(bytes.to_vec()).unwrap()
-        }
-    );
-
     app
         .add_systems(Update, toggle_game_state_ui_system)
         .add_systems(Update, (

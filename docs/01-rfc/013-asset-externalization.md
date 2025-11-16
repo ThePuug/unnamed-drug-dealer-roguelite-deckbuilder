@@ -2,7 +2,7 @@
 
 ## Status
 
-**Draft** - 2025-11-16
+**Approved** - 2025-11-16 (PLAYER and ARCHITECT approved, ready for SOW-013-A)
 
 ## Feature Request
 
@@ -63,23 +63,13 @@ Without externalized assets:
 ```
 assets/
 ├── cards/
-│   ├── products/
-│   │   ├── weed.ron
-│   │   ├── codeine.ron
-│   │   └── ... (9 total)
-│   ├── locations/
-│   │   ├── safe_house.ron
-│   │   └── ... (10 total)
-│   ├── evidence/
-│   │   ├── patrol.ron
-│   │   └── ... (17 total)
-│   ├── cover/
-│   ├── insurance/
-│   └── modifiers/
-├── buyers/
-│   ├── frat_bro.ron
-│   ├── desperate_housewife.ron
-│   └── wall_street_wolf.ron
+│   ├── products.ron         // All 9 products in one file
+│   ├── locations.ron         // All 10 locations
+│   ├── evidence.ron          // All 17 evidence cards
+│   ├── cover.ron             // All 4 cover cards
+│   ├── insurance.ron         // All 2 insurance cards
+│   └── modifiers.ron         // All 5 deal modifiers
+├── buyers.ron                // All 3 personas with scenarios
 └── config/
     └── (future: balance.ron, thresholds.ron)
 ```
@@ -373,42 +363,74 @@ Design custom binary asset format.
 - **SOW-013-A** (Foundation): Asset structures, loader, validation, initial migration (12-16 hours)
 - **SOW-013-B** (Complete Migration): Migrate all remaining content, remove hardcoded data (12-18 hours)
 
-### Open Questions
+### Discussion - 2025-11-16
 
-**Q1: Asset Organization**
-Should we use one RON file per card/buyer, or group related assets?
-- **Option A:** One file per asset (`weed.ron`, `codeine.ron`) - granular, easy to find
-- **Option B:** Group by category (`products.ron` with all products) - fewer files, bulk editing
-- **Recommendation:** Option A (one file per asset) - better for modding, easier to add/remove
+**Design Decisions (Resolved):**
 
-**Q2: Asset Loading Strategy**
-When should assets be loaded?
-- **Option A:** Game startup (all at once) - simple, ensures everything loads
-- **Option B:** Lazy loading (on-demand) - faster startup, more complex
-- **Recommendation:** Option A (startup) - current content size is small, simplicity preferred
+**Q1: Asset Organization** → ✅ **Grouped files**
+- Use category-based files (`products.ron`, `buyers.ron`)
+- Easier bulk editing, fewer files to manage
+- Still organized by type for clarity
 
-**Q3: Bevy Asset System Integration**
-Should we use Bevy's built-in asset system or custom loader?
-- **Option A:** Bevy AssetServer (async, handles, change detection)
-- **Option B:** Custom std::fs loader (simpler, synchronous)
-- **Recommendation:** Option B for MVP (simpler), can upgrade to Bevy later if needed
+**Q2: Asset Loading Strategy** → ✅ **Startup loading**
+- Load all assets at game startup (synchronous)
+- Ensures all content available before gameplay
+- Simple, predictable
 
-**Q4: Validation Strictness**
-How strict should asset validation be?
-- **Option A:** Strict (reject invalid assets, refuse to start)
-- **Option B:** Permissive (warn about issues, use defaults)
-- **Recommendation:** Option A (strict) - prevents broken game states, clearer errors
+**Q3: Bevy Asset System Integration** → ✅ **Use Bevy AssetServer**
+- Leverage Bevy's asset system (async handles, change detection)
+- Future-proof for hot-reloading
+- Standard Bevy pattern
+
+**Q4: Validation Strictness** → ✅ **Strict validation**
+- Reject invalid assets, refuse to start game
+- Clear error messages for modders
+- Prevents broken game states
+
+**Revised Structure:**
+```
+assets/
+├── cards/
+│   ├── products.ron (9 cards)
+│   ├── locations.ron (10 cards)
+│   ├── evidence.ron (17 cards)
+│   ├── cover.ron (4 cards)
+│   ├── insurance.ron (2 cards)
+│   └── modifiers.ron (5 cards)
+├── buyers.ron (3 personas × 2 scenarios + reaction decks)
+└── config/ (future)
+```
 
 ---
 
 ## Approval
 
-**Status:** Draft (awaiting PLAYER/ARCHITECT review)
+**Status:** ✅ **Approved** - 2025-11-16
+
+**PLAYER:** ✅ Approved
+- Solves player need (moddability, translation, designer iteration)
+- Grouped files easier to manage than 50+ individual files
+- Bevy AssetServer future-proofs for hot-reloading
+- Strict validation ensures quality
+
+**ARCHITECT:** ✅ Approved
+- Technically feasible (serde + RON + Bevy AssetServer)
+- Clean separation of code and content
+- Scope manageable in 2 SOWs (12-16h + 12-18h)
+- Low technical risk
+
+**Scope Constraint:** ✅ Fits in two SOWs (≤20 hours each)
+- SOW-013-A: Foundation + initial migration (12-16 hours)
+- SOW-013-B: Complete migration + cleanup (12-18 hours)
+
+**Dependencies:**
+- `serde` crate (already in Cargo.toml via Bevy)
+- `ron` crate (needs to be added)
 
 **Next Steps:**
-1. ARCHITECT/PLAYER discussion on open questions
-2. Finalize split into SOW-013-A and SOW-013-B
-3. Approval from both roles
-4. Create SOW documents
+1. ✅ ARCHITECT creates SOW-013-A (Foundation)
+2. DEVELOPER implements SOW-013-A
+3. ARCHITECT creates SOW-013-B (Migration completion)
+4. DEVELOPER implements SOW-013-B
 
 **Date:** 2025-11-16
