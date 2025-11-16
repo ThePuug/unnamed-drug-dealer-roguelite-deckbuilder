@@ -1,0 +1,29 @@
+// Location Cards - Player Deck (Dealer's Safe Choices)
+// 4 dealer-friendly locations with good cover and low evidence
+
+[
+    (
+        id: 19,
+        name: "Safe House",
+        card_type: Location(evidence: 10, cover: 30, heat: -5),
+        narrative_fragments: None,
+    ),
+    (
+        id: 20,
+        name: "Abandoned Warehouse",
+        card_type: Location(evidence: 15, cover: 25, heat: -10),
+        narrative_fragments: None,
+    ),
+    (
+        id: 21,
+        name: "Storage Unit",
+        card_type: Location(evidence: 12, cover: 28, heat: -8),
+        narrative_fragments: None,
+    ),
+    (
+        id: 22,
+        name: "Dead Drop",
+        card_type: Location(evidence: 8, cover: 20, heat: -5),
+        narrative_fragments: None,
+    ),
+]

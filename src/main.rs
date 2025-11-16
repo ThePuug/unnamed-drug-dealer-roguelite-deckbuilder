@@ -1,4 +1,5 @@
 mod ui;
+mod assets; // SOW-013-A: Asset loading system
 mod data;
 mod models;
 mod systems;
@@ -18,6 +19,7 @@ fn main() {
     let mut app = App::new();
 
     app.add_plugins(DefaultPlugins)
+        .add_plugins(assets::AssetLoaderPlugin) // SOW-013-A: Load game assets
         .init_state::<GameState>()  // SOW-006: Add state management
         .insert_resource(DeckBuilder::new())  // SOW-006: Initialize deck builder
         .insert_resource(AiActionTimer::default())  // SOW-008: AI pacing timer

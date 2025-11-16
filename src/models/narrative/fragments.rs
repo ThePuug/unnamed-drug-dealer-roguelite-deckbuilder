@@ -1,9 +1,10 @@
 // SOW-012 Phase 1: Narrative Generation - Core Data Structures
 
 use rand::{seq::SliceRandom, thread_rng};
+use serde::{Deserialize, Serialize}; // SOW-013-A: Asset externalization
 
 /// Narrative fragments for story generation (phrasal-only MVP)
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct NarrativeFragments {
     // PHRASAL FRAGMENTS (clause level - complete phrases)
     pub subject_clauses: Vec<String>,      // "A desperate housewife", "The soccer mom"

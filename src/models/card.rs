@@ -2,10 +2,11 @@
 // Extracted from main.rs (originally lines 2338-2373, 3408-3416)
 
 use bevy::prelude::Component;
+use serde::{Deserialize, Serialize}; // SOW-013-A: Asset externalization
 use super::narrative::NarrativeFragments; // SOW-012: Narrative generation (from narrative/ module)
 
 /// Who owns this card
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Owner {
     Narc,
     Player,
@@ -13,7 +14,7 @@ pub enum Owner {
 }
 
 /// Card types with their specific values (Extended in SOW-002/003/008)
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum CardType {
     Product { price: u32, heat: i32 },
     Location { evidence: u32, cover: u32, heat: i32 },  // SOW-009: Used by both Player and Buyer (override rule)
@@ -31,7 +32,7 @@ pub enum CardType {
 }
 
 /// Card instance
-#[derive(Component, Debug, Clone)]
+#[derive(Component, Debug, Clone, Serialize, Deserialize)]
 pub struct Card {
     pub id: u32,
     pub name: String,
@@ -42,7 +43,7 @@ pub struct Card {
 }
 
 /// Totals calculated from all played cards
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Totals {
     pub evidence: u32,
     pub cover: u32,

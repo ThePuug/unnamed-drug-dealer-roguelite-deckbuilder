@@ -1,0 +1,86 @@
+// Product Cards - Player Deck
+// 9 products ranging from budget to premium, low heat to high heat
+
+[
+    // Budget Tier
+    (
+        id: 10,
+        name: "Weed",
+        card_type: Product(price: 30, heat: 5),
+        narrative_fragments: Some((
+            subject_clauses: [],
+            need_clauses: [],
+            product_clauses: [
+                "I had the weed",
+                "I brought the green",
+                "I was holding some bud",
+            ],
+            location_clauses: [],
+            complication_clauses: [],
+            action_clauses: [],
+        )),
+    ),
+    (
+        id: 11,
+        name: "Shrooms",
+        card_type: Product(price: 40, heat: 8),
+        narrative_fragments: None,
+    ),
+
+    // Mid Tier
+    (
+        id: 12,
+        name: "Codeine",
+        card_type: Product(price: 50, heat: 10),
+        narrative_fragments: Some((
+            subject_clauses: [],
+            need_clauses: [],
+            product_clauses: [
+                "I had the pills",
+                "I brought codeine",
+                "I was holding prescription meds",
+            ],
+            location_clauses: [],
+            complication_clauses: [],
+            action_clauses: [],
+        )),
+    ),
+    (
+        id: 13,
+        name: "Acid",
+        card_type: Product(price: 60, heat: 12),
+        narrative_fragments: None,
+    ),
+    (
+        id: 14,
+        name: "Ecstasy",
+        card_type: Product(price: 80, heat: 25),
+        narrative_fragments: None,
+    ),
+
+    // Premium Tier
+    (
+        id: 15,
+        name: "Ice",
+        card_type: Product(price: 100, heat: 30),
+        narrative_fragments: None,
+    ),
+    (
+        id: 16,
+        name: "Coke",
+        card_type: Product(price: 120, heat: 35),
+        narrative_fragments: None,
+    ),
+    (
+        id: 17,
+        name: "Heroin",
+        card_type: Product(price: 150, heat: 45),
+        narrative_fragments: None,
+    ),
+    (
+        id: 18,
+        name: "Fentanyl",
+        card_type: Product(price: 200, heat: 50),
+        narrative_fragments: None,
+    ),
+]

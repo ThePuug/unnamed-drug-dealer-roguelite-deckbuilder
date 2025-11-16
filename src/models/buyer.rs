@@ -3,9 +3,10 @@
 
 use super::card::Card;
 use super::narrative::NarrativeFragments; // SOW-012: Narrative generation
+use serde::{Deserialize, Serialize}; // SOW-013-A: Asset externalization
 
 /// Buyer demand specification - what Products/Locations satisfy this Buyer
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BuyerDemand {
     pub products: Vec<String>,      // e.g., ["Pills", "Weed"] - product names that satisfy demand
     pub locations: Vec<String>,     // e.g., ["Private Residence", "Warehouse"] - location names that satisfy demand
@@ -13,7 +14,7 @@ pub struct BuyerDemand {
 }
 
 /// SOW-010: Buyer scenario - specific motivation/context for this deal
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BuyerScenario {
     pub display_name: String,                // "Get Wild", "Rock Bottom"
     pub products: Vec<String>,               // ["Weed", "Coke"] - at least one required (OR logic)
@@ -24,7 +25,7 @@ pub struct BuyerScenario {
 }
 
 /// Buyer persona - merges Dealer scenario deck + Customer modifiers into one entity
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BuyerPersona {
     pub display_name: String,                // "Frat Bro", "Desperate Housewife"
     pub demand: BuyerDemand,                 // SOW-010: Deprecated - scenarios define demands now

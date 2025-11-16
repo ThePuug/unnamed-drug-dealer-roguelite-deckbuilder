@@ -1,0 +1,220 @@
+// Buyer Personas - Each with 2 scenarios and 7-card reaction deck
+// 3 personas total: Frat Bro, Desperate Housewife, Wall Street Wolf
+
+[
+    // Buyer 1: Frat Bro
+    (
+        display_name: "Frat Bro",
+        demand: (
+            products: ["Weed", "Pills"],
+            locations: ["Dorm", "Party", "Park"],
+            description: "Wants Weed or Pills, high volume, public locations",
+        ),
+        base_multiplier: 2.5,
+        reduced_multiplier: 1.0,
+        heat_threshold: None,
+        evidence_threshold: None,
+        reaction_deck: [
+            (id: 2000, name: "Prior Conviction", card_type: DealModifier(price_multiplier: 1.0, evidence: 20, cover: 0, heat: 5), narrative_fragments: None),
+            (id: 2001, name: "Invite Only", card_type: DealModifier(price_multiplier: 1.0, evidence: 0, cover: 15, heat: -5), narrative_fragments: None),
+            (id: 2002, name: "Locker Room", card_type: Location(evidence: 5, cover: 20, heat: -5), narrative_fragments: None),
+            (id: 2003, name: "Frat House", card_type: Location(evidence: 15, cover: 15, heat: 10), narrative_fragments: None),
+            (id: 2004, name: "Invite More People", card_type: DealModifier(price_multiplier: 1.5, evidence: 15, cover: 0, heat: 10), narrative_fragments: None),
+            (id: 2005, name: "Second Supplier", card_type: DealModifier(price_multiplier: 0.7, evidence: 5, cover: 0, heat: -5), narrative_fragments: None),
+            (id: 2006, name: "Noise Complaint", card_type: DealModifier(price_multiplier: 1.0, evidence: 5, cover: 0, heat: 20), narrative_fragments: None),
+        ],
+        scenarios: [
+            (
+                display_name: "Get Wild",
+                products: ["Weed", "Coke"],
+                locations: ["Frat House", "Locker Room", "Park"],
+                heat_threshold: None,
+                description: "Chaotic party energy, maximum wildness",
+                narrative_fragments: Some((
+                    subject_clauses: [
+                        "A frat bro",
+                        "This party animal",
+                        "The college kid",
+                    ],
+                    need_clauses: [
+                        "wanted to get wild",
+                        "needed party supplies for the rager",
+                        "was throwing the craziest party of the year",
+                    ],
+                    product_clauses: [],
+                    location_clauses: [],
+                    complication_clauses: [],
+                    action_clauses: [],
+                )),
+            ),
+            (
+                display_name: "Get Laid",
+                products: ["Weed", "Ecstasy"],
+                locations: ["Frat House", "Locker Room", "Dorm"],
+                heat_threshold: Some(35),
+                description: "Social connection party, vibes over chaos",
+                narrative_fragments: Some((
+                    subject_clauses: [
+                        "A frat bro",
+                        "This college Romeo",
+                        "The would-be player",
+                    ],
+                    need_clauses: [
+                        "needed to impress someone special",
+                        "wanted the perfect vibe for his date",
+                        "was trying to get laid",
+                    ],
+                    product_clauses: [],
+                    location_clauses: [],
+                    complication_clauses: [],
+                    action_clauses: [],
+                )),
+            ),
+        ],
+        active_scenario_index: None,
+    ),
+
+    // Buyer 2: Desperate Housewife
+    (
+        display_name: "Desperate Housewife",
+        demand: (
+            products: ["Pills"],
+            locations: ["Private Residence", "Warehouse"],
+            description: "Wants Pills only, private locations only",
+        ),
+        base_multiplier: 1.2,
+        reduced_multiplier: 1.0,
+        heat_threshold: Some(30),
+        evidence_threshold: None,
+        reaction_deck: [
+            (id: 2100, name: "Struggling Addiction", card_type: DealModifier(price_multiplier: 1.0, evidence: 20, cover: 0, heat: 5), narrative_fragments: None),
+            (id: 2101, name: "Secrecy", card_type: DealModifier(price_multiplier: 1.0, evidence: 0, cover: 20, heat: -10), narrative_fragments: None),
+            (id: 2102, name: "By the Pool", card_type: Location(evidence: 5, cover: 25, heat: -10), narrative_fragments: None),
+            (id: 2103, name: "At the Park", card_type: Location(evidence: 15, cover: 15, heat: 5), narrative_fragments: None),
+            (id: 2104, name: "Obvious Wealth", card_type: DealModifier(price_multiplier: 1.3, evidence: 10, cover: 5, heat: 5), narrative_fragments: None),
+            (id: 2105, name: "\"Alternative\" Payment", card_type: DealModifier(price_multiplier: 0.5, evidence: 5, cover: 5, heat: 0), narrative_fragments: None),
+            (id: 2106, name: "Gossip Girl", card_type: DealModifier(price_multiplier: 1.0, evidence: 5, cover: 0, heat: 15), narrative_fragments: None),
+        ],
+        scenarios: [
+            (
+                display_name: "Rock Bottom",
+                products: ["Codeine", "Fentanyl"],
+                locations: ["Private Residence", "By the Pool"],
+                heat_threshold: Some(40),
+                description: "Severe addiction, desperate for relief",
+                narrative_fragments: Some((
+                    subject_clauses: [
+                        "A desperate housewife",
+                        "This suburban mother",
+                        "The woman at rock bottom",
+                    ],
+                    need_clauses: [
+                        "needed her fix badly",
+                        "was desperate for relief from her pain",
+                        "couldn't go another day without it",
+                    ],
+                    product_clauses: [],
+                    location_clauses: [],
+                    complication_clauses: [],
+                    action_clauses: [],
+                )),
+            ),
+            (
+                display_name: "In Denial",
+                products: ["Codeine", "Weed"],
+                locations: ["Private Residence", "By the Pool", "At the Park"],
+                heat_threshold: Some(25),
+                description: "Managing anxiety, denying the problem",
+                narrative_fragments: Some((
+                    subject_clauses: [
+                        "A suburban housewife",
+                        "The anxious mom",
+                        "This woman in denial",
+                    ],
+                    need_clauses: [
+                        "just needed something to take the edge off",
+                        "was managing her anxiety",
+                        "insisted it was just this once",
+                    ],
+                    product_clauses: [],
+                    location_clauses: [],
+                    complication_clauses: [],
+                    action_clauses: [],
+                )),
+            ),
+        ],
+        active_scenario_index: None,
+    ),
+
+    // Buyer 3: Wall Street Wolf
+    (
+        display_name: "Wall Street Wolf",
+        demand: (
+            products: ["Pills"],
+            locations: ["Private Residence", "Office"],
+            description: "Wants premium Pills, private only, very paranoid",
+        ),
+        base_multiplier: 2.8,
+        reduced_multiplier: 1.0,
+        heat_threshold: Some(25),
+        evidence_threshold: None,
+        reaction_deck: [
+            (id: 2200, name: "Invincibility Complex", card_type: DealModifier(price_multiplier: 1.0, evidence: 15, cover: 0, heat: 10), narrative_fragments: None),
+            (id: 2201, name: "Friends in High Places", card_type: DealModifier(price_multiplier: 1.0, evidence: 0, cover: 25, heat: -10), narrative_fragments: None),
+            (id: 2202, name: "In a Limo", card_type: Location(evidence: 5, cover: 30, heat: -10), narrative_fragments: None),
+            (id: 2203, name: "Parking Lot", card_type: Location(evidence: 15, cover: 20, heat: 5), narrative_fragments: None),
+            (id: 2204, name: "Stressful Day", card_type: DealModifier(price_multiplier: 1.8, evidence: 5, cover: 10, heat: 5), narrative_fragments: None),
+            (id: 2205, name: "Negotiation", card_type: DealModifier(price_multiplier: 0.8, evidence: 0, cover: 15, heat: -5), narrative_fragments: None),
+            (id: 2206, name: "Sketchy Business", card_type: DealModifier(price_multiplier: 1.0, evidence: 10, cover: 5, heat: 20), narrative_fragments: None),
+        ],
+        scenarios: [
+            (
+                display_name: "Desperate Times",
+                products: ["Ice", "Codeine"],
+                locations: ["In a Limo", "Office", "Parking Lot"],
+                heat_threshold: Some(45),
+                description: "Performance under pressure, needs the edge",
+                narrative_fragments: Some((
+                    subject_clauses: [
+                        "A Wall Street wolf",
+                        "This desperate executive",
+                        "The high-powered businessman",
+                    ],
+                    need_clauses: [
+                        "needed the performance edge",
+                        "was desperate for something to keep him sharp",
+                        "couldn't afford to lose his competitive edge",
+                    ],
+                    product_clauses: [],
+                    location_clauses: [],
+                    complication_clauses: [],
+                    action_clauses: [],
+                )),
+            ),
+            (
+                display_name: "Adrenaline Junkie",
+                products: ["Ice", "Coke"],
+                locations: ["Parking Lot", "In a Limo"],
+                heat_threshold: Some(30),
+                description: "Calculated risk-taking, chasing the rush",
+                narrative_fragments: Some((
+                    subject_clauses: [
+                        "A Wall Street adrenaline junkie",
+                        "This thrill-seeking exec",
+                        "The high-roller",
+                    ],
+                    need_clauses: [
+                        "wanted to chase the rush",
+                        "was looking for that dangerous high",
+                        "needed something to feel alive",
+                    ],
+                    product_clauses: [],
+                    location_clauses: [],
+                    complication_clauses: [],
+                    action_clauses: [],
+                )),
+            ),
+        ],
+        active_scenario_index: None,
+    ),
+]
