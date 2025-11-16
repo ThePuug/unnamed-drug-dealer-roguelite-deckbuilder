@@ -4,9 +4,10 @@
 use bevy::prelude::*;
 use super::theme;
 use super::components::*;
-use crate::DeckPreset;
+use super::helpers;
+use crate::{DeckPreset, EmojiFont};
 
-pub fn setup_deck_builder(mut commands: Commands) {
+pub fn setup_deck_builder(mut commands: Commands, emoji_font: Res<EmojiFont>) {
     // Deck builder root container (initially visible, game starts in DeckBuilding state)
     commands.spawn((
         NodeBundle {
@@ -23,14 +24,12 @@ pub fn setup_deck_builder(mut commands: Commands) {
         DeckBuilderRoot,
     ))
     .with_children(|parent| {
-        // Title
-        parent.spawn(TextBundle::from_section(
-            "DECK BUILDER",
-            TextStyle {
-                font_size: 40.0,
-                color: Color::WHITE,
-                ..default()
-            },
+        // Title with emoji test
+        parent.spawn(helpers::text_bundle_with_emoji(
+            "🃏 DECK BUILDER 🎴",
+            40.0,
+            Color::WHITE,
+            &emoji_font,
         ));
 
         // Main content area (horizontal split: pool | selected)

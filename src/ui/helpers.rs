@@ -3,6 +3,7 @@
 
 use bevy::prelude::*;
 use crate::CardType;
+use crate::EmojiFont;
 use super::theme;
 
 /// Card display size variants
@@ -252,4 +253,102 @@ pub fn spawn_placeholder(
             },
         ).with_text_justify(JustifyText::Center));
     });
+}
+
+/// Create a TextStyle with emoji font support
+/// Use this for any text that contains emoji characters
+pub fn text_style_with_emoji(font_size: f32, color: Color, emoji_font: &EmojiFont) -> TextStyle {
+    TextStyle {
+        font: emoji_font.0.clone(),
+        font_size,
+        color,
+    }
+}
+
+/// Create a TextBundle with mixed text and emojis
+/// Automatically separates emoji characters to use emoji font, regular text uses default font
+/// Example: "🃏 DECK BUILDER 🎴" -> emoji font for 🃏🎴, default font for " DECK BUILDER "
+pub fn text_bundle_with_emoji(text: impl Into<String>, font_size: f32, color: Color, emoji_font: &EmojiFont) -> TextBundle {
+    let text_string: String = text.into();
+    let mut sections = Vec::new();
+    let mut current_text = String::new();
+    let mut current_is_emoji = false;
+    let mut first_char = true;
+
+    for ch in text_string.chars() {
+        let is_emoji = is_emoji_char(ch);
+
+        if first_char {
+            current_is_emoji = is_emoji;
+            first_char = false;
+        }
+
+        // If we're switching between emoji/non-emoji, create a new section
+        if is_emoji != current_is_emoji {
+            if !current_text.is_empty() {
+                let style = if current_is_emoji {
+                    TextStyle {
+                        font: emoji_font.0.clone(),
+                        font_size,
+                        color,
+                    }
+                } else {
+                    TextStyle {
+                        font_size,
+                        color,
+                        ..default()
+                    }
+                };
+                sections.push(TextSection::new(current_text.clone(), style));
+                current_text.clear();
+            }
+            current_is_emoji = is_emoji;
+        }
+
+        current_text.push(ch);
+    }
+
+    // Add the last section
+    if !current_text.is_empty() {
+        let style = if current_is_emoji {
+            TextStyle {
+                font: emoji_font.0.clone(),
+                font_size,
+                color,
+            }
+        } else {
+            TextStyle {
+                font_size,
+                color,
+                ..default()
+            }
+        };
+        sections.push(TextSection::new(current_text, style));
+    }
+
+    TextBundle::from_sections(sections)
+}
+
+/// Check if a character is an emoji
+/// This is a simplified check - covers most common emojis
+fn is_emoji_char(ch: char) -> bool {
+    matches!(ch as u32,
+        0x1F300..=0x1F9FF | // Misc Symbols and Pictographs, Emoticons, Transport, etc.
+        0x2600..=0x26FF |   // Misc symbols
+        0x2700..=0x27BF |   // Dingbats
+        0x1F000..=0x1F02F | // Mahjong Tiles, Domino Tiles
+        0x1F0A0..=0x1F0FF | // Playing Cards
+        0x1F100..=0x1F64F | // Enclosed Alphanumeric Supplement, Emoticons
+        0x1F680..=0x1F6FF | // Transport and Map Symbols
+        0x1F900..=0x1F9FF | // Supplemental Symbols and Pictographs
+        0x1FA00..=0x1FA6F | // Chess Symbols, Symbols and Pictographs Extended-A
+        0x1FA70..=0x1FAFF | // Symbols and Pictographs Extended-A
+        0x2300..=0x23FF |   // Miscellaneous Technical
+        0x2B50 | 0x2B55 |   // Star, Circle
+        0x231A | 0x231B |   // Watch, Hourglass
+        0x23E9..=0x23F3 |   // Play/Pause buttons
+        0x25AA | 0x25AB |   // Squares
+        0x25B6 | 0x25C0 |   // Play buttons
+        0x25FB..=0x25FE     // Squares
+    )
 }

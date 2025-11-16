@@ -10,6 +10,7 @@ use ui::setup::*;
 use models::card::*;
 use models::deck_builder::*;
 use models::hand_state::*; // SOW-AAA Phase 5
+use models::fonts::EmojiFont;
 use systems::*;
 use game_state::{GameState, AiActionTimer}; // SOW-AAA Phase 8
 
@@ -21,7 +22,7 @@ fn main() {
         .insert_resource(DeckBuilder::new())  // SOW-006: Initialize deck builder
         .insert_resource(AiActionTimer::default())  // SOW-008: AI pacing timer
         .add_systems(Startup, setup)
-        .add_systems(Startup, setup_deck_builder);  // SOW-006: Setup deck builder UI
+        .add_systems(Startup, setup_deck_builder.after(setup));  // SOW-006: Setup deck builder UI (after emoji font loads)
 
     app
         .add_systems(Update, toggle_game_state_ui_system)
