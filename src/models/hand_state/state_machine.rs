@@ -6,11 +6,11 @@ use rand::seq::SliceRandom;
 
 impl HandState {
     /// Create HandState with a custom player deck
-    pub fn with_custom_deck(mut player_deck: Vec<Card>) -> Self {
+    pub fn with_custom_deck(mut player_deck: Vec<Card>, assets: &crate::assets::GameAssets) -> Self {
         player_deck.shuffle(&mut rand::thread_rng());
 
         let mut owner_cards = std::collections::HashMap::new();
-        owner_cards.insert(Owner::Narc, Cards::new(create_narc_deck()));
+        owner_cards.insert(Owner::Narc, Cards::new(create_narc_deck(assets)));
         owner_cards.insert(Owner::Player, Cards::new(player_deck));
         owner_cards.insert(Owner::Buyer, Cards::empty());
 
@@ -349,7 +349,7 @@ mod tests {
     #[test]
     fn test_draw_cards() {
         let mut hand_state = HandState::default();
-        let buyer_personas = create_buyer_personas();
+        let buyer_personas = create_buyer_personas(&crate::assets::GameAssets::default());
         let _ = hand_state.buyer_persona.insert(buyer_personas[0].clone());
 
         assert!(hand_state.cards(Owner::Narc).hand.iter().all(|s| s.is_none()));
@@ -435,7 +435,7 @@ mod tests {
     #[test]
     fn test_buyer_deck_resets_between_hands() {
         let mut hand_state = HandState::default();
-        let buyer_personas = create_buyer_personas();
+        let buyer_personas = create_buyer_personas(&crate::assets::GameAssets::default());
         hand_state.buyer_persona = Some(buyer_personas[0].clone());
 
         // Draw cards - buyer gets cards from persona deck
@@ -468,7 +468,7 @@ mod tests {
     #[test]
     fn test_shuffle_cards_back_clears_all_hands() {
         let mut hand_state = HandState::default();
-        let buyer_personas = create_buyer_personas();
+        let buyer_personas = create_buyer_personas(&crate::assets::GameAssets::default());
         hand_state.buyer_persona = Some(buyer_personas[0].clone());
 
         // Draw cards for all owners

@@ -1,0 +1,9 @@
+// Deal Modifier Cards - Player Deck (5 defensive focus cards)
+
+[
+    (id: 29, name: "Disguise", card_type: DealModifier(price_multiplier: 1.0, evidence: 0, cover: 20, heat: -5), narrative_fragments: None),
+    (id: 30, name: "Burner Phone", card_type: DealModifier(price_multiplier: 1.0, evidence: 0, cover: 15, heat: -10), narrative_fragments: None),
+    (id: 31, name: "Lookout", card_type: DealModifier(price_multiplier: 1.0, evidence: 0, cover: 20, heat: 0), narrative_fragments: None),
+    (id: 32, name: "Clean Money", card_type: DealModifier(price_multiplier: 0.9, evidence: 0, cover: 10, heat: -15), narrative_fragments: None),
+    (id: 33, name: "False Trail", card_type: DealModifier(price_multiplier: 1.0, evidence: -10, cover: 15, heat: -5), narrative_fragments: None),
+]

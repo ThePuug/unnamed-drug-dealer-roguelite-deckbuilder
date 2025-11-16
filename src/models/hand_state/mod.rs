@@ -56,11 +56,12 @@ pub struct HandState {
     pub hand_story: Option<String>, // SOW-012: Generated narrative for this hand
 }
 
-impl Default for HandState {
-    fn default() -> Self {
+impl HandState {
+    /// SOW-013-B: Create HandState from loaded assets
+    pub fn from_assets(assets: &crate::assets::GameAssets) -> Self {
         let mut owner_cards = HashMap::new();
-        owner_cards.insert(Owner::Narc, Cards::new(create_narc_deck()));
-        owner_cards.insert(Owner::Player, Cards::new(create_player_deck()));
+        owner_cards.insert(Owner::Narc, Cards::new(create_narc_deck(assets)));
+        owner_cards.insert(Owner::Player, Cards::new(create_player_deck(assets)));
         owner_cards.insert(Owner::Buyer, Cards::empty());
 
         Self {
@@ -76,7 +77,45 @@ impl Default for HandState {
             current_player_index: 0,
             checks_this_hand: Vec::new(),
             buyer_persona: None,
-            hand_story: None, // SOW-012: No story initially
+            hand_story: None,
+        }
+    }
+}
+
+// Keep Default for tests
+impl Default for HandState {
+    fn default() -> Self {
+        // Tests use basic test decks
+        #[cfg(test)]
+        let (narc_deck, player_deck) = {
+            use crate::models::test_helpers::*;
+            let narc = vec![create_evidence("Evidence1", 5, 5), create_evidence("Evidence2", 10, 10)];
+            let player = vec![create_product("Product1", 10, 0), create_location("Location1", 5, 10, 0)];
+            (narc, player)
+        };
+
+        #[cfg(not(test))]
+        let (narc_deck, player_deck) = (vec![], vec![]);
+
+        let mut owner_cards = HashMap::new();
+        owner_cards.insert(Owner::Narc, Cards::new(narc_deck));
+        owner_cards.insert(Owner::Player, Cards::new(player_deck));
+        owner_cards.insert(Owner::Buyer, Cards::empty());
+
+        Self {
+            current_state: HandPhase::Draw,
+            current_round: 1,
+            owner_cards,
+            cards_played: Vec::new(),
+            cards_played_this_round: Vec::new(),
+            discard_pile: Vec::new(),
+            outcome: None,
+            cash: 0,
+            current_heat: 0,
+            current_player_index: 0,
+            checks_this_hand: Vec::new(),
+            buyer_persona: None,
+            hand_story: None,
         }
     }
 }

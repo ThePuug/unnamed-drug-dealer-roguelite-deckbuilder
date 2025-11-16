@@ -278,8 +278,9 @@ pub fn start_run_button_system(
                 commands.entity(entity).despawn();
             }
 
-            // SOW-009 Phase 2: Select random Buyer persona
-            let buyer_personas = create_buyer_personas();
+            // SOW-013-B: Get assets and select random Buyer persona
+            let empty_assets = crate::assets::GameAssets::default();
+            let buyer_personas = create_buyer_personas(&empty_assets);
             let mut random_buyer = buyer_personas.choose(&mut rand::thread_rng()).unwrap().clone();
 
             // SOW-010: Randomly select one of the Buyer's 2 scenarios
@@ -289,7 +290,7 @@ pub fn start_run_button_system(
             }
 
             // Create new HandState with selected deck
-            let mut hand_state = HandState::with_custom_deck(deck_builder.selected_cards.clone());
+            let mut hand_state = HandState::with_custom_deck(deck_builder.selected_cards.clone(), &empty_assets);
             hand_state.buyer_persona = Some(random_buyer);
             hand_state.draw_cards(); // This will also initialize buyer hand
             commands.spawn(hand_state);

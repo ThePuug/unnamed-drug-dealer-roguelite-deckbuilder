@@ -10,6 +10,10 @@ use std::collections::HashMap;
 pub struct GameAssets {
     pub products: HashMap<String, Card>,
     pub locations: HashMap<String, Card>,
+    pub evidence: Vec<Card>,          // Narc deck (Evidence + Conviction)
+    pub cover: Vec<Card>,              // Player Cover cards
+    pub insurance: Vec<Card>,          // Player Insurance cards
+    pub modifiers: Vec<Card>,          // Player Deal Modifiers
     pub buyers: Vec<BuyerPersona>,
     pub assets_loaded: bool,
 }
@@ -19,6 +23,10 @@ impl GameAssets {
         Self {
             products: HashMap::new(),
             locations: HashMap::new(),
+            evidence: Vec::new(),
+            cover: Vec::new(),
+            insurance: Vec::new(),
+            modifiers: Vec::new(),
             buyers: Vec::new(),
             assets_loaded: false,
         }

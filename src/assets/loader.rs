@@ -51,6 +51,54 @@ fn load_game_assets(mut game_assets: ResMut<GameAssets>) {
         }
     }
 
+    // Load evidence (Narc deck)
+    match load_and_validate_cards("assets/cards/evidence.ron", "Evidence") {
+        Ok(cards) => {
+            game_assets.evidence = cards;
+            info!("Loaded {} evidence cards", game_assets.evidence.len());
+        }
+        Err(e) => {
+            error!("Failed to load evidence.ron: {}", e);
+            panic!("Critical asset loading failure - fix evidence.ron");
+        }
+    }
+
+    // Load cover
+    match load_and_validate_cards("assets/cards/cover.ron", "Cover") {
+        Ok(cards) => {
+            game_assets.cover = cards;
+            info!("Loaded {} cover cards", game_assets.cover.len());
+        }
+        Err(e) => {
+            error!("Failed to load cover.ron: {}", e);
+            panic!("Critical asset loading failure - fix cover.ron");
+        }
+    }
+
+    // Load insurance
+    match load_and_validate_cards("assets/cards/insurance.ron", "Insurance") {
+        Ok(cards) => {
+            game_assets.insurance = cards;
+            info!("Loaded {} insurance cards", game_assets.insurance.len());
+        }
+        Err(e) => {
+            error!("Failed to load insurance.ron: {}", e);
+            panic!("Critical asset loading failure - fix insurance.ron");
+        }
+    }
+
+    // Load modifiers
+    match load_and_validate_cards("assets/cards/modifiers.ron", "Modifier") {
+        Ok(cards) => {
+            game_assets.modifiers = cards;
+            info!("Loaded {} modifier cards", game_assets.modifiers.len());
+        }
+        Err(e) => {
+            error!("Failed to load modifiers.ron: {}", e);
+            panic!("Critical asset loading failure - fix modifiers.ron");
+        }
+    }
+
     // Load buyers
     match load_and_validate_buyers("assets/buyers.ron") {
         Ok(buyers) => {

@@ -14,8 +14,16 @@ pub struct DeckBuilder {
 
 impl DeckBuilder {
     pub fn new() -> Self {
-        let available = create_player_deck();
-        // SOW-011-B: Start with Default preset (not all cards)
+        // SOW-013-B: Empty until populated from assets
+        Self {
+            available_cards: Vec::new(),
+            selected_cards: Vec::new(),
+        }
+    }
+
+    /// SOW-013-B: Initialize from loaded assets
+    pub fn from_assets(assets: &crate::assets::GameAssets) -> Self {
+        let available = create_player_deck(assets);
         let mut deck_builder = Self {
             available_cards: available,
             selected_cards: Vec::new(),
@@ -54,7 +62,7 @@ mod tests {
 
     #[test]
     fn test_validate_deck_valid() {
-        let deck = create_player_deck(); // Default 20-card deck
+        let deck = create_player_deck(&crate::assets::GameAssets::default()); // Default 20-card deck
         assert!(validate_deck(&deck).is_ok());
     }
 
