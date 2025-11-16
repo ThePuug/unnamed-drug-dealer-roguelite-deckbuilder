@@ -19,9 +19,8 @@ pub fn ui_update_system(
         return;
     };
 
-    // Update totals display
+    // Update totals display (only exists during InRun state)
     if let Ok(mut text) = totals_query.get_single_mut() {
-        // SOW-008: Cards reveal immediately, so always include current round
         let include_current_round = true;
         let totals = hand_state.calculate_totals(include_current_round);
         text.sections[0].value = format!(
@@ -31,9 +30,8 @@ pub fn ui_update_system(
         );
     }
 
-    // SOW-011-B: Simplified status display - just Round and Cash
+    // Simplified status display - just Round and Cash (only exists during InRun state)
     if let Ok(mut text) = status_query.get_single_mut() {
-        // Get turn info for display
         let turn_info = if hand_state.current_state == HandPhase::PlayerPhase {
             format!(" - Turn: {:?}", hand_state.current_player())
         } else {
@@ -49,37 +47,34 @@ pub fn ui_update_system(
         text.sections[0].style.color = theme::TEXT_HEADER;
     }
 
-    // Update scenario card
+    // Update scenario card (only exists during InRun state)
     if let Ok(mut text) = scenario_query.get_single_mut() {
         let scenario_info = if let Some(persona) = &hand_state.buyer_persona {
-            if let Some(scenario_idx) = persona.active_scenario_index {
-                if let Some(scenario) = persona.scenarios.get(scenario_idx) {
-                    let heat_info = if let Some(threshold) = scenario.heat_threshold {
-                        let heat_warning = if hand_state.current_heat >= threshold.saturating_sub(5) {
-                            " ⚠️ CLOSE!"
-                        } else {
-                            ""
-                        };
-                        format!("Heat Limit: {} (Current: {}){}", threshold, hand_state.current_heat, heat_warning)
-                    } else {
-                        "Heat Limit: None (fearless)".to_string()
-                    };
+            let scenario_idx = persona.active_scenario_index
+                .expect("Buyer persona should have an active scenario");
+            let scenario = persona.scenarios.get(scenario_idx)
+                .expect("Active scenario index should be valid");
 
-                    format!(
-                        "👤 {}\n\nScenario: {}\n{}\n\nWants: {}\n\nPrefers:\n{}\n\n{}",
-                        persona.display_name,
-                        scenario.display_name,
-                        scenario.description,
-                        scenario.products.join(" OR "),
-                        scenario.locations.join(", "),
-                        heat_info
-                    )
+            let heat_info = if let Some(threshold) = scenario.heat_threshold {
+                let heat_warning = if hand_state.current_heat >= threshold.saturating_sub(5) {
+                    " ⚠️ CLOSE!"
                 } else {
-                    format!("👤 {}\n\n{}", persona.display_name, persona.demand.description)
-                }
+                    ""
+                };
+                format!("Heat Limit: {} (Current: {}){}", threshold, hand_state.current_heat, heat_warning)
             } else {
-                format!("👤 {}\n\n{}", persona.display_name, persona.demand.description)
-            }
+                "Heat Limit: None (fearless)".to_string()
+            };
+
+            format!(
+                "👤 {}\n\nScenario: {}\n{}\n\nWants: {}\n\nPrefers:\n{}\n\n{}",
+                persona.display_name,
+                scenario.display_name,
+                scenario.description,
+                scenario.products.join(" OR "),
+                scenario.locations.join(", "),
+                heat_info
+            )
         } else {
             "No Buyer Selected".to_string()
         };
@@ -272,32 +267,6 @@ pub fn populate_deck_builder_cards_system(
                 });
             }
         });
-    }
-}
-
-pub fn toggle_ui_visibility_system(
-    hand_state_query: Query<&HandState>,
-    mut betting_container_query: Query<&mut Style, (With<BettingActionsContainer>, Without<DecisionPointContainer>, Without<BustContainer>)>,
-    mut decision_container_query: Query<&mut Style, (With<DecisionPointContainer>, Without<BettingActionsContainer>, Without<BustContainer>)>,
-    mut bust_container_query: Query<&mut Style, (With<BustContainer>, Without<BettingActionsContainer>, Without<DecisionPointContainer>)>,
-) {
-    let Ok(_hand_state) = hand_state_query.get_single() else {
-        return;
-    };
-
-    // SOW-011-B: Always show betting buttons (never hide them)
-    if let Ok(mut style) = betting_container_query.get_single_mut() {
-        style.display = Display::Flex;
-    }
-
-    // SOW-008: Hide decision point UI (fold happens during PlayerPhase now)
-    if let Ok(mut style) = decision_container_query.get_single_mut() {
-        style.display = Display::None;
-    }
-
-    // SOW-011-B: Bust container always hidden (overlay handles resolution)
-    if let Ok(mut style) = bust_container_query.get_single_mut() {
-        style.display = Display::None;
     }
 }
 

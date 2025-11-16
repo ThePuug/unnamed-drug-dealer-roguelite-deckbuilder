@@ -656,6 +656,7 @@ pub fn create_ui(commands: &mut Commands) {
                                 flex_direction: FlexDirection::Column,
                                 justify_content: JustifyContent::Center,
                                 row_gap: Val::Px(10.0),
+                                display: Display::Flex, // Always visible
                                 ..default()
                             },
                             ..default()
@@ -765,137 +766,6 @@ pub fn create_ui(commands: &mut Commands) {
                         ..default()
                     },
                     BuyerVisibleHand,
-                ));
-            });
-        });
-
-        // DecisionPoint UI (Continue/Fold) - SOW-002 Phase 5
-        parent.spawn((
-            NodeBundle {
-                style: Style {
-                    width: Val::Percent(100.0),
-                    height: Val::Px(100.0),
-                    flex_direction: FlexDirection::Column,
-                    justify_content: JustifyContent::Center,
-                    align_items: AlignItems::Center,
-                    row_gap: Val::Px(10.0),
-                    margin: UiRect::top(Val::Px(20.0)),
-                    display: Display::None, // Hidden by default
-                    ..default()
-                },
-                background_color: Color::srgba(0.2, 0.2, 0.3, 0.9).into(),
-                ..default()
-            },
-            DecisionPointContainer,
-        ))
-        .with_children(|parent| {
-            parent.spawn(TextBundle::from_section(
-                "Round complete - Review cards played",
-                TextStyle {
-                    font_size: 18.0,
-                    color: Color::WHITE,
-                    ..default()
-                },
-            ));
-
-            // Continue button only (no fold - SOW-004)
-            parent.spawn((
-                ButtonBundle {
-                    style: Style {
-                        width: Val::Px(200.0),
-                        height: Val::Px(60.0),
-                        justify_content: JustifyContent::Center,
-                        align_items: AlignItems::Center,
-                        margin: UiRect::top(Val::Px(10.0)),
-                        ..default()
-                    },
-                    background_color: theme::CONTINUE_BUTTON_BG.into(),
-                    ..default()
-                },
-                ContinueButton,
-            ))
-            .with_children(|parent| {
-                parent.spawn(TextBundle::from_section(
-                    "CONTINUE",
-                    TextStyle {
-                        font_size: 24.0,
-                        color: Color::WHITE,
-                        ..default()
-                    },
-                ));
-            });
-        });
-
-        // Restart UI (appears at Bust state) - SOW-004: NEW DEAL / GO HOME
-        parent.spawn((
-            NodeBundle {
-                style: Style {
-                    width: Val::Percent(100.0),
-                    height: Val::Px(100.0),
-                    flex_direction: FlexDirection::Row,
-                    justify_content: JustifyContent::Center,
-                    align_items: AlignItems::Center,
-                    column_gap: Val::Px(20.0),
-                    margin: UiRect::top(Val::Px(20.0)),
-                    display: Display::None, // Hidden by default
-                    ..default()
-                },
-                ..default()
-            },
-            BustContainer,
-        ))
-        .with_children(|parent| {
-            // New Deal button (continue run)
-            parent.spawn((
-                ButtonBundle {
-                    style: Style {
-                        width: Val::Px(180.0),
-                        height: Val::Px(60.0),
-                        justify_content: JustifyContent::Center,
-                        align_items: AlignItems::Center,
-                        ..default()
-                    },
-                    background_color: theme::CONTINUE_BUTTON_BG.into(),
-                    ..default()
-                },
-                RestartButton, // Reuse RestartButton for "NEW DEAL"
-            ))
-            .with_children(|parent| {
-                parent.spawn(TextBundle::from_section(
-                    "NEW DEAL",
-                    TextStyle {
-                        font_size: 24.0,
-                        color: Color::WHITE,
-                        ..default()
-                    },
-                ));
-            });
-
-            // End Run / Go Home button (context-dependent)
-            // Safe/Folded: "GO HOME" (voluntary quit)
-            // Busted: "END RUN" (forced end)
-            parent.spawn((
-                ButtonBundle {
-                    style: Style {
-                        width: Val::Px(180.0),
-                        height: Val::Px(60.0),
-                        justify_content: JustifyContent::Center,
-                        align_items: AlignItems::Center,
-                        ..default()
-                    },
-                    background_color: theme::RESTART_BUTTON_BG.into(),
-                    ..default()
-                },
-                GoHomeButton,
-            ))
-            .with_children(|parent| {
-                parent.spawn(TextBundle::from_section(
-                    "GO HOME", // Will be updated by update_restart_button_states
-                    TextStyle {
-                        font_size: 24.0,
-                        color: Color::WHITE,
-                        ..default()
-                    },
                 ));
             });
         });

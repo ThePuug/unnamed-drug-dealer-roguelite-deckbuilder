@@ -61,17 +61,6 @@ pub struct CheckButton;
 #[derive(Component)]
 pub struct FoldButton;
 
-#[derive(Component)]
-pub struct DecisionPointContainer;
-
-#[derive(Component)]
-pub struct BustContainer;
-
-#[derive(Component)]
-pub struct ContinueButton;
-
-// SOW-AAA: FoldDecisionButton removed (obsolete - ADR-006)
-
 // ============================================================================
 // Restart/Navigation Buttons (SOW-004)
 // ============================================================================

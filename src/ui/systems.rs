@@ -233,82 +233,84 @@ pub fn update_resolution_overlay_system(
         overlay_style.display = Display::Flex;
 
         // Update title based on outcome
-        if let Ok(mut title_text) = title_query.get_single_mut() {
-            title_text.sections[0].value = match hand_state.outcome {
-                Some(HandOutcome::Safe) => "DEAL COMPLETE!".to_string(),
-                Some(HandOutcome::Busted) => "BUSTED!".to_string(),
-                Some(HandOutcome::Folded) => "HAND FOLDED".to_string(),
-                Some(HandOutcome::InvalidDeal) => "INVALID DEAL".to_string(),
-                Some(HandOutcome::BuyerBailed) => "BUYER BAILED".to_string(),
-                None => "HAND COMPLETE".to_string(),
-            };
+        let mut title_text = title_query.get_single_mut()
+            .expect("Expected exactly one ResolutionTitle");
 
-            // Color code title
-            title_text.sections[0].style.color = match hand_state.outcome {
-                Some(HandOutcome::Safe) => theme::STATUS_SAFE,
-                Some(HandOutcome::Busted) => theme::STATUS_BUSTED,
-                Some(HandOutcome::Folded) => theme::STATUS_FOLDED,
-                Some(HandOutcome::InvalidDeal) => theme::STATUS_INVALID,
-                Some(HandOutcome::BuyerBailed) => theme::STATUS_BAILED,
-                None => theme::TEXT_HEADER,
-            };
-        }
+        title_text.sections[0].value = match hand_state.outcome {
+            Some(HandOutcome::Safe) => "DEAL COMPLETE!".to_string(),
+            Some(HandOutcome::Busted) => "BUSTED!".to_string(),
+            Some(HandOutcome::Folded) => "HAND FOLDED".to_string(),
+            Some(HandOutcome::InvalidDeal) => "INVALID DEAL".to_string(),
+            Some(HandOutcome::BuyerBailed) => "BUYER BAILED".to_string(),
+            None => "HAND COMPLETE".to_string(),
+        };
+
+        // Color code title
+        title_text.sections[0].style.color = match hand_state.outcome {
+            Some(HandOutcome::Safe) => theme::STATUS_SAFE,
+            Some(HandOutcome::Busted) => theme::STATUS_BUSTED,
+            Some(HandOutcome::Folded) => theme::STATUS_FOLDED,
+            Some(HandOutcome::InvalidDeal) => theme::STATUS_INVALID,
+            Some(HandOutcome::BuyerBailed) => theme::STATUS_BAILED,
+            None => theme::TEXT_HEADER,
+        };
 
         // Update results breakdown
-        if let Ok(mut results_text) = results_query.get_single_mut() {
-            let totals = hand_state.calculate_totals(true);
-            let mut results = String::new();
+        let mut results_text = results_query.get_single_mut()
+            .expect("Expected exactly one ResolutionResults");
 
-            match hand_state.outcome {
-                Some(HandOutcome::Safe) => {
-                    results.push_str(&format!("Evidence: {} ≤ Cover: {} ✓\n\n", totals.evidence, totals.cover));
-                    results.push_str(&format!("Profit: ${}\n", totals.profit));
-                    results.push_str(&format!("Heat: {}\n", totals.heat));
+        let totals = hand_state.calculate_totals(true);
+        let mut results = String::new();
 
-                    if hand_state.is_demand_satisfied() {
-                        let multiplier = hand_state.get_profit_multiplier();
-                        results.push_str(&format!("\nDemand Met! ×{multiplier:.1} multiplier"));
-                    } else {
-                        results.push_str("\nDemand Not Met (reduced multiplier)");
-                    }
-                }
-                Some(HandOutcome::Busted) => {
-                    if hand_state.cards(Owner::Player).deck.len() < 3 {
-                        results.push_str(&format!("Deck Exhausted: {} cards\n\nRun Ends", hand_state.cards(Owner::Player).deck.len()));
-                    } else {
-                        results.push_str(&format!("Evidence: {} > Cover: {} ✗\n\n", totals.evidence, totals.cover));
-                        results.push_str(&format!("You got caught!\nHeat: {}", totals.heat));
-                    }
-                }
-                Some(HandOutcome::Folded) => {
-                    results.push_str("You bailed out\n\nNo profit, no risk");
-                }
-                Some(HandOutcome::InvalidDeal) => {
-                    let has_product = hand_state.active_product(true).is_some();
-                    let has_location = hand_state.active_location(true).is_some();
+        match hand_state.outcome {
+            Some(HandOutcome::Safe) => {
+                results.push_str(&format!("Evidence: {} ≤ Cover: {} ✓\n\n", totals.evidence, totals.cover));
+                results.push_str(&format!("Profit: ${}\n", totals.profit));
+                results.push_str(&format!("Heat: {}\n", totals.heat));
 
-                    if !has_product && !has_location {
-                        results.push_str("Missing Product AND Location!");
-                    } else if !has_product {
-                        results.push_str("Missing Product card!");
-                    } else {
-                        results.push_str("Missing Location card!");
-                    }
-                    results.push_str("\n\nNo profit");
-                }
-                Some(HandOutcome::BuyerBailed) => {
-                    if let Some(persona) = &hand_state.buyer_persona {
-                        results.push_str(&format!("{} got nervous!\n\n", persona.display_name));
-                    }
-                    results.push_str("Deal fell through\nNo profit");
-                }
-                None => {
-                    results.push_str("Hand ended");
+                if hand_state.is_demand_satisfied() {
+                    let multiplier = hand_state.get_profit_multiplier();
+                    results.push_str(&format!("\nDemand Met! ×{multiplier:.1} multiplier"));
+                } else {
+                    results.push_str("\nDemand Not Met (reduced multiplier)");
                 }
             }
+            Some(HandOutcome::Busted) => {
+                if hand_state.cards(Owner::Player).deck.len() < 3 {
+                    results.push_str(&format!("Deck Exhausted: {} cards\n\nRun Ends", hand_state.cards(Owner::Player).deck.len()));
+                } else {
+                    results.push_str(&format!("Evidence: {} > Cover: {} ✗\n\n", totals.evidence, totals.cover));
+                    results.push_str(&format!("You got caught!\nHeat: {}", totals.heat));
+                }
+            }
+            Some(HandOutcome::Folded) => {
+                results.push_str("You bailed out\n\nNo profit, no risk");
+            }
+            Some(HandOutcome::InvalidDeal) => {
+                let has_product = hand_state.active_product(true).is_some();
+                let has_location = hand_state.active_location(true).is_some();
 
-            results_text.sections[0].value = results;
+                if !has_product && !has_location {
+                    results.push_str("Missing Product AND Location!");
+                } else if !has_product {
+                    results.push_str("Missing Product card!");
+                } else {
+                    results.push_str("Missing Location card!");
+                }
+                results.push_str("\n\nNo profit");
+            }
+            Some(HandOutcome::BuyerBailed) => {
+                if let Some(persona) = &hand_state.buyer_persona {
+                    results.push_str(&format!("{} got nervous!\n\n", persona.display_name));
+                }
+                results.push_str("Deal fell through\nNo profit");
+            }
+            None => {
+                results.push_str("Hand ended");
+            }
         }
+
+        results_text.sections[0].value = results;
     } else {
         overlay_style.display = Display::None;
     }

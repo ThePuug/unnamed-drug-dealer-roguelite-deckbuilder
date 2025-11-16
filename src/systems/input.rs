@@ -77,22 +77,22 @@ pub fn update_betting_button_states(
                          hand_state.current_player() == Owner::Player;
 
     // Update Pass button (Check) - enabled when player's turn, disabled otherwise
-    if let Ok(mut bg) = check_button_query.get_single_mut() {
-        *bg = if is_player_turn {
-            theme::BUTTON_ENABLED_BG.into()
-        } else {
-            theme::BUTTON_DISABLED_BG.into()
-        };
-    }
+    let mut bg = check_button_query.get_single_mut()
+        .expect("Expected exactly one CheckButton");
+    *bg = if is_player_turn {
+        theme::BUTTON_ENABLED_BG.into()
+    } else {
+        theme::BUTTON_DISABLED_BG.into()
+    };
 
     // Update Bail Out button (Fold) - enabled when player's turn, disabled otherwise
-    if let Ok(mut bg) = fold_button_query.get_single_mut() {
-        *bg = if is_player_turn {
-            theme::BUTTON_NEUTRAL_BG.into()
-        } else {
-            theme::BUTTON_DISABLED_BG.into()
-        };
-    }
+    let mut bg = fold_button_query.get_single_mut()
+        .expect("Expected exactly one FoldButton");
+    *bg = if is_player_turn {
+        theme::BUTTON_NEUTRAL_BG.into()
+    } else {
+        theme::BUTTON_DISABLED_BG.into()
+    };
 }
 
 // ============================================================================
@@ -152,32 +152,36 @@ pub fn update_restart_button_states(
     let is_busted = matches!(hand_state.outcome, Some(HandOutcome::Busted));
 
     // NEW DEAL button: Hide if busted, disable if deck exhausted
-    if let Ok((mut bg_color, mut visibility)) = restart_button_query.get_single_mut() {
-        if is_busted {
-            // Busted: Hide NEW DEAL button entirely
-            *visibility = Visibility::Hidden;
+    let (mut bg_color, mut visibility) = restart_button_query
+        .get_single_mut()
+        .expect("Expected exactly one RestartButton in resolution overlay");
+
+    if is_busted {
+        // Busted: Hide NEW DEAL button entirely
+        *visibility = Visibility::Hidden;
+    } else {
+        // Safe/Folded: Show NEW DEAL, disable if deck exhausted
+        *visibility = Visibility::Visible;
+        let can_deal = hand_state.cards(Owner::Player).deck.len() >= 3;
+        *bg_color = if can_deal {
+            theme::BUTTON_ENABLED_BG.into()
         } else {
-            // Safe/Folded: Show NEW DEAL, disable if deck exhausted
-            *visibility = Visibility::Visible;
-            let can_deal = hand_state.cards(Owner::Player).deck.len() >= 3;
-            *bg_color = if can_deal {
-                theme::BUTTON_ENABLED_BG.into()
-            } else {
-                theme::BUTTON_DISABLED_BG.into()
-            };
-        }
+            theme::BUTTON_DISABLED_BG.into()
+        };
     }
 
     // GO HOME button text: "GO HOME" if safe, "END RUN" if busted
-    if let Ok((_button_entity, children)) = go_home_button_query.get_single() {
-        for &child in children.iter() {
-            if let Ok(mut text) = text_query.get_mut(child) {
-                text.sections[0].value = if is_busted {
-                    "END RUN".to_string()
-                } else {
-                    "GO HOME".to_string()
-                };
-            }
+    let (_button_entity, children) = go_home_button_query
+        .get_single()
+        .expect("Expected exactly one GoHomeButton in resolution overlay");
+
+    for &child in children.iter() {
+        if let Ok(mut text) = text_query.get_mut(child) {
+            text.sections[0].value = if is_busted {
+                "END RUN".to_string()
+            } else {
+                "GO HOME".to_string()
+            };
         }
     }
 }

@@ -43,7 +43,6 @@ fn main() {
             go_home_button_system,
             update_betting_button_states,
             update_restart_button_states,
-            toggle_ui_visibility_system,
         ).chain())
         .add_systems(Update, (
             update_played_cards_display_system,
