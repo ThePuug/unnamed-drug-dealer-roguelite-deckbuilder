@@ -1,6 +1,7 @@
 // Hand resolution implementation for HandState
 
 use super::*;
+use crate::models::narrative::StoryComposer; // SOW-012: Story generation
 
 impl HandState {
     /// Resolve hand outcome (bust check with insurance/conviction)
@@ -21,6 +22,7 @@ impl HandState {
         // Check 1: Validity (must have Product AND Location)
         if !self.is_valid_deal() {
             println!("Invalid deal: Must play at least 1 Product AND 1 Location");
+            self.generate_hand_story(HandOutcome::InvalidDeal); // SOW-012: Generate story
             self.outcome = Some(HandOutcome::InvalidDeal);  // Can retry, not game over
             self.current_state = HandPhase::Bust;
             return HandOutcome::InvalidDeal;
@@ -31,6 +33,7 @@ impl HandState {
             if let Some(persona) = &self.buyer_persona {
                 println!("Buyer ({}) bailed! Threshold exceeded", persona.display_name);
             }
+            self.generate_hand_story(HandOutcome::BuyerBailed); // SOW-012: Generate story
             self.outcome = Some(HandOutcome::BuyerBailed);  // Can retry with same Buyer
             self.current_state = HandPhase::Bust;
             return HandOutcome::BuyerBailed;
@@ -89,9 +92,33 @@ impl HandState {
             self.current_heat = self.current_heat.saturating_sub((-totals.heat) as u32);
         }
 
+        // SOW-012: Generate narrative story for this hand
+        self.generate_hand_story(outcome);
+
         self.outcome = Some(outcome);
         self.current_state = HandPhase::Bust; // Transition to terminal state
         outcome
+    }
+
+    /// SOW-012: Generate narrative story from played cards, buyer scenario, and outcome
+    /// Public so it can be called from fold action in input.rs
+    pub fn generate_hand_story(&mut self, outcome: HandOutcome) {
+        let composer = StoryComposer::new();
+
+        // Get active buyer scenario
+        let buyer_scenario = self.buyer_persona.as_ref()
+            .and_then(|persona| persona.active_scenario_index)
+            .and_then(|index| self.buyer_persona.as_ref()
+                .and_then(|persona| persona.scenarios.get(index)));
+
+        // Generate story with outcome context
+        let story = composer.compose_story(buyer_scenario, &self.cards_played, outcome);
+
+        // Store for display
+        self.hand_story = Some(story.clone());
+
+        // Print to console for now (TODO: Display in UI overlay)
+        println!("\n📖 Story: {}\n", story);
     }
 
     /// Try to activate insurance (Step 3 of resolution order)
@@ -138,58 +165,7 @@ impl HandState {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // ========================================================================
-    // Test Helpers
-    // ========================================================================
-
-    fn create_product(name: &str, price: u32, heat: i32) -> Card {
-        Card {
-            id: rand::random(),
-            name: name.to_string(),
-            card_type: CardType::Product { price, heat },
-        }
-    }
-
-    fn create_location(name: &str, evidence: u32, cover: u32, heat: i32) -> Card {
-        Card {
-            id: rand::random(),
-            name: name.to_string(),
-            card_type: CardType::Location { evidence, cover, heat },
-        }
-    }
-
-    fn create_evidence(name: &str, evidence: u32, heat: i32) -> Card {
-        Card {
-            id: rand::random(),
-            name: name.to_string(),
-            card_type: CardType::Evidence { evidence, heat },
-        }
-    }
-
-    fn create_cover(name: &str, cover: u32, heat: i32) -> Card {
-        Card {
-            id: rand::random(),
-            name: name.to_string(),
-            card_type: CardType::Cover { cover, heat },
-        }
-    }
-
-    fn create_insurance(name: &str, cover: u32, cost: u32, heat_penalty: i32) -> Card {
-        Card {
-            id: rand::random(),
-            name: name.to_string(),
-            card_type: CardType::Insurance { cover, cost, heat_penalty },
-        }
-    }
-
-    fn create_conviction(name: &str, heat_threshold: u32) -> Card {
-        Card {
-            id: rand::random(),
-            name: name.to_string(),
-            card_type: CardType::Conviction { heat_threshold },
-        }
-    }
+    use crate::models::test_helpers::*; // SOW-012: Use shared test helpers
 
     // ========================================================================
     // Bust Check & Resolution Tests

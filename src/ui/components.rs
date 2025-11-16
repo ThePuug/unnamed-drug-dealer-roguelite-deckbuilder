@@ -166,4 +166,7 @@ pub struct ResolutionPanel;
 pub struct ResolutionTitle;
 
 #[derive(Component)]
+pub struct ResolutionStory; // SOW-012: Narrative story text
+
+#[derive(Component)]
 pub struct ResolutionResults;

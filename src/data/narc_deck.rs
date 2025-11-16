@@ -16,6 +16,7 @@ pub fn create_narc_deck() -> Vec<Card> {
             id,
             name: "Donut Break".to_string(),
             card_type: CardType::Evidence { evidence: 0, heat: 0 },
+            narrative_fragments: None, // SOW-012 Phase 1
         });
         id += 1;
     }
@@ -26,6 +27,7 @@ pub fn create_narc_deck() -> Vec<Card> {
             id,
             name: "Patrol".to_string(),
             card_type: CardType::Evidence { evidence: 5, heat: 5 },
+            narrative_fragments: None, // SOW-012 Phase 1
         });
         id += 1;
     }
@@ -36,6 +38,7 @@ pub fn create_narc_deck() -> Vec<Card> {
             id,
             name: "Anonymous Tip".to_string(),
             card_type: CardType::Evidence { evidence: 5, heat: 20 },
+            narrative_fragments: None, // SOW-012 Phase 1
         });
         id += 1;
     }
@@ -46,6 +49,7 @@ pub fn create_narc_deck() -> Vec<Card> {
             id,
             name: "Suspect Identified".to_string(),
             card_type: CardType::Evidence { evidence: 10, heat: 10 },
+            narrative_fragments: None, // SOW-012 Phase 1
         });
         id += 1;
     }
@@ -56,6 +60,7 @@ pub fn create_narc_deck() -> Vec<Card> {
             id,
             name: "Probable Cause".to_string(),
             card_type: CardType::Evidence { evidence: 15, heat: 10 },
+            narrative_fragments: None, // SOW-012 Phase 1
         });
         id += 1;
     }
@@ -65,6 +70,7 @@ pub fn create_narc_deck() -> Vec<Card> {
         id,
         name: "Surveillance".to_string(),
         card_type: CardType::Evidence { evidence: 20, heat: 5 },
+        narrative_fragments: None, // SOW-012 Phase 1
     });
     id += 1;
 
@@ -73,6 +79,7 @@ pub fn create_narc_deck() -> Vec<Card> {
         id,
         name: "Stakeout".to_string(),
         card_type: CardType::Evidence { evidence: 30, heat: 15 },
+        narrative_fragments: None, // SOW-012 Phase 1
     });
     id += 1;
 
@@ -81,6 +88,7 @@ pub fn create_narc_deck() -> Vec<Card> {
         id,
         name: "Undercover Op".to_string(),
         card_type: CardType::Evidence { evidence: 30, heat: 0 },
+        narrative_fragments: None, // SOW-012 Phase 1
     });
     id += 1;
 
@@ -89,6 +97,7 @@ pub fn create_narc_deck() -> Vec<Card> {
         id,
         name: "Tapped Lines".to_string(),
         card_type: CardType::Evidence { evidence: 35, heat: 0 },
+        narrative_fragments: None, // SOW-012 Phase 1
     });
     id += 1;
 
@@ -99,6 +108,7 @@ pub fn create_narc_deck() -> Vec<Card> {
             id,
             name: "Warrant".to_string(),
             card_type: CardType::Conviction { heat_threshold: 10 },
+            narrative_fragments: None, // SOW-012 Phase 1
         });
         id += 1;
     }
@@ -109,6 +119,7 @@ pub fn create_narc_deck() -> Vec<Card> {
             id,
             name: "Caught Red-Handed".to_string(),
             card_type: CardType::Conviction { heat_threshold: 20 },
+            narrative_fragments: None, // SOW-012 Phase 1
         });
         id += 1;
     }
@@ -119,6 +130,7 @@ pub fn create_narc_deck() -> Vec<Card> {
             id,
             name: "Random Search".to_string(),
             card_type: CardType::Conviction { heat_threshold: 40 },
+            narrative_fragments: None, // SOW-012 Phase 1
         });
         id += 1;
     }

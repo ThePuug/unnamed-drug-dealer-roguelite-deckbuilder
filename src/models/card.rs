@@ -2,6 +2,7 @@
 // Extracted from main.rs (originally lines 2338-2373, 3408-3416)
 
 use bevy::prelude::Component;
+use super::narrative::NarrativeFragments; // SOW-012: Narrative generation (from narrative/ module)
 
 /// Who owns this card
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -36,6 +37,8 @@ pub struct Card {
     pub name: String,
     pub card_type: CardType,
     // RFC-010: Tags will be added when implementing scenarios
+    // SOW-012: Narrative fragments for story generation
+    pub narrative_fragments: Option<NarrativeFragments>,
 }
 
 /// Totals calculated from all played cards

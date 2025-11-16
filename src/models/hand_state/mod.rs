@@ -53,6 +53,7 @@ pub struct HandState {
     pub current_player_index: usize,
     pub checks_this_hand: Vec<(Owner, u8)>,
     pub buyer_persona: Option<BuyerPersona>,
+    pub hand_story: Option<String>, // SOW-012: Generated narrative for this hand
 }
 
 impl Default for HandState {
@@ -75,6 +76,7 @@ impl Default for HandState {
             current_player_index: 0,
             checks_this_hand: Vec::new(),
             buyer_persona: None,
+            hand_story: None, // SOW-012: No story initially
         }
     }
 }

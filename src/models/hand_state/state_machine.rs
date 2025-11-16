@@ -27,6 +27,7 @@ impl HandState {
             current_player_index: 0,
             checks_this_hand: Vec::new(),
             buyer_persona: None,
+            hand_story: None, // SOW-012: No story initially
         }
     }
 
@@ -319,44 +320,7 @@ pub fn get_turn_order(_round: u8) -> Vec<Owner> {
 mod tests {
     use super::*;
     use crate::data::create_buyer_personas;
-
-    // ========================================================================
-    // Test Helpers
-    // ========================================================================
-
-    #[allow(dead_code)]
-    fn create_product(name: &str, price: u32, heat: i32) -> Card {
-        Card {
-            id: rand::random(),
-            name: name.to_string(),
-            card_type: CardType::Product { price, heat },
-        }
-    }
-
-    #[allow(dead_code)]
-    fn create_location(name: &str, evidence: u32, cover: u32, heat: i32) -> Card {
-        Card {
-            id: rand::random(),
-            name: name.to_string(),
-            card_type: CardType::Location { evidence, cover, heat },
-        }
-    }
-
-    fn create_evidence(name: &str, evidence: u32, heat: i32) -> Card {
-        Card {
-            id: rand::random(),
-            name: name.to_string(),
-            card_type: CardType::Evidence { evidence, heat },
-        }
-    }
-
-    fn create_cover(name: &str, cover: u32, heat: i32) -> Card {
-        Card {
-            id: rand::random(),
-            name: name.to_string(),
-            card_type: CardType::Cover { cover, heat },
-        }
-    }
+    use crate::models::test_helpers::*; // SOW-012: Use shared test helpers
 
     // ========================================================================
     // State Machine Tests

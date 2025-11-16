@@ -78,15 +78,15 @@ impl From<&Cards> for Vec<Card> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::card::CardType;
+    use crate::models::test_helpers::*; // SOW-012: Use shared test helpers
 
     #[test]
     fn test_draw_to_hand() {
         let mut cards = Cards::new(vec![
-            Card { id: 1, name: "Card1".to_string(), card_type: CardType::Product { price: 10, heat: 0 } },
-            Card { id: 2, name: "Card2".to_string(), card_type: CardType::Product { price: 20, heat: 0 } },
-            Card { id: 3, name: "Card3".to_string(), card_type: CardType::Product { price: 30, heat: 0 } },
-            Card { id: 4, name: "Card4".to_string(), card_type: CardType::Product { price: 40, heat: 0 } },
+            create_product("Card1", 10, 0),
+            create_product("Card2", 20, 0),
+            create_product("Card3", 30, 0),
+            create_product("Card4", 40, 0),
         ]);
 
         // Initially hand is empty
@@ -108,9 +108,9 @@ mod tests {
     #[test]
     fn test_shuffle_back() {
         let mut cards = Cards::new(vec![
-            Card { id: 1, name: "Card1".to_string(), card_type: CardType::Product { price: 10, heat: 0 } },
-            Card { id: 2, name: "Card2".to_string(), card_type: CardType::Product { price: 20, heat: 0 } },
-            Card { id: 3, name: "Card3".to_string(), card_type: CardType::Product { price: 30, heat: 0 } },
+            create_product("Card1", 10, 0),
+            create_product("Card2", 20, 0),
+            create_product("Card3", 30, 0),
         ]);
 
         let initial_deck_size = cards.deck.len();
@@ -136,14 +136,14 @@ mod tests {
     #[test]
     fn test_hand_vec_conversion() {
         let mut cards = Cards::empty();
-        
+
         // Empty hand converts to empty vec
         let hand_vec: Vec<Card> = (&cards).into();
         assert_eq!(hand_vec.len(), 0);
 
         // Add some cards to hand
-        cards.hand[0] = Some(Card { id: 1, name: "Card1".to_string(), card_type: CardType::Product { price: 10, heat: 0 } });
-        cards.hand[2] = Some(Card { id: 3, name: "Card3".to_string(), card_type: CardType::Product { price: 30, heat: 0 } });
+        cards.hand[0] = Some(create_product("Card1", 10, 0));
+        cards.hand[2] = Some(create_product("Card3", 30, 0));
 
         // Conversion filters out None slots
         let hand_vec: Vec<Card> = (&cards).into();
@@ -157,11 +157,7 @@ mod tests {
         // Create deck with 100 cards in order
         let mut deck = Vec::new();
         for i in 0..100 {
-            deck.push(Card {
-                id: i,
-                name: format!("Card{}", i),
-                card_type: CardType::Product { price: i, heat: 0 }
-            });
+            deck.push(create_product(&format!("Card{}", i), i, 0));
         }
 
         let mut cards = Cards::new(deck.clone());
@@ -180,15 +176,15 @@ mod tests {
     #[test]
     fn test_collect_unplayed() {
         let mut cards = Cards::new(vec![
-            Card { id: 1, name: "Card1".to_string(), card_type: CardType::Product { price: 10, heat: 0 } },
+            create_product("Card1", 10, 0),
         ]);
 
         // Put cards in hand
-        cards.hand[0] = Some(Card { id: 2, name: "Card2".to_string(), card_type: CardType::Product { price: 20, heat: 0 } });
-        cards.hand[1] = Some(Card { id: 3, name: "Card3".to_string(), card_type: CardType::Product { price: 30, heat: 0 } });
+        cards.hand[0] = Some(create_product("Card2", 20, 0));
+        cards.hand[1] = Some(create_product("Card3", 30, 0));
 
         // Add to played (these should NOT be collected)
-        cards.played.push(Card { id: 4, name: "Card4".to_string(), card_type: CardType::Product { price: 40, heat: 0 } });
+        cards.played.push(create_product("Card4", 40, 0));
 
         // Collect unplayed
         cards.collect_unplayed();
@@ -204,15 +200,15 @@ mod tests {
     #[test]
     fn test_collect_all() {
         let mut cards = Cards::new(vec![
-            Card { id: 1, name: "Card1".to_string(), card_type: CardType::Product { price: 10, heat: 0 } },
+            create_product("Card1", 10, 0),
         ]);
 
         // Put cards in hand
-        cards.hand[0] = Some(Card { id: 2, name: "Card2".to_string(), card_type: CardType::Product { price: 20, heat: 0 } });
+        cards.hand[0] = Some(create_product("Card2", 20, 0));
 
         // Add to played
-        cards.played.push(Card { id: 3, name: "Card3".to_string(), card_type: CardType::Product { price: 30, heat: 0 } });
-        cards.played.push(Card { id: 4, name: "Card4".to_string(), card_type: CardType::Product { price: 40, heat: 0 } });
+        cards.played.push(create_product("Card3", 30, 0));
+        cards.played.push(create_product("Card4", 40, 0));
 
         // Collect all
         cards.collect_all();

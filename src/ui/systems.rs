@@ -217,8 +217,9 @@ pub fn update_heat_bar_system(
 pub fn update_resolution_overlay_system(
     hand_state_query: Query<&HandState, Changed<HandState>>,
     mut overlay_query: Query<&mut Style, With<ResolutionOverlay>>,
-    mut title_query: Query<&mut Text, (With<ResolutionTitle>, Without<ResolutionResults>)>,
-    mut results_query: Query<&mut Text, (With<ResolutionResults>, Without<ResolutionTitle>)>,
+    mut title_query: Query<&mut Text, (With<ResolutionTitle>, Without<ResolutionResults>, Without<ResolutionStory>)>,
+    mut story_query: Query<&mut Text, (With<ResolutionStory>, Without<ResolutionTitle>, Without<ResolutionResults>)>,
+    mut results_query: Query<&mut Text, (With<ResolutionResults>, Without<ResolutionTitle>, Without<ResolutionStory>)>,
 ) {
     let Ok(hand_state) = hand_state_query.get_single() else {
         return;
@@ -254,6 +255,16 @@ pub fn update_resolution_overlay_system(
             Some(HandOutcome::BuyerBailed) => theme::STATUS_BAILED,
             None => theme::TEXT_HEADER,
         };
+
+        // SOW-012: Update story text
+        let mut story_text = story_query.get_single_mut()
+            .expect("Expected exactly one ResolutionStory");
+
+        if let Some(story) = &hand_state.hand_story {
+            story_text.sections[0].value = story.clone();
+        } else {
+            story_text.sections[0].value = "".to_string();
+        }
 
         // Update results breakdown
         let mut results_text = results_query.get_single_mut()

@@ -52,6 +52,9 @@ pub fn betting_button_system(
         if *interaction == Interaction::Pressed {
             println!("Player folds during turn!");
 
+            // SOW-012: Generate story before folding
+            hand_state.generate_hand_story(HandOutcome::Folded);
+
             // Fold immediately - discard played cards, keep unplayed, exit hand
             hand_state.cards_played.clear();
             hand_state.outcome = Some(HandOutcome::Folded);

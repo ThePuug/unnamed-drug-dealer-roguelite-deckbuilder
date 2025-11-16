@@ -2,6 +2,7 @@
 // Extracted from main.rs (originally lines 2379-2420)
 
 use super::card::Card;
+use super::narrative::NarrativeFragments; // SOW-012: Narrative generation
 
 /// Buyer demand specification - what Products/Locations satisfy this Buyer
 #[derive(Debug, Clone)]
@@ -19,6 +20,7 @@ pub struct BuyerScenario {
     pub locations: Vec<String>,              // ["Frat House", "Locker Room"] - preferred locations (OR logic)
     pub heat_threshold: Option<u32>,         // Scenario-specific threshold (overrides persona default)
     pub description: String,                 // "Chaotic party energy, maximum wildness"
+    pub narrative_fragments: Option<NarrativeFragments>, // SOW-012: Story fragments for this scenario
 }
 
 /// Buyer persona - merges Dealer scenario deck + Customer modifiers into one entity

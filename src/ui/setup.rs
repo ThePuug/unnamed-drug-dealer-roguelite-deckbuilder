@@ -838,6 +838,24 @@ pub fn create_ui(commands: &mut Commands) {
                     ResolutionTitle,
                 ));
 
+                // Story text (SOW-012: Narrative generation)
+                parent.spawn((
+                    TextBundle::from_section(
+                        "",
+                        TextStyle {
+                            font_size: 16.0,
+                            color: theme::TEXT_SECONDARY,
+                            ..default()
+                        },
+                    ).with_text_justify(JustifyText::Center)
+                    .with_style(Style {
+                        margin: UiRect::new(Val::Px(0.0), Val::Px(0.0), Val::Px(10.0), Val::Px(20.0)),
+                        max_width: Val::Px(540.0),
+                        ..default()
+                    }),
+                    ResolutionStory,
+                ));
+
                 // Results text (will be updated by system)
                 parent.spawn((
                     TextBundle::from_section(

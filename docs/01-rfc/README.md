@@ -18,6 +18,7 @@ RFCs bridge player needs and technical reality. Each RFC starts with a player-fa
 | 009 | Buyer System (Merged Dealer + Customer) | 🎲 Roguelite | ✅ Implemented (SOW-009 merged) | 2025-11-11 | N/A |
 | 010 | Buyer Scenarios and Product/Location Expansion | 🃏 Cards | ✅ Implemented (SOW-010 merged) | 2025-11-15 | N/A |
 | 011 | UI Refactor - Hand Resolution and Card Display | 🎨 UI | ✅ Implemented (SOW-011-A/B merged) | 2025-11-15 | N/A |
+| 012 | Narrative Generation System | 🎨 UI | ✅ Approved (ready for SOW-012) | 2025-11-16 | N/A |
 
 **Legend:**
 - **Status:** ✅ Implemented (merged to main) | ✅ Approved (ready for implementation) | 🔄 Under Review | 📝 Draft/Proposed | ❌ Rejected
