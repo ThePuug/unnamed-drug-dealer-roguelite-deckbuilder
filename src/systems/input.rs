@@ -196,8 +196,8 @@ pub fn go_home_button_system(
     mut commands: Commands,
     go_home_query: Query<&Interaction, (Changed<Interaction>, With<GoHomeButton>)>,
     hand_state_query: Query<(Entity, &HandState)>,
-    _deck_builder: ResMut<DeckBuilder>,
     mut next_state: ResMut<NextState<GameState>>,
+    game_assets: Res<crate::assets::GameAssets>, // SOW-013-B: Need for DeckBuilder::from_assets
 ) {
     let Ok((entity, hand_state)) = hand_state_query.get_single() else {
         return;
@@ -211,6 +211,19 @@ pub fn go_home_button_system(
     // Go Home button - return to deck builder
     for interaction in go_home_query.iter() {
         if *interaction == Interaction::Pressed {
+            // SOW-013-B: Collect all cards from HandState before despawning
+            let mut player_cards = hand_state.owner_cards.get(&Owner::Player)
+                .expect("Player cards not found")
+                .clone();
+
+            // Collect all cards (hand + deck + played) back into deck
+            player_cards.collect_all();
+
+            // Update DeckBuilder: available from assets, selected from your run
+            let mut deck_builder = DeckBuilder::from_assets(&game_assets);
+            deck_builder.selected_cards = player_cards.deck; // Cards you just played with
+            commands.insert_resource(deck_builder);
+
             // Despawn HandState
             commands.entity(entity).despawn();
 

@@ -3,6 +3,7 @@
 use bevy::prelude::*;
 use crate::models::card::Card;
 use crate::models::buyer::BuyerPersona;
+use crate::game_state::GameState;
 use super::registry::GameAssets;
 use std::fs;
 
@@ -13,7 +14,8 @@ impl Plugin for AssetLoaderPlugin {
     fn build(&self, app: &mut App) {
         app
             .init_resource::<GameAssets>()
-            .add_systems(PreStartup, load_game_assets);
+            .add_systems(OnEnter(GameState::AssetLoading), load_game_assets)
+            .add_systems(Update, check_assets_and_transition.run_if(in_state(GameState::AssetLoading)));
     }
 }
 
@@ -116,6 +118,17 @@ fn load_game_assets(mut game_assets: ResMut<GameAssets>) {
 
     game_assets.assets_loaded = true;
     info!("All game assets loaded successfully!");
+}
+
+/// Check if assets are loaded and transition to DeckBuilding state
+fn check_assets_and_transition(
+    game_assets: Res<GameAssets>,
+    mut next_state: ResMut<NextState<GameState>>,
+) {
+    if game_assets.assets_loaded {
+        info!("Assets ready - transitioning to DeckBuilding");
+        next_state.set(GameState::DeckBuilding);
+    }
 }
 
 /// Load and validate card list from RON file

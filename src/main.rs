@@ -20,11 +20,12 @@ fn main() {
 
     app.add_plugins(DefaultPlugins)
         .add_plugins(assets::AssetLoaderPlugin) // SOW-013-A: Load game assets
-        .init_state::<GameState>()  // SOW-006: Add state management
+        .init_state::<GameState>()  // SOW-006: Add state management (starts in AssetLoading)
         .insert_resource(AiActionTimer::default())  // SOW-008: AI pacing timer
         .add_systems(Startup, setup)
-        .add_systems(Startup, initialize_deck_builder_from_assets) // SOW-013-B: Init after assets load
-        .add_systems(Startup, setup_deck_builder.after(initialize_deck_builder_from_assets));  // SOW-006: Setup deck builder UI
+        .add_systems(OnEnter(GameState::DeckBuilding), initialize_deck_builder_from_assets) // SOW-013-B: Init when entering DeckBuilding
+        .add_systems(OnEnter(GameState::DeckBuilding), setup_deck_builder)  // SOW-006: Setup deck builder UI
+        .add_systems(OnExit(GameState::DeckBuilding), cleanup_deck_builder_ui);  // SOW-013-B: Cleanup UI when leaving
 
     app
         .add_systems(Update, toggle_game_state_ui_system)
@@ -49,26 +50,41 @@ fn main() {
         ).chain())
         .add_systems(Update, (
             card_click_system,
+        ).run_if(in_state(GameState::InRun)))
+        .add_systems(Update, (
             deck_builder_card_click_system,
             preset_button_system,
             start_run_button_system,
             update_deck_builder_ui_system,
             populate_deck_builder_cards_system,
-        ).chain())
+        ).chain().run_if(in_state(GameState::DeckBuilding)))
         .run();
 }
 
-// SOW-013-B: Initialize DeckBuilder from loaded assets
+// SOW-013-B: Initialize DeckBuilder from loaded assets (OnEnter DeckBuilding state)
+// Only runs if DeckBuilder doesn't exist (first time entering DeckBuilding)
 fn initialize_deck_builder_from_assets(
     mut commands: Commands,
     game_assets: Res<assets::GameAssets>,
+    existing_deck_builder: Option<Res<DeckBuilder>>,
 ) {
-    if game_assets.assets_loaded {
+    // Only initialize if DeckBuilder doesn't exist yet
+    if existing_deck_builder.is_none() {
         let deck_builder = DeckBuilder::from_assets(&game_assets);
+        let card_count = deck_builder.available_cards.len();
         commands.insert_resource(deck_builder);
-        info!("DeckBuilder initialized from assets");
+        info!("DeckBuilder initialized from assets with {} cards", card_count);
     } else {
-        warn!("Assets not loaded yet - DeckBuilder will be empty");
-        commands.insert_resource(DeckBuilder::new());
+        info!("DeckBuilder already exists - preserving current deck selection");
+    }
+}
+
+// SOW-013-B: Cleanup deck builder UI when leaving DeckBuilding state
+fn cleanup_deck_builder_ui(
+    mut commands: Commands,
+    deck_builder_root_query: Query<Entity, With<ui::components::DeckBuilderRoot>>,
+) {
+    for entity in deck_builder_root_query.iter() {
+        commands.entity(entity).despawn_recursive();
     }
 }

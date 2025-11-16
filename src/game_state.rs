@@ -3,10 +3,11 @@
 
 use bevy::prelude::*;
 
-/// Game states for deck building vs gameplay (SOW-006)
+/// Game states for deck building vs gameplay (SOW-006, SOW-013-B)
 #[derive(States, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum GameState {
     #[default]
+    AssetLoading,  // SOW-013-B: Loading game assets from RON files
     DeckBuilding,  // Pre-run deck selection
     InRun,         // Active gameplay
 }
