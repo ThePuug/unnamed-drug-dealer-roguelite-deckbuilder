@@ -41,12 +41,28 @@ impl Cards {
 
     /// Shuffle unplayed hand cards back into deck
     pub fn shuffle_back(&mut self) {
+        self.collect_unplayed();
+        self.shuffle_deck();
+    }
+
+    /// Shuffle the deck
+    pub fn shuffle_deck(&mut self) {
+        self.deck.shuffle(&mut rand::thread_rng());
+    }
+
+    /// Collect unplayed cards from hand into deck (doesn't shuffle)
+    pub fn collect_unplayed(&mut self) {
         for slot in &mut self.hand {
             if let Some(card) = slot.take() {
                 self.deck.push(card);
             }
         }
-        self.deck.shuffle(&mut rand::thread_rng());
+    }
+
+    /// Collect all cards (unplayed hand + played) into deck (doesn't shuffle)
+    pub fn collect_all(&mut self) {
+        self.collect_unplayed();
+        self.deck.append(&mut self.played);
     }
 }
 
@@ -134,5 +150,78 @@ mod tests {
         assert_eq!(hand_vec.len(), 2);
         assert_eq!(hand_vec[0].name, "Card1");
         assert_eq!(hand_vec[1].name, "Card3");
+    }
+
+    #[test]
+    fn test_shuffle_deck() {
+        // Create deck with 100 cards in order
+        let mut deck = Vec::new();
+        for i in 0..100 {
+            deck.push(Card {
+                id: i,
+                name: format!("Card{}", i),
+                card_type: CardType::Product { price: i, heat: 0 }
+            });
+        }
+
+        let mut cards = Cards::new(deck.clone());
+        let original_order: Vec<u32> = cards.deck.iter().map(|c| c.id).collect();
+
+        cards.shuffle_deck();
+
+        let shuffled_order: Vec<u32> = cards.deck.iter().map(|c| c.id).collect();
+
+        // Deck size should be unchanged
+        assert_eq!(cards.deck.len(), 100);
+        // Order should have changed (extremely unlikely to be the same for 100 cards)
+        assert_ne!(original_order, shuffled_order);
+    }
+
+    #[test]
+    fn test_collect_unplayed() {
+        let mut cards = Cards::new(vec![
+            Card { id: 1, name: "Card1".to_string(), card_type: CardType::Product { price: 10, heat: 0 } },
+        ]);
+
+        // Put cards in hand
+        cards.hand[0] = Some(Card { id: 2, name: "Card2".to_string(), card_type: CardType::Product { price: 20, heat: 0 } });
+        cards.hand[1] = Some(Card { id: 3, name: "Card3".to_string(), card_type: CardType::Product { price: 30, heat: 0 } });
+
+        // Add to played (these should NOT be collected)
+        cards.played.push(Card { id: 4, name: "Card4".to_string(), card_type: CardType::Product { price: 40, heat: 0 } });
+
+        // Collect unplayed
+        cards.collect_unplayed();
+
+        // Deck should have only unplayed cards (1 original + 2 from hand)
+        assert_eq!(cards.deck.len(), 3);
+        // Hand should be empty
+        assert!(cards.hand.iter().all(|s| s.is_none()));
+        // Played should still be there (NOT collected)
+        assert_eq!(cards.played.len(), 1);
+    }
+
+    #[test]
+    fn test_collect_all() {
+        let mut cards = Cards::new(vec![
+            Card { id: 1, name: "Card1".to_string(), card_type: CardType::Product { price: 10, heat: 0 } },
+        ]);
+
+        // Put cards in hand
+        cards.hand[0] = Some(Card { id: 2, name: "Card2".to_string(), card_type: CardType::Product { price: 20, heat: 0 } });
+
+        // Add to played
+        cards.played.push(Card { id: 3, name: "Card3".to_string(), card_type: CardType::Product { price: 30, heat: 0 } });
+        cards.played.push(Card { id: 4, name: "Card4".to_string(), card_type: CardType::Product { price: 40, heat: 0 } });
+
+        // Collect all
+        cards.collect_all();
+
+        // Deck should have all cards (1 original + 1 from hand + 2 from played)
+        assert_eq!(cards.deck.len(), 4);
+        // Hand should be empty
+        assert!(cards.hand.iter().all(|s| s.is_none()));
+        // Played should be empty
+        assert_eq!(cards.played.len(), 0);
     }
 }

@@ -148,10 +148,21 @@ pub const HEAT_BAR_RED: Color = Color::srgb(1.0, 0.0, 0.0);     // 80-100%
 // Helper Functions
 // ============================================================================
 
-/// Dim a color by multiplying RGB values by factor (typically 0.4)
+/// Dim a color by both darkening and desaturating
+/// factor: brightness factor (typically 0.4)
 pub fn dim_color(color: Color, factor: f32) -> Color {
     if let Color::Srgba(srgba) = color {
-        Color::srgb(srgba.red * factor, srgba.green * factor, srgba.blue * factor)
+        // Calculate luminance (perceived brightness)
+        let luminance = srgba.red * 0.299 + srgba.green * 0.587 + srgba.blue * 0.114;
+
+        // Desaturate: blend towards gray (luminance)
+        let desaturate_amount = 0.5; // 50% desaturation
+        let r = srgba.red * (1.0 - desaturate_amount) + luminance * desaturate_amount;
+        let g = srgba.green * (1.0 - desaturate_amount) + luminance * desaturate_amount;
+        let b = srgba.blue * (1.0 - desaturate_amount) + luminance * desaturate_amount;
+
+        // Then darken
+        Color::srgb(r * factor, g * factor, b * factor)
     } else {
         color
     }

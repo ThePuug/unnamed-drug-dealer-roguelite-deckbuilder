@@ -50,6 +50,11 @@ impl HandState {
 
         self.shuffle_cards_back();
 
+        // Buyer deck resets completely (unlike Player/Narc which shuffle back unplayed)
+        // Collect all buyer cards back to deck, then shuffle
+        self.cards_mut(Owner::Buyer).collect_all();
+        self.cards_mut(Owner::Buyer).shuffle_deck();
+
         let preserved_owner_cards = self.owner_cards.clone();
 
         // Check deck exhaustion before starting new hand
@@ -68,6 +73,7 @@ impl HandState {
         self.current_heat = preserved_heat;
         self.owner_cards = preserved_owner_cards;
         self.buyer_persona = preserved_buyer_persona;
+
         true
     }
 
@@ -290,7 +296,7 @@ impl HandState {
             if let Some(deck) = self.buyer_persona.as_ref().map(|p| p.reaction_deck.clone()) {
                 let buyer_cards = self.cards_mut(Owner::Buyer);
                 buyer_cards.deck = deck;
-                buyer_cards.deck.shuffle(&mut rand::thread_rng());
+                buyer_cards.shuffle_deck();
             }
         }
     }
@@ -460,6 +466,39 @@ mod tests {
         assert_eq!(hand_state.current_round, 1);
         assert_eq!(hand_state.cards_played.len(), 0);
         assert!(hand_state.outcome.is_none());
+    }
+
+    #[test]
+    fn test_buyer_deck_resets_between_hands() {
+        let mut hand_state = HandState::default();
+        let buyer_personas = create_buyer_personas();
+        hand_state.buyer_persona = Some(buyer_personas[0].clone());
+
+        // Draw cards - buyer gets cards from persona deck
+        hand_state.draw_cards();
+
+        // Simulate buyer playing 2 cards
+        hand_state.buyer_plays_card();
+        hand_state.buyer_plays_card();
+
+        let buyer_played_count = hand_state.cards(Owner::Buyer).played.len();
+
+        // Buyer should have played 2 cards
+        assert_eq!(buyer_played_count, 2);
+
+        // Start next hand
+        hand_state.start_next_hand();
+
+        // Buyer deck should be completely reset (full 7 cards from persona)
+        // Unlike Player/Narc which only shuffle back unplayed cards
+        let expected_deck_size = buyer_personas[0].reaction_deck.len();
+        assert_eq!(hand_state.cards(Owner::Buyer).deck.len(), expected_deck_size);
+
+        // Buyer played cards should be cleared
+        assert_eq!(hand_state.cards(Owner::Buyer).played.len(), 0);
+
+        // Buyer hand should be empty (ready for next draw)
+        assert!(hand_state.cards(Owner::Buyer).hand.iter().all(|s| s.is_none()));
     }
 
     #[test]
