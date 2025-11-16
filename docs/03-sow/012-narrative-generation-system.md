@@ -2,7 +2,7 @@
 
 ## Status
 
-**Approved** - 2025-11-16 (Ready for merge)
+**Merged** - 2025-11-16
 
 ## References
 
