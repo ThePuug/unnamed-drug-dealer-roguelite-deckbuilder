@@ -3,7 +3,7 @@
 // SOW-011-B Phase 1: Resolution overlay system
 
 use bevy::prelude::*;
-use crate::{HandState, CardType, Card, HandPhase, HandOutcome};
+use crate::{HandState, CardType, Card, HandPhase, HandOutcome, Owner};
 use super::components::*;
 use super::helpers;
 use super::theme;
@@ -273,8 +273,8 @@ pub fn update_resolution_overlay_system(
                     }
                 }
                 Some(HandOutcome::Busted) => {
-                    if hand_state.player_deck.len() < 3 {
-                        results.push_str(&format!("Deck Exhausted: {} cards\n\nRun Ends", hand_state.player_deck.len()));
+                    if hand_state.cards(Owner::Player).deck.len() < 3 {
+                        results.push_str(&format!("Deck Exhausted: {} cards\n\nRun Ends", hand_state.cards(Owner::Player).deck.len()));
                     } else {
                         results.push_str(&format!("Evidence: {} > Cover: {} ✗\n\n", totals.evidence, totals.cover));
                         results.push_str(&format!("You got caught!\nHeat: {}", totals.heat));

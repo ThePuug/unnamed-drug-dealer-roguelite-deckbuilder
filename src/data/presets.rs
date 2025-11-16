@@ -96,3 +96,46 @@ pub fn create_control_deck() -> Vec<Card> {
         Card { id: 29, name: "False Trail".to_string(),            card_type: CardType::DealModifier { price_multiplier: 1.0, evidence: -10, cover: 15, heat: -5 } },
     ]
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_validate_deck_missing_product() {
+        let deck = vec![
+            Card { id: 15, name: "Safe House".to_string(), card_type: CardType::Location { evidence: 10, cover: 30, heat: -5 } },
+            Card { id: 19, name: "Alibi".to_string(), card_type: CardType::Cover { cover: 30, heat: -5 } },
+            Card { id: 20, name: "Bribe".to_string(), card_type: CardType::Cover { cover: 25, heat: 10 } },
+            Card { id: 21, name: "Fake Receipts".to_string(), card_type: CardType::Cover { cover: 20, heat: 5 } },
+            Card { id: 22, name: "Bribed Witness".to_string(), card_type: CardType::Cover { cover: 15, heat: -10 } },
+            Card { id: 23, name: "Plea Bargain".to_string(), card_type: CardType::Insurance { cover: 20, cost: 1000, heat_penalty: 20 } },
+            Card { id: 24, name: "Fake ID".to_string(), card_type: CardType::Insurance { cover: 15, cost: 0, heat_penalty: 40 } },
+            Card { id: 25, name: "Disguise".to_string(), card_type: CardType::DealModifier { price_multiplier: 1.0, evidence: 0, cover: 20, heat: -5 } },
+            Card { id: 26, name: "Burner Phone".to_string(), card_type: CardType::DealModifier { price_multiplier: 1.0, evidence: 0, cover: 15, heat: -10 } },
+            Card { id: 27, name: "Lookout".to_string(), card_type: CardType::DealModifier { price_multiplier: 1.0, evidence: 0, cover: 20, heat: 0 } },
+        ];
+        let result = validate_deck(&deck);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Need at least 1 Product card");
+    }
+
+    #[test]
+    fn test_validate_deck_missing_location() {
+        let deck = vec![
+            Card { id: 10, name: "Weed".to_string(), card_type: CardType::Product { price: 30, heat: 5 } },
+            Card { id: 11, name: "Meth".to_string(), card_type: CardType::Product { price: 100, heat: 30 } },
+            Card { id: 12, name: "Heroin".to_string(), card_type: CardType::Product { price: 150, heat: 45 } },
+            Card { id: 13, name: "Cocaine".to_string(), card_type: CardType::Product { price: 120, heat: 35 } },
+            Card { id: 14, name: "Fentanyl".to_string(), card_type: CardType::Product { price: 200, heat: 50 } },
+            Card { id: 19, name: "Alibi".to_string(), card_type: CardType::Cover { cover: 30, heat: -5 } },
+            Card { id: 20, name: "Bribe".to_string(), card_type: CardType::Cover { cover: 25, heat: 10 } },
+            Card { id: 21, name: "Fake Receipts".to_string(), card_type: CardType::Cover { cover: 20, heat: 5 } },
+            Card { id: 22, name: "Bribed Witness".to_string(), card_type: CardType::Cover { cover: 15, heat: -10 } },
+            Card { id: 23, name: "Plea Bargain".to_string(), card_type: CardType::Insurance { cover: 20, cost: 1000, heat_penalty: 20 } },
+        ];
+        let result = validate_deck(&deck);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Need at least 1 Location card");
+    }
+}

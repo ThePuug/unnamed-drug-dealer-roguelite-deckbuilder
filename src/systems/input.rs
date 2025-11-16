@@ -120,7 +120,7 @@ pub fn restart_button_system(
             }
 
             // Check if deck is exhausted
-            if hand_state.player_deck.len() < 3 {
+            if hand_state.cards(Owner::Player).deck.len() < 3 {
                 // Button disabled, ignore click
                 return;
             }
@@ -159,7 +159,7 @@ pub fn update_restart_button_states(
         } else {
             // Safe/Folded: Show NEW DEAL, disable if deck exhausted
             *visibility = Visibility::Visible;
-            let can_deal = hand_state.player_deck.len() >= 3;
+            let can_deal = hand_state.cards(Owner::Player).deck.len() >= 3;
             *bg_color = if can_deal {
                 theme::BUTTON_ENABLED_BG.into()
             } else {
@@ -313,7 +313,8 @@ pub fn card_click_system(
                 // Only if it's Player's turn
                 if hand_state.current_player() == Owner::Player {
                     // Verify valid card index
-                    if card_button.card_index < hand_state.player_hand.len() {
+                    let player_hand: Vec<_> = hand_state.cards(Owner::Player).into();
+                    if card_button.card_index < player_hand.len() {
                         println!("Player playing card {}", card_button.card_index);
 
                         // Play the card face-up immediately

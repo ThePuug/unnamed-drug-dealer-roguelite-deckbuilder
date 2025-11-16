@@ -2,7 +2,7 @@
 // Extracted from main.rs
 
 use bevy::prelude::*;
-use crate::{Owner, HandState, HandPhase};
+use crate::{Owner, HandState, HandPhase, Card};
 use crate::game_state::AiActionTimer;
 use crate::ui::setup::create_ui;
 
@@ -102,12 +102,12 @@ pub fn ai_betting_system(
     ai_timer.ai_timer.tick(time.delta());
 
     if ai_timer.ai_timer.just_finished() {
-        // Timer fired - AI acts now (SOW-009: Only Narc is AI)
-        let hand = match current_player {
-            Owner::Narc => &hand_state.narc_hand,
-            Owner::Player => return, // Player is human, not AI
-            Owner::Buyer => return, // Buyer uses different system (DealerReveal state)
-        };
+        // Timer fired - AI acts now (Only Narc is AI)
+        if current_player != Owner::Narc {
+            return; // Only Narc is AI
+        }
+
+        let hand: Vec<Card> = hand_state.cards(Owner::Narc).into();
 
         if !hand.is_empty() {
             println!("AI plays card after 1s delay");

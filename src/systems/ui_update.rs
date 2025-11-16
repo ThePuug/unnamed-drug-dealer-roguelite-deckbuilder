@@ -2,7 +2,7 @@
 // Extracted from main.rs
 
 use bevy::prelude::*;
-use crate::{CardType, HandState, HandPhase, DeckBuilder};
+use crate::{CardType, HandState, HandPhase, DeckBuilder, Owner};
 use crate::game_state::GameState;
 use crate::ui::components::*;
 use crate::ui::theme;
@@ -27,7 +27,7 @@ pub fn ui_update_system(
         text.sections[0].value = format!(
             "Evidence: {} | Cover: {} | Heat: {} | Profit: ${}\nCash: ${} | Total Heat: {} | Deck: {} cards",
             totals.evidence, totals.cover, totals.heat, totals.profit,
-            hand_state.cash, hand_state.current_heat, hand_state.player_deck.len()
+            hand_state.cash, hand_state.current_heat, hand_state.cards(Owner::Player).deck.len()
         );
     }
 
@@ -129,7 +129,7 @@ pub fn recreate_hand_display_system(
     if show_cards {
         // SOW-011-B: Use slot-based hand to preserve card positions
         commands.entity(hand_entity).with_children(|parent| {
-            for (slot_index, slot) in hand_state.player_hand_slots.iter().enumerate() {
+            for (slot_index, slot) in hand_state.cards(Owner::Player).hand.iter().enumerate() {
                 if let Some(card) = slot {
                     // Show actual card (Medium size, no margin)
                     ui::spawn_card_button(
@@ -416,7 +416,8 @@ pub fn render_buyer_visible_hand_system(
 
     // Display each card in buyer_hand (use Small size for consistency)
     commands.entity(buyer_area).with_children(|parent| {
-        for card in hand_state.buyer_hand.iter() {
+        let buyer_hand: Vec<_> = hand_state.cards(Owner::Buyer).into();
+        for card in buyer_hand.iter() {
             // Use Small size (same as Narc hand and active slots)
             let (width, height) = ui::CardSize::Small.dimensions();
             let font_size = ui::CardSize::Small.font_size();
@@ -482,7 +483,8 @@ pub fn render_narc_visible_hand_system(
 
     // Display face-down cards (? placeholders)
     commands.entity(narc_area).with_children(|parent| {
-        for _ in 0..hand_state.narc_hand.len() {
+        let narc_hand: Vec<_> = hand_state.cards(Owner::Narc).into();
+        for _ in 0..narc_hand.len() {
             let (width, height) = ui::CardSize::Small.dimensions();
 
             parent.spawn((

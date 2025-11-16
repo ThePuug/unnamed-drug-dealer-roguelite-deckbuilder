@@ -3,8 +3,8 @@
 
 use bevy::prelude::Component;
 
-/// Who owns this card (SOW-009: Narc, Player, and Buyer)
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Who owns this card
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Owner {
     Narc,
     Player,

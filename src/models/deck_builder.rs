@@ -43,3 +43,33 @@ pub enum DeckPreset {
     Aggro,
     Control,
 }
+
+// ============================================================================
+// TESTS
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_validate_deck_valid() {
+        let deck = create_player_deck(); // Default 20-card deck
+        assert!(validate_deck(&deck).is_ok());
+    }
+
+    #[test]
+    fn test_deck_builder_load_presets() {
+        let mut builder = DeckBuilder::new();
+
+        // All presets should be valid (actual counts may vary with product expansion)
+        builder.load_preset(DeckPreset::Aggro);
+        assert!(builder.is_valid());
+
+        builder.load_preset(DeckPreset::Control);
+        assert!(builder.is_valid());
+
+        builder.load_preset(DeckPreset::Default);
+        assert!(builder.is_valid());
+    }
+}

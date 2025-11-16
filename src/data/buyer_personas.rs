@@ -19,7 +19,6 @@ fn create_college_party_host() -> BuyerPersona {
     let mut id = 2000; // Start Buyer cards at 2000
 
     BuyerPersona {
-        id: "frat_bro".to_string(),
         display_name: "Frat Bro".to_string(),
         demand: BuyerDemand {
             products: vec!["Weed".to_string(), "Pills".to_string()],
@@ -30,7 +29,6 @@ fn create_college_party_host() -> BuyerPersona {
         reduced_multiplier: 1.0,
         heat_threshold: None,  // Not paranoid, won't bail
         evidence_threshold: None,
-        special_rules: vec![],  // TODO: Add "+10 Evidence if public Location" in future phase
         reaction_deck: vec![
             // 1. Evidence - Prior Conviction
             Card {
@@ -85,23 +83,19 @@ fn create_college_party_host() -> BuyerPersona {
         scenarios: vec![
             // Scenario A: Get Wild
             BuyerScenario {
-                id: "get_wild".to_string(),
                 display_name: "Get Wild".to_string(),
                 products: vec!["Weed".to_string(), "Coke".to_string()],
                 locations: vec!["Frat House".to_string(), "Locker Room".to_string(), "Park".to_string()],
                 heat_threshold: None, // Fearless - knows it's risky, willing to take it
                 description: "Chaotic party energy, maximum wildness".to_string(),
-                special_rules: vec![],
             },
             // Scenario B: Get Laid
             BuyerScenario {
-                id: "get_laid".to_string(),
                 display_name: "Get Laid".to_string(),
                 products: vec!["Weed".to_string(), "Ecstasy".to_string()],
                 locations: vec!["Frat House".to_string(), "Locker Room".to_string(), "Dorm".to_string()],
                 heat_threshold: Some(35), // Cautious - not worth getting busted for romance
                 description: "Social connection party, vibes over chaos".to_string(),
-                special_rules: vec![],
             },
         ],
         active_scenario_index: None, // Set during Buyer selection
@@ -114,7 +108,6 @@ fn create_stay_at_home_mom() -> BuyerPersona {
     let mut id = 2100; // Mom cards start at 2100
 
     BuyerPersona {
-        id: "desperate_housewife".to_string(),
         display_name: "Desperate Housewife".to_string(),
         demand: BuyerDemand {
             products: vec!["Pills".to_string()],
@@ -125,7 +118,6 @@ fn create_stay_at_home_mom() -> BuyerPersona {
         reduced_multiplier: 1.0,
         heat_threshold: Some(30),  // Paranoid, bails if Heat > 30
         evidence_threshold: None,
-        special_rules: vec![],
         reaction_deck: vec![
             // 1. Evidence - Neighborhood Watch
             Card {
@@ -180,23 +172,19 @@ fn create_stay_at_home_mom() -> BuyerPersona {
         scenarios: vec![
             // Scenario A: Rock Bottom
             BuyerScenario {
-                id: "rock_bottom".to_string(),
                 display_name: "Rock Bottom".to_string(),
                 products: vec!["Codeine".to_string(), "Fentanyl".to_string()],
                 locations: vec!["Private Residence".to_string(), "By the Pool".to_string()],
                 heat_threshold: Some(40), // Addicted - will take risks for her fix
                 description: "Severe addiction, desperate for relief".to_string(),
-                special_rules: vec![],
             },
             // Scenario B: In Denial
             BuyerScenario {
-                id: "in_denial".to_string(),
                 display_name: "In Denial".to_string(),
                 products: vec!["Codeine".to_string(), "Weed".to_string()],
                 locations: vec!["Private Residence".to_string(), "By the Pool".to_string(), "At the Park".to_string()],
                 heat_threshold: Some(25), // Panics quickly - "I'm not a drug user!"
                 description: "Managing anxiety, denying the problem".to_string(),
-                special_rules: vec![],
             },
         ],
         active_scenario_index: None,
@@ -209,7 +197,6 @@ fn create_executive() -> BuyerPersona {
     let mut id = 2200; // Executive cards start at 2200
 
     BuyerPersona {
-        id: "wall_street_wolf".to_string(),
         display_name: "Wall Street Wolf".to_string(),
         demand: BuyerDemand {
             products: vec!["Pills".to_string()],
@@ -220,7 +207,6 @@ fn create_executive() -> BuyerPersona {
         reduced_multiplier: 1.0,
         heat_threshold: Some(25),  // Very paranoid, bails easily
         evidence_threshold: None,
-        special_rules: vec![],
         reaction_deck: vec![
             // 1. Evidence - Invincibility Complex
             Card {
@@ -275,23 +261,19 @@ fn create_executive() -> BuyerPersona {
         scenarios: vec![
             // Scenario A: Desperate Times
             BuyerScenario {
-                id: "desperate_times".to_string(),
                 display_name: "Desperate Times".to_string(),
                 products: vec!["Ice".to_string(), "Codeine".to_string()],
                 locations: vec!["In a Limo".to_string(), "Office".to_string(), "Parking Lot".to_string()],
                 heat_threshold: Some(45), // Desperate - will risk everything for the edge
                 description: "Performance under pressure, needs the edge".to_string(),
-                special_rules: vec![],
             },
             // Scenario B: Adrenaline Junkie
             BuyerScenario {
-                id: "adrenaline_junkie".to_string(),
                 display_name: "Adrenaline Junkie".to_string(),
                 products: vec!["Ice".to_string(), "Coke".to_string()],
                 locations: vec!["Parking Lot".to_string(), "In a Limo".to_string()],
                 heat_threshold: Some(30), // Moderately cautious - thrill-seeking but not stupid
                 description: "Calculated risk-taking, chasing the rush".to_string(),
-                special_rules: vec![],
             },
         ],
         active_scenario_index: None,
