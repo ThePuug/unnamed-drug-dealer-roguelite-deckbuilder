@@ -3,6 +3,7 @@
 use bevy::prelude::*;
 use crate::models::card::Card;
 use crate::models::buyer::BuyerPersona;
+use crate::models::narrative::NarrativeFragments;
 use std::collections::HashMap;
 
 /// Game assets loaded from RON files
@@ -15,6 +16,7 @@ pub struct GameAssets {
     pub insurance: Vec<Card>,          // Player Insurance cards
     pub modifiers: Vec<Card>,          // Player Deal Modifiers
     pub buyers: Vec<BuyerPersona>,
+    pub narrative_defaults: NarrativeFragments, // Default fragments for cards without custom ones (includes resolution_clauses)
     pub assets_loaded: bool,
 }
 
@@ -28,6 +30,7 @@ impl GameAssets {
             insurance: Vec::new(),
             modifiers: Vec::new(),
             buyers: Vec::new(),
+            narrative_defaults: NarrativeFragments::default(),
             assets_loaded: false,
         }
     }

@@ -1,7 +1,6 @@
 // Hand resolution implementation for HandState
 
 use super::*;
-use crate::models::narrative::StoryComposer; // SOW-012: Story generation
 
 impl HandState {
     /// Resolve hand outcome (bust check with insurance/conviction)
@@ -22,8 +21,7 @@ impl HandState {
         // Check 1: Validity (must have Product AND Location)
         if !self.is_valid_deal() {
             println!("Invalid deal: Must play at least 1 Product AND 1 Location");
-            self.generate_hand_story(HandOutcome::InvalidDeal); // SOW-012: Generate story
-            self.outcome = Some(HandOutcome::InvalidDeal);  // Can retry, not game over
+            self.outcome = Some(HandOutcome::InvalidDeal);
             self.current_state = HandPhase::Bust;
             return HandOutcome::InvalidDeal;
         }
@@ -33,8 +31,7 @@ impl HandState {
             if let Some(persona) = &self.buyer_persona {
                 println!("Buyer ({}) bailed! Threshold exceeded", persona.display_name);
             }
-            self.generate_hand_story(HandOutcome::BuyerBailed); // SOW-012: Generate story
-            self.outcome = Some(HandOutcome::BuyerBailed);  // Can retry with same Buyer
+            self.outcome = Some(HandOutcome::BuyerBailed);
             self.current_state = HandPhase::Bust;
             return HandOutcome::BuyerBailed;
         }
@@ -92,33 +89,9 @@ impl HandState {
             self.current_heat = self.current_heat.saturating_sub((-totals.heat) as u32);
         }
 
-        // SOW-012: Generate narrative story for this hand
-        self.generate_hand_story(outcome);
-
         self.outcome = Some(outcome);
         self.current_state = HandPhase::Bust; // Transition to terminal state
         outcome
-    }
-
-    /// SOW-012: Generate narrative story from played cards, buyer scenario, and outcome
-    /// Public so it can be called from fold action in input.rs
-    pub fn generate_hand_story(&mut self, outcome: HandOutcome) {
-        let composer = StoryComposer::new();
-
-        // Get active buyer scenario
-        let buyer_scenario = self.buyer_persona.as_ref()
-            .and_then(|persona| persona.active_scenario_index)
-            .and_then(|index| self.buyer_persona.as_ref()
-                .and_then(|persona| persona.scenarios.get(index)));
-
-        // Generate story with outcome context
-        let story = composer.compose_story(buyer_scenario, &self.cards_played, outcome);
-
-        // Store for display
-        self.hand_story = Some(story.clone());
-
-        // Print to console for now (TODO: Display in UI overlay)
-        println!("\n📖 Story: {}\n", story);
     }
 
     /// Try to activate insurance (Step 3 of resolution order)

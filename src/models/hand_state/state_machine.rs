@@ -31,12 +31,14 @@ impl HandState {
         }
     }
 
-    /// Shuffle unplayed hand cards back into deck
-    /// Called at end of hand to return ONLY unplayed cards to deck
-    /// Played cards are "spent" and discarded (not returned)
+    /// Shuffle all cards back into deck (called between hands in a run)
+    /// Collects both unplayed and played cards back to deck for reuse
     pub fn shuffle_cards_back(&mut self) {
-        self.cards_mut(Owner::Player).shuffle_back();
-        self.cards_mut(Owner::Narc).shuffle_back();
+        // Collect ALL cards (including played) back to deck for Player and Narc
+        self.cards_mut(Owner::Player).collect_all();
+        self.cards_mut(Owner::Player).shuffle_deck();
+        self.cards_mut(Owner::Narc).collect_all();
+        self.cards_mut(Owner::Narc).shuffle_deck();
 
         self.cards_played.clear();
         self.cards_played_this_round.clear();
@@ -145,7 +147,8 @@ impl HandState {
 
         let cards = self.cards_mut(owner);
         if let Some(card) = cards.hand[card_index].take() {
-            self.cards_played.push(card);
+            cards.played.push(card.clone());  // Also track in owner's Cards.played
+            self.cards_played.push(card);     // Track in HandState for this hand
         } else {
             return Err(format!("No card in slot {card_index}"));
         }

@@ -61,13 +61,6 @@ impl CardRequirement {
             card_type_filter: Some(CardTypeFilter::Evidence),
         }
     }
-
-    pub fn action() -> Self {
-        Self {
-            role: NarrativeRole::Action,
-            card_type_filter: Some(CardTypeFilter::ActionOrModifier),
-        }
-    }
 }
 
 /// Filter for card types
@@ -76,7 +69,6 @@ pub enum CardTypeFilter {
     Product,
     Location,
     Evidence,
-    ActionOrModifier, // DealModifier, Insurance, Cover
 }
 
 impl CardTypeFilter {
@@ -85,9 +77,6 @@ impl CardTypeFilter {
             (Self::Product, CardType::Product { .. }) => true,
             (Self::Location, CardType::Location { .. }) => true,
             (Self::Evidence, CardType::Evidence { .. }) | (Self::Evidence, CardType::Conviction { .. }) => true,
-            (Self::ActionOrModifier, CardType::DealModifier { .. }) |
-            (Self::ActionOrModifier, CardType::Insurance { .. }) |
-            (Self::ActionOrModifier, CardType::Cover { .. }) => true,
             _ => false,
         }
     }
@@ -101,7 +90,6 @@ pub enum NarrativeRole {
     Product,        // "I had the stuff"
     Location,       // "at the park"
     Complication,   // "the cops tapped my lines"
-    Action,         // "I had no choice but to bail"
     Resolution,     // "and we made the deal" / "but I got pinched"
 }
 
@@ -147,46 +135,94 @@ impl StoryPattern {
         ]
     }
 
-    /// Pattern: Complicated Deal (2 structure variants - randomly selected)
-    /// Variant A: "Although things got risky, still we made the deal"
-    /// Variant B: "Things got risky, and yet we made the deal"
+    /// Pattern: Complicated Deal (3 location-aware variants)
+    /// A: "[Subject need], [product] so [resolution] at [location] although [complication]"
+    /// B: "[Subject need], although [complication], [product] and [resolution] but [location]"
+    /// C: "Although [complication], [subject need], [product] so [resolution] at [location]"
     fn pattern_complicated_deal() -> StoryPattern {
-        use super::fragments::{ConjunctionType, SubordinatorType};
+        use super::fragments::{GrammaticalStructure, ClauseRelation};
 
-        let variant_a = SentenceStructure::ReversedComplex {
-            subordinator: SubordinatorType::Although,
-            // "although things got risky"
-            subordinate_clause: Box::new(SentenceStructure::Phrasal {
-                clause: FragmentSlot::new(NarrativeRole::Complication, "things got risky"),
-            }),
-            // "still someone wanted a deal"
+        // Variant A: Product so Resolution+Location although Complication
+        let variant_a = SentenceStructure::Complex {
             main_clause: Box::new(SentenceStructure::Compound {
                 clause1: Box::new(SentenceStructure::SubjectPredicate {
-                    subject: FragmentSlot::new(NarrativeRole::BuyerSubject, "someone"),
-                    predicate: FragmentSlot::new(NarrativeRole::BuyerNeed, "wanted a deal"),
+                    subject: FragmentSlot::new(NarrativeRole::BuyerSubject),
+                    predicate: FragmentSlot::new(NarrativeRole::BuyerNeed),
                 }),
-                conjunction: ConjunctionType::So, // "still" or "and yet"
+                conjunction: ClauseRelation::And,
+                clause2: Box::new(SentenceStructure::Compound {
+                    clause1: Box::new(SentenceStructure::Phrasal {
+                        clause: FragmentSlot::new(NarrativeRole::Product),
+                    }),
+                    conjunction: ClauseRelation::So,
+                    clause2: Box::new(SentenceStructure::Concatenated {
+                        clause1: Box::new(SentenceStructure::Phrasal {
+                            clause: FragmentSlot::new(NarrativeRole::Resolution),
+                        }),
+                        clause2: Box::new(SentenceStructure::Phrasal {
+                            clause: FragmentSlot::with_structure(NarrativeRole::Location, GrammaticalStructure::Prepositional),
+                        }),
+                    }),
+                }),
+            }),
+            subordinator: ClauseRelation::Although,
+            subordinate_clause: Box::new(SentenceStructure::Phrasal {
+                clause: FragmentSlot::with_relation(NarrativeRole::Complication, ClauseRelation::Although),
+            }),
+        };
+
+        // Variant B: Subject+need, although complication, product and resolution but location
+        let variant_b = SentenceStructure::Parenthetical {
+            clause1: Box::new(SentenceStructure::SubjectPredicate {
+                subject: FragmentSlot::new(NarrativeRole::BuyerSubject),
+                predicate: FragmentSlot::new(NarrativeRole::BuyerNeed),
+            }),
+            subordinator: ClauseRelation::Although,
+            parenthetical: Box::new(SentenceStructure::Phrasal {
+                clause: FragmentSlot::with_relation(NarrativeRole::Complication, ClauseRelation::Although),
+            }),
+            clause3: Box::new(SentenceStructure::Compound {
+                clause1: Box::new(SentenceStructure::Compound {
+                    clause1: Box::new(SentenceStructure::Phrasal {
+                        clause: FragmentSlot::new(NarrativeRole::Product),
+                    }),
+                    conjunction: ClauseRelation::And,
+                    clause2: Box::new(SentenceStructure::Phrasal {
+                        clause: FragmentSlot::new(NarrativeRole::Resolution),
+                    }),
+                }),
+                conjunction: ClauseRelation::But,
                 clause2: Box::new(SentenceStructure::Phrasal {
-                    clause: FragmentSlot::new(NarrativeRole::Resolution, "it went down"),
+                    clause: FragmentSlot::with_relation_and_structure(NarrativeRole::Location, ClauseRelation::But, GrammaticalStructure::FullClause),
                 }),
             }),
         };
 
-        let variant_b = SentenceStructure::Complex {
-            // Main: "A desperate housewife needed her fix"
-            main_clause: Box::new(SentenceStructure::SubjectPredicate {
-                subject: FragmentSlot::new(NarrativeRole::BuyerSubject, "Someone"),
-                predicate: FragmentSlot::new(NarrativeRole::BuyerNeed, "wanted a deal"),
+        // Variant C: Although complication, subject+need, product so resolution+location
+        let variant_c = SentenceStructure::ReversedComplex {
+            subordinator: ClauseRelation::Although,
+            subordinate_clause: Box::new(SentenceStructure::Phrasal {
+                clause: FragmentSlot::with_relation(NarrativeRole::Complication, ClauseRelation::Although),
             }),
-            subordinator: SubordinatorType::Although,
-            // Subordinate: "although things got risky, and yet we made the deal"
-            subordinate_clause: Box::new(SentenceStructure::Compound {
-                clause1: Box::new(SentenceStructure::Phrasal {
-                    clause: FragmentSlot::new(NarrativeRole::Complication, "things got risky"),
+            main_clause: Box::new(SentenceStructure::Compound {
+                clause1: Box::new(SentenceStructure::SubjectPredicate {
+                    subject: FragmentSlot::new(NarrativeRole::BuyerSubject),
+                    predicate: FragmentSlot::new(NarrativeRole::BuyerNeed),
                 }),
-                conjunction: ConjunctionType::Still,
-                clause2: Box::new(SentenceStructure::Phrasal {
-                    clause: FragmentSlot::new(NarrativeRole::Resolution, "it went down"),
+                conjunction: ClauseRelation::And,
+                clause2: Box::new(SentenceStructure::Compound {
+                    clause1: Box::new(SentenceStructure::Phrasal {
+                        clause: FragmentSlot::new(NarrativeRole::Product),
+                    }),
+                    conjunction: ClauseRelation::So,
+                    clause2: Box::new(SentenceStructure::Concatenated {
+                        clause1: Box::new(SentenceStructure::Phrasal {
+                            clause: FragmentSlot::new(NarrativeRole::Resolution),
+                        }),
+                        clause2: Box::new(SentenceStructure::Phrasal {
+                            clause: FragmentSlot::with_structure(NarrativeRole::Location, GrammaticalStructure::Prepositional),
+                        }),
+                    }),
                 }),
             }),
         };
@@ -200,40 +236,45 @@ impl StoryPattern {
                 CardRequirement::buyer(),
                 CardRequirement::product(),
                 CardRequirement::evidence(),
+                CardRequirement::location(),
             ],
-            sentence_structures: vec![variant_a, variant_b], // Both variants available
+            sentence_structures: vec![variant_a, variant_b, variant_c],
         }
     }
 
     /// Pattern: Simple Deal
-    /// "A Wall Street wolf wanted ice, I had it and we made the deal"
+    /// "A Wall Street wolf wanted ice, I had it so we made the deal at my safe house"
     fn pattern_simple_deal() -> StoryPattern {
-        use super::fragments::ConjunctionType;
+        use super::fragments::{ClauseRelation, GrammaticalStructure};
 
         StoryPattern {
             pattern_id: "simple_deal",
             pattern_type: PatternType::SimpleDeal,
             priority: 50,
-            required_outcome: None, // Matches any outcome
+            required_outcome: None,
             required_cards: vec![
                 CardRequirement::buyer(),
                 CardRequirement::product(),
+                CardRequirement::location(),
             ],
             sentence_structures: vec![SentenceStructure::Compound {
-                // "A Wall Street wolf wanted ice"
                 clause1: Box::new(SentenceStructure::SubjectPredicate {
-                    subject: FragmentSlot::new(NarrativeRole::BuyerSubject, "Someone"),
-                    predicate: FragmentSlot::new(NarrativeRole::BuyerNeed, "wanted product"),
+                    subject: FragmentSlot::new(NarrativeRole::BuyerSubject),
+                    predicate: FragmentSlot::new(NarrativeRole::BuyerNeed),
                 }),
-                conjunction: ConjunctionType::And,
-                // "and I had it and [resolution]"
+                conjunction: ClauseRelation::And,
                 clause2: Box::new(SentenceStructure::Compound {
                     clause1: Box::new(SentenceStructure::Phrasal {
-                        clause: FragmentSlot::new(NarrativeRole::Product, "I had product"),
+                        clause: FragmentSlot::new(NarrativeRole::Product),
                     }),
-                    conjunction: ConjunctionType::And,
-                    clause2: Box::new(SentenceStructure::Phrasal {
-                        clause: FragmentSlot::new(NarrativeRole::Resolution, "we made the deal"),
+                    conjunction: ClauseRelation::So,
+                    clause2: Box::new(SentenceStructure::Concatenated {
+                        clause1: Box::new(SentenceStructure::Phrasal {
+                            clause: FragmentSlot::new(NarrativeRole::Resolution),
+                        }),
+                        clause2: Box::new(SentenceStructure::Phrasal {
+                            clause: FragmentSlot::with_structure(NarrativeRole::Location, GrammaticalStructure::Prepositional),
+                        }),
                     }),
                 }),
             }],
@@ -243,7 +284,7 @@ impl StoryPattern {
     /// Pattern: Simple Bust
     /// "A frat bro needed party supplies but I got pinched"
     fn pattern_simple_bust() -> StoryPattern {
-        use super::fragments::ConjunctionType;
+        use super::fragments::ClauseRelation;
         use super::super::hand_state::HandOutcome;
 
         StoryPattern {
@@ -256,12 +297,12 @@ impl StoryPattern {
             ],
             sentence_structures: vec![SentenceStructure::Compound {
                 clause1: Box::new(SentenceStructure::SubjectPredicate {
-                    subject: FragmentSlot::new(NarrativeRole::BuyerSubject, "Someone"),
-                    predicate: FragmentSlot::new(NarrativeRole::BuyerNeed, "wanted a deal"),
+                    subject: FragmentSlot::new(NarrativeRole::BuyerSubject),
+                    predicate: FragmentSlot::new(NarrativeRole::BuyerNeed),
                 }),
-                conjunction: ConjunctionType::But,
+                conjunction: ClauseRelation::But,
                 clause2: Box::new(SentenceStructure::Phrasal {
-                    clause: FragmentSlot::new(NarrativeRole::Resolution, "I got busted"),
+                    clause: FragmentSlot::new(NarrativeRole::Resolution),
                 }),
             }],
         }
@@ -270,7 +311,7 @@ impl StoryPattern {
     /// Pattern: Simple Buyer Bail
     /// "A frat bro wanted to get wild but they got cold feet"
     fn pattern_simple_buyer_bail() -> StoryPattern {
-        use super::fragments::ConjunctionType;
+        use super::fragments::ClauseRelation;
         use super::super::hand_state::HandOutcome;
 
         StoryPattern {
@@ -283,12 +324,12 @@ impl StoryPattern {
             ],
             sentence_structures: vec![SentenceStructure::Compound {
                 clause1: Box::new(SentenceStructure::SubjectPredicate {
-                    subject: FragmentSlot::new(NarrativeRole::BuyerSubject, "Someone"),
-                    predicate: FragmentSlot::new(NarrativeRole::BuyerNeed, "wanted a deal"),
+                    subject: FragmentSlot::new(NarrativeRole::BuyerSubject),
+                    predicate: FragmentSlot::new(NarrativeRole::BuyerNeed),
                 }),
-                conjunction: ConjunctionType::But,
+                conjunction: ClauseRelation::But,
                 clause2: Box::new(SentenceStructure::Phrasal {
-                    clause: FragmentSlot::new(NarrativeRole::Resolution, "they bailed"),
+                    clause: FragmentSlot::new(NarrativeRole::Resolution),
                 }),
             }],
         }
@@ -297,7 +338,7 @@ impl StoryPattern {
     /// Pattern: Simple Dealer Bail (Player folded)
     /// "A frat bro wanted to get wild but I walked away"
     fn pattern_simple_dealer_bail() -> StoryPattern {
-        use super::fragments::ConjunctionType;
+        use super::fragments::ClauseRelation;
         use super::super::hand_state::HandOutcome;
 
         StoryPattern {
@@ -310,12 +351,12 @@ impl StoryPattern {
             ],
             sentence_structures: vec![SentenceStructure::Compound {
                 clause1: Box::new(SentenceStructure::SubjectPredicate {
-                    subject: FragmentSlot::new(NarrativeRole::BuyerSubject, "Someone"),
-                    predicate: FragmentSlot::new(NarrativeRole::BuyerNeed, "wanted a deal"),
+                    subject: FragmentSlot::new(NarrativeRole::BuyerSubject),
+                    predicate: FragmentSlot::new(NarrativeRole::BuyerNeed),
                 }),
-                conjunction: ConjunctionType::But,
+                conjunction: ClauseRelation::But,
                 clause2: Box::new(SentenceStructure::Phrasal {
-                    clause: FragmentSlot::new(NarrativeRole::Resolution, "I folded"),
+                    clause: FragmentSlot::new(NarrativeRole::Resolution),
                 }),
             }],
         }
@@ -324,7 +365,7 @@ impl StoryPattern {
     /// Pattern: Simple Invalid Deal
     /// "A frat bro needed party supplies but the deal fell through"
     fn pattern_simple_invalid_deal() -> StoryPattern {
-        use super::fragments::ConjunctionType;
+        use super::fragments::ClauseRelation;
         use super::super::hand_state::HandOutcome;
 
         StoryPattern {
@@ -337,12 +378,12 @@ impl StoryPattern {
             ],
             sentence_structures: vec![SentenceStructure::Compound {
                 clause1: Box::new(SentenceStructure::SubjectPredicate {
-                    subject: FragmentSlot::new(NarrativeRole::BuyerSubject, "Someone"),
-                    predicate: FragmentSlot::new(NarrativeRole::BuyerNeed, "tried to make a deal"),
+                    subject: FragmentSlot::new(NarrativeRole::BuyerSubject),
+                    predicate: FragmentSlot::new(NarrativeRole::BuyerNeed),
                 }),
-                conjunction: ConjunctionType::But,
+                conjunction: ClauseRelation::But,
                 clause2: Box::new(SentenceStructure::Phrasal {
-                    clause: FragmentSlot::new(NarrativeRole::Resolution, "it fell through"),
+                    clause: FragmentSlot::new(NarrativeRole::Resolution),
                 }),
             }],
         }

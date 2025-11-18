@@ -20,15 +20,34 @@ impl Plugin for AssetLoaderPlugin {
 }
 
 /// Load all game assets from RON files at startup
-fn load_game_assets(mut game_assets: ResMut<GameAssets>) {
+fn load_game_assets(mut commands: Commands, mut game_assets: ResMut<GameAssets>) {
     info!("Loading game assets from RON files...");
 
-    // Load products
+    // Load narrative defaults first (includes resolution clauses)
+    match load_narrative_defaults("assets/narrative_defaults.ron") {
+        Ok(defaults) => {
+            game_assets.narrative_defaults = defaults;
+            info!("Loaded narrative defaults (with resolution clauses)");
+        }
+        Err(e) => {
+            warn!("Failed to load narrative_defaults.ron: {} - using empty defaults", e);
+        }
+    }
+
+    // Load products (no default merging - StoryComposer handles fallback)
     match load_and_validate_cards("assets/cards/products.ron", "Product") {
         Ok(cards) => {
-            for card in cards {
+            for card in &cards {
                 validate_card(&card, "Product").expect("Product validation failed");
-                game_assets.products.insert(card.name.clone(), card);
+
+                // Debug: Check ALL products
+                if let Some(frags) = &card.narrative_fragments {
+                    eprintln!("DEBUG: {} has {} product_clauses", card.name, frags.product_clauses.len());
+                } else {
+                    eprintln!("DEBUG: {} narrative_fragments is NONE!", card.name);
+                }
+
+                game_assets.products.insert(card.name.clone(), card.clone());
             }
             info!("Loaded {} products", game_assets.products.len());
         }
@@ -38,12 +57,12 @@ fn load_game_assets(mut game_assets: ResMut<GameAssets>) {
         }
     }
 
-    // Load locations
+    // Load locations (no default merging - StoryComposer handles fallback)
     match load_and_validate_cards("assets/cards/locations.ron", "Location") {
         Ok(cards) => {
-            for card in cards {
+            for card in &cards {
                 validate_card(&card, "Location").expect("Location validation failed");
-                game_assets.locations.insert(card.name.clone(), card);
+                game_assets.locations.insert(card.name.clone(), card.clone());
             }
             info!("Loaded {} locations", game_assets.locations.len());
         }
@@ -53,7 +72,7 @@ fn load_game_assets(mut game_assets: ResMut<GameAssets>) {
         }
     }
 
-    // Load evidence (Narc deck)
+    // Load evidence (Narc deck) (no default merging - StoryComposer handles fallback)
     match load_and_validate_cards("assets/cards/evidence.ron", "Evidence") {
         Ok(cards) => {
             game_assets.evidence = cards;
@@ -101,7 +120,7 @@ fn load_game_assets(mut game_assets: ResMut<GameAssets>) {
         }
     }
 
-    // Load buyers
+    // Load buyers (no default merging - StoryComposer handles fallback)
     match load_and_validate_buyers("assets/buyers.ron") {
         Ok(buyers) => {
             for buyer in &buyers {
@@ -115,6 +134,11 @@ fn load_game_assets(mut game_assets: ResMut<GameAssets>) {
             panic!("Critical asset loading failure - fix buyers.ron");
         }
     }
+
+    // Create StoryComposer resource with full narrative defaults (handles fallback internally)
+    let story_composer = crate::models::narrative::StoryComposer::new(game_assets.narrative_defaults.clone());
+    commands.insert_resource(story_composer);
+    info!("Created StoryComposer resource with defaults");
 
     game_assets.assets_loaded = true;
     info!("All game assets loaded successfully!");
@@ -174,7 +198,7 @@ fn validate_card(card: &Card, expected_type: &str) -> Result<(), String> {
 
     // Validate card type specific values
     match &card.card_type {
-        CardType::Product { price, heat } => {
+        CardType::Product { price, heat: _ } => {
             if expected_type != "Product" {
                 return Err(format!("Card '{}' is Product but loaded from {}", card.name, expected_type));
             }
@@ -222,3 +246,12 @@ fn validate_buyer(buyer: &BuyerPersona) -> Result<(), String> {
     Ok(())
 }
 
+
+/// Load narrative defaults from RON file
+fn load_narrative_defaults(path: &str) -> Result<crate::models::narrative::NarrativeFragments, String> {
+    let content = fs::read_to_string(path)
+        .map_err(|e| format!("Failed to read {}: {}", path, e))?;
+
+    ron::from_str::<crate::models::narrative::NarrativeFragments>(&content)
+        .map_err(|e| format!("Failed to parse {}: {}", path, e))
+}

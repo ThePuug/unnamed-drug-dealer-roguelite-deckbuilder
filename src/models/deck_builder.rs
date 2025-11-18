@@ -38,9 +38,9 @@ impl DeckBuilder {
 
     pub fn load_preset(&mut self, preset: DeckPreset) {
         self.selected_cards = match preset {
-            DeckPreset::Default => create_default_deck(),
-            DeckPreset::Aggro => create_aggro_deck(),
-            DeckPreset::Control => create_control_deck(),
+            DeckPreset::Default => create_default_deck(&self.available_cards),
+            DeckPreset::Aggro => create_aggro_deck(&self.available_cards),
+            DeckPreset::Control => create_control_deck(&self.available_cards),
         };
     }
 }
@@ -68,7 +68,8 @@ mod tests {
 
     #[test]
     fn test_deck_builder_load_presets() {
-        let mut builder = DeckBuilder::new();
+        let assets = crate::assets::GameAssets::default();
+        let mut builder = DeckBuilder::from_assets(&assets);
 
         // All presets should be valid (actual counts may vary with product expansion)
         builder.load_preset(DeckPreset::Aggro);

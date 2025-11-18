@@ -6,7 +6,6 @@ mod systems;
 mod game_state;
 
 use bevy::prelude::*;
-use bevy::asset::load_internal_binary_asset;
 use ui::setup::*;
 use models::card::*;
 use models::deck_builder::*;

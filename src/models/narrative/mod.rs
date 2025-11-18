@@ -5,7 +5,9 @@ pub mod fragments;
 pub mod patterns;
 pub mod composer;
 
+#[cfg(test)]
+mod story_test; // Comprehensive story generation test
+
 // Re-export key types for external use
 pub use fragments::NarrativeFragments;
-pub use patterns::{StoryPattern, PatternType, NarrativeRole};
 pub use composer::StoryComposer;

@@ -24,6 +24,7 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
 pub fn auto_flip_system(
     mut hand_state_query: Query<&mut HandState>,
     mut ai_timer: ResMut<AiActionTimer>,
+    story_composer: Res<crate::models::narrative::StoryComposer>,
     time: Res<Time>,
 ) {
     let Ok(mut hand_state) = hand_state_query.get_single_mut() else {
@@ -80,6 +81,11 @@ pub fn auto_flip_system(
         println!("Auto-resolving hand...");
         let outcome = hand_state.resolve_hand();
         println!("Resolution outcome: {:?}, new state: {:?}", outcome, hand_state.current_state);
+
+        // Generate story after resolution
+        let story = story_composer.compose_story_from_hand(&hand_state);
+        hand_state.hand_story = Some(story.clone());
+        println!("\n📖 Story: {}\n", story);
     }
 }
 
