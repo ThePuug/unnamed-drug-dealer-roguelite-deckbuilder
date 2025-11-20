@@ -1,29 +1,28 @@
-// SOW-012 Phase 2: Story Pattern System
-// Pattern matching for selecting appropriate story structures based on played cards
+// SOW-014: Dynamic Narrative Construction
+// Defines dynamic patterns that build sentences at runtime
 
-use super::fragments::{SentenceStructure, FragmentSlot};
+use super::builder::{SentenceBuilder, Satellite, Placement};
+use super::fragments::{SentenceStructure, ClauseRelation};
 use crate::models::{card::{Card, CardType}, hand_state::HandOutcome};
 
-/// Story pattern types (outcome-specific patterns)
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PatternType {
-    SimpleDeal,           // Buyer + Product (Safe outcome)
-    ComplicatedDeal,      // + Evidence/complications
-    SimpleBust,           // Busted outcome
-    SimpleBuyerBail,      // BuyerBailed outcome
-    SimpleDealerBail,     // Folded outcome (dealer/player folded)
-    SimpleInvalidDeal,    // InvalidDeal outcome
+/// Dynamic story pattern that builds structure at runtime
+pub struct DynamicPattern {
+    pub pattern_id: &'static str,
+    pub priority: u32,
+    pub required_outcome: Option<HandOutcome>,
+    pub required_cards: Vec<CardRequirement>,
+    // Closure that takes a builder and configures it
+    pub builder_factory: Box<dyn Fn() -> SentenceBuilder + Send + Sync>,
 }
 
-/// Story pattern with matching rules and sentence structure(s)
-#[derive(Debug, Clone)]
-pub struct StoryPattern {
-    pub pattern_id: &'static str,
-    pub pattern_type: PatternType,
-    pub priority: u32,  // Higher = checked first
-    pub required_cards: Vec<CardRequirement>,
-    pub required_outcome: Option<super::super::hand_state::HandOutcome>, // Pattern only applies to specific outcome
-    pub sentence_structures: Vec<SentenceStructure>, // Multiple variants - randomly selected
+impl std::fmt::Debug for DynamicPattern {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DynamicPattern")
+            .field("pattern_id", &self.pattern_id)
+            .field("priority", &self.priority)
+            .field("required_outcome", &self.required_outcome)
+            .finish()
+    }
 }
 
 /// Card requirement for pattern matching
@@ -37,7 +36,7 @@ impl CardRequirement {
     pub fn buyer() -> Self {
         Self {
             role: NarrativeRole::BuyerSubject,
-            card_type_filter: None, // Buyer cards identified by owner, not CardType
+            card_type_filter: None,
         }
     }
 
@@ -57,7 +56,7 @@ impl CardRequirement {
 
     pub fn evidence() -> Self {
         Self {
-            role: NarrativeRole::Complication,
+            role: NarrativeRole::Evidence,
             card_type_filter: Some(CardTypeFilter::Evidence),
         }
     }
@@ -89,21 +88,19 @@ pub enum NarrativeRole {
     BuyerNeed,      // "needed her fix"
     Product,        // "I had the stuff"
     Location,       // "at the park"
-    Complication,   // "the cops tapped my lines"
+    Evidence,       // "the cops tapped my lines" (from Evidence cards)
     Resolution,     // "and we made the deal" / "but I got pinched"
 }
 
-impl StoryPattern {
+impl DynamicPattern {
     /// Check if this pattern matches the given cards
-    pub fn matches(&self, buyer_card: Option<&Card>, played_cards: &[Card]) -> bool {
+    pub fn matches(&self, has_buyer: bool, played_cards: &[Card]) -> bool {
         for requirement in &self.required_cards {
             let has_match = match requirement.role {
                 NarrativeRole::BuyerSubject | NarrativeRole::BuyerNeed => {
-                    // Buyer requirements check for buyer_card existence
-                    buyer_card.is_some()
+                    has_buyer
                 },
                 _ => {
-                    // Other requirements check played_cards
                     if let Some(filter) = &requirement.card_type_filter {
                         played_cards.iter().any(|card| filter.matches(&card.card_type))
                     } else {
@@ -113,279 +110,161 @@ impl StoryPattern {
             };
 
             if !has_match {
-                return false; // Missing required card
+                return false;
             }
         }
-
-        true // All requirements met
+        true
     }
 
-    /// Create all story patterns for MVP (sorted by priority: highest first)
-    pub fn create_all_patterns() -> Vec<StoryPattern> {
+    /// Build a sentence structure using this pattern's factory
+    pub fn build_structure(&self) -> SentenceStructure {
+        let builder = (self.builder_factory)();
+        builder.build()
+    }
+
+    /// Create all dynamic patterns
+    pub fn create_all_patterns() -> Vec<DynamicPattern> {
         vec![
-            // Priority 90
-            Self::pattern_complicated_deal(), // Has 2 structure variants
-            // Priority 60 (outcome-specific - higher than SimpleDeal)
+            Self::pattern_complicated_deal(),
             Self::pattern_simple_bust(),
             Self::pattern_simple_buyer_bail(),
             Self::pattern_simple_dealer_bail(),
             Self::pattern_simple_invalid_deal(),
-            // Priority 50 (generic - catches all)
             Self::pattern_simple_deal(),
         ]
     }
 
-    /// Pattern: Complicated Deal (3 location-aware variants)
-    /// A: "[Subject need], [product] so [resolution] at [location] although [complication]"
-    /// B: "[Subject need], although [complication], [product] and [resolution] but [location]"
-    /// C: "Although [complication], [subject need], [product] so [resolution] at [location]"
-    fn pattern_complicated_deal() -> StoryPattern {
-        use super::fragments::{GrammaticalStructure, ClauseRelation};
+    // --- Pattern Definitions ---
 
-        // Variant A: Product so Resolution+Location although Complication
-        let variant_a = SentenceStructure::Complex {
-            main_clause: Box::new(SentenceStructure::Compound {
-                clause1: Box::new(SentenceStructure::SubjectPredicate {
-                    subject: FragmentSlot::new(NarrativeRole::BuyerSubject),
-                    predicate: FragmentSlot::new(NarrativeRole::BuyerNeed),
-                }),
-                conjunction: ClauseRelation::And,
-                clause2: Box::new(SentenceStructure::Compound {
-                    clause1: Box::new(SentenceStructure::Phrasal {
-                        clause: FragmentSlot::new(NarrativeRole::Product),
-                    }),
-                    conjunction: ClauseRelation::So,
-                    clause2: Box::new(SentenceStructure::Concatenated {
-                        clause1: Box::new(SentenceStructure::Phrasal {
-                            clause: FragmentSlot::new(NarrativeRole::Resolution),
-                        }),
-                        clause2: Box::new(SentenceStructure::Phrasal {
-                            clause: FragmentSlot::with_structure(NarrativeRole::Location, GrammaticalStructure::Prepositional),
-                        }),
-                    }),
-                }),
+    fn pattern_simple_deal() -> DynamicPattern {
+        DynamicPattern {
+            pattern_id: "simple_deal",
+            priority: 50,
+            required_outcome: Some(HandOutcome::Safe),
+            required_cards: vec![
+                CardRequirement::buyer(),
+                CardRequirement::product(),
+            ],
+            builder_factory: Box::new(|| {
+                // Core: Subject + Need + Product + Resolution (Safe outcome)
+                // Optional: Location (no conjunction - prepositional phrase)
+                SentenceBuilder::new()
+                    .with_satellite(Satellite::new(NarrativeRole::Location)
+                        .with_placement(Placement::Start, 0.3)
+                        .with_placement(Placement::End, 0.7)
+                        .optional(0.4))
             }),
-            subordinator: ClauseRelation::Although,
-            subordinate_clause: Box::new(SentenceStructure::Phrasal {
-                clause: FragmentSlot::with_relation(NarrativeRole::Complication, ClauseRelation::Although),
-            }),
-        };
+        }
+    }
 
-        // Variant B: Subject+need, although complication, product and resolution but location
-        let variant_b = SentenceStructure::Parenthetical {
-            clause1: Box::new(SentenceStructure::SubjectPredicate {
-                subject: FragmentSlot::new(NarrativeRole::BuyerSubject),
-                predicate: FragmentSlot::new(NarrativeRole::BuyerNeed),
-            }),
-            subordinator: ClauseRelation::Although,
-            parenthetical: Box::new(SentenceStructure::Phrasal {
-                clause: FragmentSlot::with_relation(NarrativeRole::Complication, ClauseRelation::Although),
-            }),
-            clause3: Box::new(SentenceStructure::Compound {
-                clause1: Box::new(SentenceStructure::Compound {
-                    clause1: Box::new(SentenceStructure::Phrasal {
-                        clause: FragmentSlot::new(NarrativeRole::Product),
-                    }),
-                    conjunction: ClauseRelation::And,
-                    clause2: Box::new(SentenceStructure::Phrasal {
-                        clause: FragmentSlot::new(NarrativeRole::Resolution),
-                    }),
-                }),
-                conjunction: ClauseRelation::But,
-                clause2: Box::new(SentenceStructure::Phrasal {
-                    clause: FragmentSlot::with_relation_and_structure(NarrativeRole::Location, ClauseRelation::But, GrammaticalStructure::FullClause),
-                }),
-            }),
-        };
-
-        // Variant C: Although complication, subject+need, product so resolution+location
-        let variant_c = SentenceStructure::ReversedComplex {
-            subordinator: ClauseRelation::Although,
-            subordinate_clause: Box::new(SentenceStructure::Phrasal {
-                clause: FragmentSlot::with_relation(NarrativeRole::Complication, ClauseRelation::Although),
-            }),
-            main_clause: Box::new(SentenceStructure::Compound {
-                clause1: Box::new(SentenceStructure::SubjectPredicate {
-                    subject: FragmentSlot::new(NarrativeRole::BuyerSubject),
-                    predicate: FragmentSlot::new(NarrativeRole::BuyerNeed),
-                }),
-                conjunction: ClauseRelation::And,
-                clause2: Box::new(SentenceStructure::Compound {
-                    clause1: Box::new(SentenceStructure::Phrasal {
-                        clause: FragmentSlot::new(NarrativeRole::Product),
-                    }),
-                    conjunction: ClauseRelation::So,
-                    clause2: Box::new(SentenceStructure::Concatenated {
-                        clause1: Box::new(SentenceStructure::Phrasal {
-                            clause: FragmentSlot::new(NarrativeRole::Resolution),
-                        }),
-                        clause2: Box::new(SentenceStructure::Phrasal {
-                            clause: FragmentSlot::with_structure(NarrativeRole::Location, GrammaticalStructure::Prepositional),
-                        }),
-                    }),
-                }),
-            }),
-        };
-
-        StoryPattern {
+    fn pattern_complicated_deal() -> DynamicPattern {
+        DynamicPattern {
             pattern_id: "complicated_deal",
-            pattern_type: PatternType::ComplicatedDeal,
             priority: 90,
             required_outcome: Some(HandOutcome::Safe),
             required_cards: vec![
                 CardRequirement::buyer(),
                 CardRequirement::product(),
-                CardRequirement::evidence(),
-                CardRequirement::location(),
+                CardRequirement::evidence(), // Requires evidence/complication
             ],
-            sentence_structures: vec![variant_a, variant_b, variant_c],
+            builder_factory: Box::new(|| {
+                // Core: Subject + Need + Product + Resolution (Safe outcome)
+                // Required: Evidence (complications from evidence cards)
+                // Optional: Location
+                SentenceBuilder::new()
+                    .with_satellite(Satellite::new(NarrativeRole::Evidence)
+                        .with_placement(Placement::Start, 0.4)
+                        .with_placement(Placement::BeforeResolution, 0.6)
+                        .with_conjunction(ClauseRelation::Although))  // Use "although" conjunction
+                    .with_satellite(Satellite::new(NarrativeRole::Location)
+                        .with_placement(Placement::Start, 1.0)
+                        .optional(0.2))  // Only at start to avoid collision with complication
+            }),
         }
     }
 
-    /// Pattern: Simple Deal
-    /// "A Wall Street wolf wanted ice, I had it so we made the deal at my safe house"
-    fn pattern_simple_deal() -> StoryPattern {
-        use super::fragments::{ClauseRelation, GrammaticalStructure};
-
-        StoryPattern {
-            pattern_id: "simple_deal",
-            pattern_type: PatternType::SimpleDeal,
-            priority: 50,
-            required_outcome: None,
-            required_cards: vec![
-                CardRequirement::buyer(),
-                CardRequirement::product(),
-                CardRequirement::location(),
-            ],
-            sentence_structures: vec![SentenceStructure::Compound {
-                clause1: Box::new(SentenceStructure::SubjectPredicate {
-                    subject: FragmentSlot::new(NarrativeRole::BuyerSubject),
-                    predicate: FragmentSlot::new(NarrativeRole::BuyerNeed),
-                }),
-                conjunction: ClauseRelation::And,
-                clause2: Box::new(SentenceStructure::Compound {
-                    clause1: Box::new(SentenceStructure::Phrasal {
-                        clause: FragmentSlot::new(NarrativeRole::Product),
-                    }),
-                    conjunction: ClauseRelation::So,
-                    clause2: Box::new(SentenceStructure::Concatenated {
-                        clause1: Box::new(SentenceStructure::Phrasal {
-                            clause: FragmentSlot::new(NarrativeRole::Resolution),
-                        }),
-                        clause2: Box::new(SentenceStructure::Phrasal {
-                            clause: FragmentSlot::with_structure(NarrativeRole::Location, GrammaticalStructure::Prepositional),
-                        }),
-                    }),
-                }),
-            }],
-        }
-    }
-
-    /// Pattern: Simple Bust
-    /// "A frat bro needed party supplies but I got pinched"
-    fn pattern_simple_bust() -> StoryPattern {
-        use super::fragments::ClauseRelation;
-        use super::super::hand_state::HandOutcome;
-
-        StoryPattern {
+    fn pattern_simple_bust() -> DynamicPattern {
+        DynamicPattern {
             pattern_id: "simple_bust",
-            pattern_type: PatternType::SimpleBust,
-            priority: 60, // Higher than SimpleDeal to match first when Busted
+            priority: 60,
             required_outcome: Some(HandOutcome::Busted),
-            required_cards: vec![
-                CardRequirement::buyer(),
-            ],
-            sentence_structures: vec![SentenceStructure::Compound {
-                clause1: Box::new(SentenceStructure::SubjectPredicate {
-                    subject: FragmentSlot::new(NarrativeRole::BuyerSubject),
-                    predicate: FragmentSlot::new(NarrativeRole::BuyerNeed),
-                }),
-                conjunction: ClauseRelation::But,
-                clause2: Box::new(SentenceStructure::Phrasal {
-                    clause: FragmentSlot::new(NarrativeRole::Resolution),
-                }),
-            }],
+            required_cards: vec![CardRequirement::buyer()],
+            builder_factory: Box::new(|| {
+                // Core: Subject + Need + Product + Resolution (Busted)
+                // Optional: Evidence (what led to bust), Location
+                SentenceBuilder::new()
+                    .with_product_conjunction(ClauseRelation::But)  // Negative outcome
+                    .with_satellite(Satellite::new(NarrativeRole::Evidence)
+                        .with_placement(Placement::BeforeResolution, 1.0)
+                        .with_conjunction(ClauseRelation::Because)  // "because" for bust explanations
+                        .optional(0.6))
+                    .with_satellite(Satellite::new(NarrativeRole::Location)
+                        .with_placement(Placement::Start, 1.0)
+                        .optional(0.2))  // Only at start to avoid collision
+            }),
         }
     }
 
-    /// Pattern: Simple Buyer Bail
-    /// "A frat bro wanted to get wild but they got cold feet"
-    fn pattern_simple_buyer_bail() -> StoryPattern {
-        use super::fragments::ClauseRelation;
-        use super::super::hand_state::HandOutcome;
-
-        StoryPattern {
+    fn pattern_simple_buyer_bail() -> DynamicPattern {
+        DynamicPattern {
             pattern_id: "simple_buyer_bail",
-            pattern_type: PatternType::SimpleBuyerBail,
-            priority: 60, // Higher than SimpleDeal
+            priority: 60,
             required_outcome: Some(HandOutcome::BuyerBailed),
-            required_cards: vec![
-                CardRequirement::buyer(),
-            ],
-            sentence_structures: vec![SentenceStructure::Compound {
-                clause1: Box::new(SentenceStructure::SubjectPredicate {
-                    subject: FragmentSlot::new(NarrativeRole::BuyerSubject),
-                    predicate: FragmentSlot::new(NarrativeRole::BuyerNeed),
-                }),
-                conjunction: ClauseRelation::But,
-                clause2: Box::new(SentenceStructure::Phrasal {
-                    clause: FragmentSlot::new(NarrativeRole::Resolution),
-                }),
-            }],
+            required_cards: vec![CardRequirement::buyer()],
+            builder_factory: Box::new(|| {
+                // Core: Subject + Need + Product + Resolution (Buyer bailed)
+                // Optional: Location, Evidence (why they bailed)
+                SentenceBuilder::new()
+                    .with_product_conjunction(ClauseRelation::But)  // Negative outcome
+                    .with_satellite(Satellite::new(NarrativeRole::Location)
+                        .with_placement(Placement::Start, 1.0)
+                        .optional(0.2))
+                    .with_satellite(Satellite::new(NarrativeRole::Evidence)
+                        .with_placement(Placement::BeforeResolution, 1.0)
+                        .with_conjunction(ClauseRelation::Because)  // "because they bailed"
+                        .optional(0.5))
+            }),
         }
     }
 
-    /// Pattern: Simple Dealer Bail (Player folded)
-    /// "A frat bro wanted to get wild but I walked away"
-    fn pattern_simple_dealer_bail() -> StoryPattern {
-        use super::fragments::ClauseRelation;
-        use super::super::hand_state::HandOutcome;
-
-        StoryPattern {
+    fn pattern_simple_dealer_bail() -> DynamicPattern {
+        DynamicPattern {
             pattern_id: "simple_dealer_bail",
-            pattern_type: PatternType::SimpleDealerBail,
-            priority: 60, // Higher than SimpleDeal
+            priority: 60,
             required_outcome: Some(HandOutcome::Folded),
-            required_cards: vec![
-                CardRequirement::buyer(),
-            ],
-            sentence_structures: vec![SentenceStructure::Compound {
-                clause1: Box::new(SentenceStructure::SubjectPredicate {
-                    subject: FragmentSlot::new(NarrativeRole::BuyerSubject),
-                    predicate: FragmentSlot::new(NarrativeRole::BuyerNeed),
-                }),
-                conjunction: ClauseRelation::But,
-                clause2: Box::new(SentenceStructure::Phrasal {
-                    clause: FragmentSlot::new(NarrativeRole::Resolution),
-                }),
-            }],
+            required_cards: vec![CardRequirement::buyer()],
+            builder_factory: Box::new(|| {
+                // Core: Subject + Need + Product + Resolution (I walked away)
+                // Optional: Location, Evidence (why I walked)
+                SentenceBuilder::new()
+                    .with_product_conjunction(ClauseRelation::But)  // Negative outcome
+                    .with_satellite(Satellite::new(NarrativeRole::Location)
+                        .with_placement(Placement::Start, 1.0)
+                        .optional(0.2))
+                    .with_satellite(Satellite::new(NarrativeRole::Evidence)
+                        .with_placement(Placement::BeforeResolution, 1.0)
+                        .with_conjunction(ClauseRelation::Because)  // "because I walked"
+                        .optional(0.6))
+            }),
         }
     }
 
-    /// Pattern: Simple Invalid Deal
-    /// "A frat bro needed party supplies but the deal fell through"
-    fn pattern_simple_invalid_deal() -> StoryPattern {
-        use super::fragments::ClauseRelation;
-        use super::super::hand_state::HandOutcome;
-
-        StoryPattern {
+    fn pattern_simple_invalid_deal() -> DynamicPattern {
+        DynamicPattern {
             pattern_id: "simple_invalid_deal",
-            pattern_type: PatternType::SimpleInvalidDeal,
-            priority: 60, // Higher than SimpleDeal
+            priority: 60,
             required_outcome: Some(HandOutcome::InvalidDeal),
-            required_cards: vec![
-                CardRequirement::buyer(),
-            ],
-            sentence_structures: vec![SentenceStructure::Compound {
-                clause1: Box::new(SentenceStructure::SubjectPredicate {
-                    subject: FragmentSlot::new(NarrativeRole::BuyerSubject),
-                    predicate: FragmentSlot::new(NarrativeRole::BuyerNeed),
-                }),
-                conjunction: ClauseRelation::But,
-                clause2: Box::new(SentenceStructure::Phrasal {
-                    clause: FragmentSlot::new(NarrativeRole::Resolution),
-                }),
-            }],
+            required_cards: vec![CardRequirement::buyer()],
+            builder_factory: Box::new(|| {
+                // Core: Subject + Need + Product + Resolution (Deal fell through)
+                // Optional: Location
+                SentenceBuilder::new()
+                    .with_product_conjunction(ClauseRelation::But)  // Negative outcome
+                    .with_satellite(Satellite::new(NarrativeRole::Location)
+                        .with_placement(Placement::Start, 0.4)
+                        .with_placement(Placement::End, 0.6)
+                        .optional(0.3))
+            }),
         }
     }
 }

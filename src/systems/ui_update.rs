@@ -252,7 +252,7 @@ pub fn populate_deck_builder_cards_system(
                         ..default()
                     },
                     DeckBuilderCardButton {
-                        card_id: card.id,
+                        card_id: card.id.clone(),
                     },
                 ))
                 .with_children(|parent| {

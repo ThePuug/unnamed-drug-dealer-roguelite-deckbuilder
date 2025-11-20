@@ -33,7 +33,10 @@ pub struct BuyerPersona {
     pub reduced_multiplier: f32,             // When demand not met (typically ×1.0)
     pub heat_threshold: Option<u32>,         // SOW-010: Deprecated - scenarios have own thresholds
     pub evidence_threshold: Option<u32>,     // Buyer bails if Evidence exceeds (None = never bails)
-    pub reaction_deck: Vec<Card>,            // 7 cards unique to this persona
+    #[serde(default)]
+    pub reaction_deck_ids: Vec<String>,      // Card IDs to build reaction deck from
+    #[serde(skip)]
+    pub reaction_deck: Vec<Card>,            // 7 cards built from reaction_deck_ids during loading
     pub scenarios: Vec<BuyerScenario>,       // SOW-010: 2 scenarios per Buyer
     pub active_scenario_index: Option<usize>, // Which scenario is active (set during Buyer selection)
 }

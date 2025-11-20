@@ -351,8 +351,10 @@ mod tests {
 
     #[test]
     fn test_draw_cards() {
+        use crate::models::test_helpers::create_mock_game_assets;
         let mut hand_state = HandState::default();
-        let buyer_personas = create_buyer_personas(&crate::assets::GameAssets::default());
+        let assets = create_mock_game_assets();
+        let buyer_personas = create_buyer_personas(&assets);
         let _ = hand_state.buyer_persona.insert(buyer_personas[0].clone());
 
         assert!(hand_state.cards(Owner::Narc).hand.iter().all(|s| s.is_none()));
@@ -415,7 +417,14 @@ mod tests {
 
     #[test]
     fn test_start_next_hand_preserves_cash_and_heat() {
+        use crate::models::test_helpers::*;
         let mut hand_state = HandState::default();
+
+        // Add enough cards to player deck to avoid exhaustion
+        let player_cards = hand_state.cards_mut(Owner::Player);
+        for i in 0..10 {
+            player_cards.deck.push(create_product(&format!("Test Product {}", i), 50, 5));
+        }
 
         // Simulate some cash and heat
         hand_state.cash = 1500;
@@ -437,8 +446,10 @@ mod tests {
 
     #[test]
     fn test_buyer_deck_resets_between_hands() {
+        use crate::models::test_helpers::create_mock_game_assets;
         let mut hand_state = HandState::default();
-        let buyer_personas = create_buyer_personas(&crate::assets::GameAssets::default());
+        let assets = create_mock_game_assets();
+        let buyer_personas = create_buyer_personas(&assets);
         hand_state.buyer_persona = Some(buyer_personas[0].clone());
 
         // Draw cards - buyer gets cards from persona deck
@@ -470,8 +481,10 @@ mod tests {
 
     #[test]
     fn test_shuffle_cards_back_clears_all_hands() {
+        use crate::models::test_helpers::create_mock_game_assets;
         let mut hand_state = HandState::default();
-        let buyer_personas = create_buyer_personas(&crate::assets::GameAssets::default());
+        let assets = create_mock_game_assets();
+        let buyer_personas = create_buyer_personas(&assets);
         hand_state.buyer_persona = Some(buyer_personas[0].clone());
 
         // Draw cards for all owners

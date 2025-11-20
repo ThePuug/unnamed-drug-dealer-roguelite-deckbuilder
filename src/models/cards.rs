@@ -161,11 +161,11 @@ mod tests {
         }
 
         let mut cards = Cards::new(deck.clone());
-        let original_order: Vec<u32> = cards.deck.iter().map(|c| c.id).collect();
+        let original_order: Vec<String> = cards.deck.iter().map(|c| c.id.clone()).collect();
 
         cards.shuffle_deck();
 
-        let shuffled_order: Vec<u32> = cards.deck.iter().map(|c| c.id).collect();
+        let shuffled_order: Vec<String> = cards.deck.iter().map(|c| c.id.clone()).collect();
 
         // Deck size should be unchanged
         assert_eq!(cards.deck.len(), 100);

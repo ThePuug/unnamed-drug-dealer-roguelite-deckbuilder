@@ -86,11 +86,16 @@ impl TaggedFragment {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct NarrativeFragments {
     // PHRASAL FRAGMENTS (clause level - complete phrases with conjunction tags)
+    #[serde(default)]
     pub subject_clauses: Vec<TaggedFragment>,      // "A desperate housewife", "The soccer mom"
+    #[serde(default)]
     pub need_clauses: Vec<TaggedFragment>,         // "needed her fix", "was in denial"
+    #[serde(default)]
     pub product_clauses: Vec<TaggedFragment>,      // "I had the stuff", "I was holding codeine"
+    #[serde(default)]
     pub location_clauses: Vec<TaggedFragment>,     // "at the park", "in my safe house"
-    pub complication_clauses: Vec<TaggedFragment>, // "the cops tapped my lines", "with heat closing in"
+    #[serde(default)]
+    pub evidence_clauses: Vec<TaggedFragment>,     // "the cops tapped my lines", "someone dropped a dime" (from Evidence cards)
 
     // RESOLUTION CLAUSES (outcome-specific endings)
     #[serde(default)]
@@ -101,10 +106,15 @@ pub struct NarrativeFragments {
 /// Resolution clauses for each outcome type (externalized from hard-coded strings)
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ResolutionClauses {
+    #[serde(default)]
     pub safe: Vec<String>,
+    #[serde(default)]
     pub busted: Vec<String>,
+    #[serde(default)]
     pub folded: Vec<String>,
+    #[serde(default)]
     pub buyer_bailed: Vec<String>,
+    #[serde(default)]
     pub invalid_deal: Vec<String>,
 }
 
@@ -183,6 +193,12 @@ pub enum SentenceStructure {
         subordinate: Box<SentenceStructure>,
         conjunction: ClauseRelation,
         clause2: Box<SentenceStructure>,
+    },
+
+    /// Multi-sentence: Multiple complete sentences joined with periods
+    /// Example: "Subject need. Product and resolution."
+    MultiSentence {
+        sentences: Vec<Box<SentenceStructure>>,
     },
 }
 

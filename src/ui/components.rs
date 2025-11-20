@@ -88,7 +88,7 @@ pub struct DeckStatsDisplay;
 
 #[derive(Component)]
 pub struct DeckBuilderCardButton {
-    pub card_id: u32,
+    pub card_id: String,
 }
 
 // Note: DeckPreset enum temporarily in main.rs root, will be moved to game module

@@ -34,7 +34,7 @@ pub enum CardType {
 /// Card instance
 #[derive(Component, Debug, Clone, Serialize, Deserialize)]
 pub struct Card {
-    pub id: u32,
+    pub id: String,  // Changed from u32 to String for snake_case IDs
     pub name: String,
     pub card_type: CardType,
     // RFC-010: Tags will be added when implementing scenarios

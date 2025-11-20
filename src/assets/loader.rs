@@ -6,6 +6,7 @@ use crate::models::buyer::BuyerPersona;
 use crate::game_state::GameState;
 use super::registry::GameAssets;
 use std::fs;
+use std::collections::HashMap;
 
 /// Asset loader plugin
 pub struct AssetLoaderPlugin;
@@ -72,15 +73,56 @@ fn load_game_assets(mut commands: Commands, mut game_assets: ResMut<GameAssets>)
         }
     }
 
-    // Load evidence (Narc deck) (no default merging - StoryComposer handles fallback)
+    // Load evidence card definitions
+    let mut evidence_defs = HashMap::new();
     match load_and_validate_cards("assets/cards/evidence.ron", "Evidence") {
         Ok(cards) => {
-            game_assets.evidence = cards;
-            info!("Loaded {} evidence cards", game_assets.evidence.len());
+            for card in cards {
+                evidence_defs.insert(card.id.clone(), card);
+            }
+            info!("Loaded {} evidence card definitions", evidence_defs.len());
         }
         Err(e) => {
             error!("Failed to load evidence.ron: {}", e);
             panic!("Critical asset loading failure - fix evidence.ron");
+        }
+    }
+
+    // Load conviction card definitions
+    let mut conviction_defs = HashMap::new();
+    match load_and_validate_cards("assets/cards/convictions.ron", "Conviction") {
+        Ok(cards) => {
+            for card in cards {
+                conviction_defs.insert(card.id.clone(), card);
+            }
+            info!("Loaded {} conviction card definitions", conviction_defs.len());
+        }
+        Err(e) => {
+            error!("Failed to load convictions.ron: {}", e);
+            panic!("Critical asset loading failure - fix convictions.ron");
+        }
+    }
+
+    // Build Narc deck from composition file
+    match load_deck_composition("assets/narc_deck.ron") {
+        Ok(ids) => {
+            let mut narc_deck = Vec::new();
+            for id in ids {
+                // Try evidence first, then conviction
+                if let Some(card) = evidence_defs.get(&id) {
+                    narc_deck.push(card.clone());
+                } else if let Some(card) = conviction_defs.get(&id) {
+                    narc_deck.push(card.clone());
+                } else {
+                    panic!("Narc deck references unknown card ID: {}", id);
+                }
+            }
+            game_assets.evidence = narc_deck;
+            info!("Built Narc deck with {} cards from composition", game_assets.evidence.len());
+        }
+        Err(e) => {
+            error!("Failed to load narc_deck.ron: {}", e);
+            panic!("Critical asset loading failure - fix narc_deck.ron");
         }
     }
 
@@ -120,9 +162,28 @@ fn load_game_assets(mut commands: Commands, mut game_assets: ResMut<GameAssets>)
         }
     }
 
-    // Load buyers (no default merging - StoryComposer handles fallback)
+    // Load buyers and resolve their reaction deck IDs
     match load_and_validate_buyers("assets/buyers.ron") {
-        Ok(buyers) => {
+        Ok(mut buyers) => {
+            // Resolve reaction_deck_ids to actual cards
+            for buyer in &mut buyers {
+                buyer.reaction_deck = buyer.reaction_deck_ids.iter()
+                    .map(|id| {
+                        // Try to find card by ID in locations (search values)
+                        game_assets.locations.values()
+                            .find(|c| &c.id == id)
+                            .cloned()
+                            .or_else(|| {
+                                // Try modifiers
+                                game_assets.modifiers.iter()
+                                    .find(|c| &c.id == id)
+                                    .cloned()
+                            })
+                            .unwrap_or_else(|| panic!("Buyer {} reaction_deck references unknown card ID: {}", buyer.display_name, id))
+                    })
+                    .collect();
+            }
+
             for buyer in &buyers {
                 validate_buyer(buyer).expect("Buyer validation failed");
             }
@@ -153,6 +214,21 @@ fn check_assets_and_transition(
         info!("Assets ready - transitioning to DeckBuilding");
         next_state.set(GameState::DeckBuilding);
     }
+}
+
+/// Load deck composition (list of card IDs) from RON file
+fn load_deck_composition(path: &str) -> Result<Vec<String>, String> {
+    let content = fs::read_to_string(path)
+        .map_err(|e| format!("Failed to read {}: {}", path, e))?;
+
+    let ids: Vec<String> = ron::from_str(&content)
+        .map_err(|e| format!("Failed to parse {} - Check RON syntax:\n{}", path, e))?;
+
+    if ids.is_empty() {
+        return Err(format!("{} is empty - must have at least one card ID", path));
+    }
+
+    Ok(ids)
 }
 
 /// Load and validate card list from RON file

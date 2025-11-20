@@ -106,11 +106,12 @@ pub fn create_control_deck(available: &[Card]) -> Vec<Card> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::test_helpers::*;
 
     #[test]
     fn test_validate_deck_missing_product() {
         let deck = vec![
-            Card { id: 15, name: "Safe House".to_string(), card_type: CardType::Location { evidence: 10, cover: 30, heat: -5 }, narrative_fragments: None },
+            create_location("Safe House", 10, 30, -5),
         ];
         let result = validate_deck(&deck);
         assert!(result.is_err());
@@ -120,10 +121,20 @@ mod tests {
     #[test]
     fn test_validate_deck_missing_location() {
         let deck = vec![
-            Card { id: 10, name: "Weed".to_string(), card_type: CardType::Product { price: 30, heat: 5 }, narrative_fragments: None },
+            create_product("Weed", 30, 5),
         ];
         let result = validate_deck(&deck);
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), "Need at least 1 Location card");
+    }
+
+    #[test]
+    fn test_validate_deck_valid() {
+        let deck = vec![
+            create_product("Weed", 30, 5),
+            create_location("Safe House", 10, 30, -5),
+        ];
+        let result = validate_deck(&deck);
+        assert!(result.is_ok());
     }
 }

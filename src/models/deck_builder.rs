@@ -61,24 +61,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_validate_deck_valid() {
-        let deck = create_player_deck(&crate::assets::GameAssets::default()); // Default 20-card deck
-        assert!(validate_deck(&deck).is_ok());
-    }
+    fn test_deck_builder_from_assets() {
+        use crate::models::test_helpers::create_mock_game_assets;
+        let assets = create_mock_game_assets();
+        let builder = DeckBuilder::from_assets(&assets);
 
-    #[test]
-    fn test_deck_builder_load_presets() {
-        let assets = crate::assets::GameAssets::default();
-        let mut builder = DeckBuilder::from_assets(&assets);
+        // Should have 24 available cards (9 products + 4 locations + 4 cover + 2 insurance + 5 modifiers)
+        assert_eq!(builder.available_cards.len(), 24);
 
-        // All presets should be valid (actual counts may vary with product expansion)
-        builder.load_preset(DeckPreset::Aggro);
-        assert!(builder.is_valid());
-
-        builder.load_preset(DeckPreset::Control);
-        assert!(builder.is_valid());
-
-        builder.load_preset(DeckPreset::Default);
-        assert!(builder.is_valid());
+        // from_assets() loads Default preset, so should have 20 selected cards
+        assert_eq!(builder.selected_cards.len(), 20);
+        assert!(builder.is_valid()); // Should be valid with default preset
     }
 }

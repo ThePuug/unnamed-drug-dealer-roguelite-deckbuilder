@@ -4,6 +4,7 @@
 pub mod fragments;
 pub mod patterns;
 pub mod composer;
+pub mod builder;
 
 #[cfg(test)]
 mod story_test; // Comprehensive story generation test
