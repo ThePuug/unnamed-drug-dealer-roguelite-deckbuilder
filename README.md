@@ -1,8 +1,8 @@
 # Drug Dealer Roguelite Deckbuilder
 
-**Status:** SOW-011 Complete - UI Refactor with Hand Resolution Overlay
+**Status:** SOW-014 Complete - Dynamic Narrative Construction System
 
-An unnamed drug dealer roguelite deckbuilder game built with Rust and Bevy. Features sequential turn-based play with Buyer personas, scenario-driven deals, active slot system, and hand resolution overlay.
+An unnamed drug dealer roguelite deckbuilder game built with Rust and Bevy. Features sequential turn-based play with Buyer personas, scenario-driven deals, active slot system, hand resolution overlay, and dynamic narrative generation with 666K+ unique story variations.
 
 ## Quick Start
 
@@ -93,11 +93,21 @@ cargo build
 - **16:9 Optimized Layout:** Active slots + scenario card + heat bar (top), played pool + player hand (bottom)
 - **Active Slot System:** Visual Product/Location/Conviction/Insurance slots
 - **Vertical Heat Bar:** Dynamic fill, color transitions (green/yellow/red)
-- **Hand Resolution Overlay:** Modal with outcome-specific results
+- **Hand Resolution Overlay:** Modal with outcome-specific results and narrative story
 - **Totals Bar:** Evidence, Cover, Multiplier displayed prominently
 - **Discard Pile:** Vertical list of replaced cards
 - **Buyer Scenario Card:** Shows scenario, demands, multipliers, heat limit
 - **Two-tier Card Sizing:** Small (110x140) for visible hands/pool, Medium (120x152) for player hand/slots
+
+### Dynamic Narrative System (SOW-012, SOW-014)
+- **666K+ Unique Stories:** Grammatically-aware composition from card fragments
+- **20+ Sentence Patterns:** Simple, compound, complex, multi-sentence structures
+- **Element Reordering:** Location, evidence, and other elements vary in position
+- **Context-Aware Conjunctions:** Positive outcomes use "and", negative use "but"
+- **Grammatical Structure Filtering:** Full clauses vs. prepositional phrases
+- **Card-Based Fragments:** Products, buyers, locations, and evidence provide narrative clauses
+- **Optional Clauses:** Cards only specify relevant narrative elements (no empty arrays)
+- **Zero Fallback Text:** All test variations produce grammatically correct stories
 
 ## Controls
 
@@ -114,16 +124,17 @@ cargo build
   - Click NEW DEAL to continue run with same deck
   - Click GO HOME to return to deck builder
 
-## Card Data
+## Asset System
 
-Cards are currently hardcoded in `src/main.rs`:
-- `create_narc_deck()` - 15 cards (shuffled)
-- `create_customer_deck()` - 10 cards (shuffled)
-- `create_player_deck()` - 15 cards (shuffled)
+**Asset Externalization (SOW-013):** All cards, buyers, and narrative content are defined in external RON files under `assets/`:
+- `assets/cards/*.ron` - Card definitions (products, locations, evidence, modifiers, etc.)
+- `assets/buyers.ron` - Buyer personas with scenarios and reaction decks
+- `assets/narc_deck.ron` - Narc deck composition (references cards by ID)
+- `assets/narrative_defaults.ron` - Default narrative fragments
 
-To modify card values, edit these functions and recompile.
+**Card ID System:** Cards use semantic string IDs (`"weed"`, `"safe_house"`, `"patrol"`) for readability and maintainability.
 
-**Note:** Hot-reloadable card data (RON files) is planned for a future iteration.
+**Deduplication:** Cards are defined once and referenced by ID in deck compositions, eliminating duplicates.
 
 ## Project Structure
 
@@ -163,6 +174,9 @@ To modify card values, edit these functions and recompile.
 - ✅ **SOW-010:** Buyer scenarios and product expansion (9 products, 2 scenarios/buyer)
 - ✅ **SOW-011-A:** UI refactor - Core layout & foundation (modular UI, 16:9 layout)
 - ✅ **SOW-011-B:** UI refactor - Hand resolution & polish (overlay, consistent sizing)
+- ✅ **SOW-012:** Narrative generation system (phrasal fragments, pattern composition)
+- ✅ **SOW-013:** Asset externalization (RON files, string IDs, card deduplication)
+- ✅ **SOW-014:** Dynamic narrative construction (666K+ variations, grammatical awareness)
 
 ## Next Steps
 
@@ -170,8 +184,8 @@ See `docs/01-rfc/` for planned features and design documents.
 
 ## Documentation
 
-- **SOWs:** `docs/03-sow/` - 11 statements of work (all merged)
-- **RFCs:** `docs/01-rfc/` - 11 feature requests (10 implemented, 1 rejected)
+- **SOWs:** `docs/03-sow/` - 14 statements of work (all complete and merged to main)
+- **RFCs:** `docs/01-rfc/` - 14 feature requests (13 implemented, 1 rejected)
 - **ADRs:** `docs/02-adr/` - 6 architectural decision records
 - **Specs:** `docs/00-spec/` - Game design specifications with feature matrices
 - **CLAUDE.md:** Instructions for Claude Code sessions
