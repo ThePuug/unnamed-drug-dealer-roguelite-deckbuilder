@@ -17,7 +17,14 @@ use game_state::{GameState, AiActionTimer}; // SOW-AAA Phase 8
 fn main() {
     let mut app = App::new();
 
-    app.add_plugins(DefaultPlugins)
+    app.add_plugins(DefaultPlugins.set(WindowPlugin {
+        primary_window: Some(Window {
+            title: "Drug Dealer Deckbuilder".to_string(),
+            resolution: (1920.0, 1080.0).into(),
+            ..default()
+        }),
+        ..default()
+    }))
         .add_plugins(assets::AssetLoaderPlugin) // SOW-013-A: Load game assets
         .init_state::<GameState>()  // SOW-006: Add state management (starts in AssetLoading)
         .insert_resource(AiActionTimer::default())  // SOW-008: AI pacing timer
@@ -27,6 +34,8 @@ fn main() {
         .add_systems(OnExit(GameState::DeckBuilding), cleanup_deck_builder_ui);  // SOW-013-B: Cleanup UI when leaving
 
     app
+        .add_systems(Startup, ui::scale_ui_to_fit_system)  // Initial UI scaling
+        .add_systems(Update, ui::scale_ui_to_fit_system)  // UI scaling for any window size
         .add_systems(Update, toggle_game_state_ui_system)
         .add_systems(Update, (
             ai_betting_system,
@@ -41,11 +50,13 @@ fn main() {
             update_played_cards_display_system,
             render_buyer_visible_hand_system,
             render_narc_visible_hand_system,
+            update_actor_portraits_system,
             recreate_hand_display_system,
             ui_update_system,
             ui::update_active_slots_system,  // SOW-011-A Phase 4
             ui::update_heat_bar_system,      // SOW-011-A Phase 4
             ui::update_resolution_overlay_system, // SOW-011-B Phase 1
+            ui::update_background_system,    // POC: Location backgrounds
         ).chain())
         .add_systems(Update, (
             card_click_system,

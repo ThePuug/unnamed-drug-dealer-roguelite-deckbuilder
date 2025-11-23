@@ -21,7 +21,7 @@ impl Plugin for AssetLoaderPlugin {
 }
 
 /// Load all game assets from RON files at startup
-fn load_game_assets(mut commands: Commands, mut game_assets: ResMut<GameAssets>) {
+fn load_game_assets(mut commands: Commands, asset_server: Res<AssetServer>, mut game_assets: ResMut<GameAssets>) {
     info!("Loading game assets from RON files...");
 
     // Load narrative defaults first (includes resolution clauses)
@@ -72,6 +72,24 @@ fn load_game_assets(mut commands: Commands, mut game_assets: ResMut<GameAssets>)
             panic!("Critical asset loading failure - fix locations.ron");
         }
     }
+
+    // Load background images for locations
+    load_background_images(&asset_server, &mut game_assets);
+
+    // Load actor portraits
+    load_actor_portraits(&asset_server, &mut game_assets);
+
+    // Load card template
+    game_assets.card_template = asset_server.load("art/card-template.png");
+    info!("Loading card template image");
+
+    // Load card placeholder
+    game_assets.card_placeholder = asset_server.load("art/card-placeholder.png");
+    info!("Loading card placeholder image");
+
+    // Load card back
+    game_assets.card_back = asset_server.load("art/card-back.png");
+    info!("Loading card back image");
 
     // Load evidence card definitions
     let mut evidence_defs = HashMap::new();
@@ -330,4 +348,62 @@ fn load_narrative_defaults(path: &str) -> Result<crate::models::narrative::Narra
 
     ron::from_str::<crate::models::narrative::NarrativeFragments>(&content)
         .map_err(|e| format!("Failed to parse {}: {}", path, e))
+}
+
+/// Load background images for all locations
+fn load_background_images(asset_server: &AssetServer, game_assets: &mut GameAssets) {
+    // Map of location names to their background image filenames
+    let background_files = HashMap::from([
+        ("Safe House", "safe_house.png"),
+        ("Abandoned Warehouse", "abandoned_warehouse.png"),
+        ("Storage Unit", "storage_unit.png"),
+        ("Dead Drop", "dead_drop.png"),
+        ("Locker Room", "locker_room.png"),
+        ("Frat House", "frat_house.png"),
+        ("By the Pool", "by_the_pool.png"),
+        ("At the Park", "at_the_park.png"),
+        ("In a Limo", "in_a_limo.png"),
+        ("Parking Lot", "parking_lot.png"),
+    ]);
+
+    let count = background_files.len();
+    for (location_name, filename) in background_files {
+        let path = format!("art/backgrounds/{}", filename);
+        let handle = asset_server.load(&path);
+        game_assets.background_images.insert(location_name.to_string(), handle);
+        info!("Loading background image: {} -> {}", location_name, path);
+    }
+
+    info!("Initiated loading of {} background images", count);
+}
+
+/// Load actor portrait images
+fn load_actor_portraits(asset_server: &AssetServer, game_assets: &mut GameAssets) {
+    // Map of actor names to their portrait filenames
+    let portrait_files = HashMap::from([
+        ("Frat Bro", "frat-bro.png"),
+        ("Desperate Housewife", "desperate-housewife.png"),
+        ("Wall Street Wolf", "wall-street-wolf.png"),
+        ("Narc", "narc.png"),
+        ("Barista", "barista.png"),
+        ("Displaced Patriot", "displaced-patriot.png"),
+        ("Flower Child", "flower-child.png"),
+        ("Hells Angel", "hells-angel.png"),
+        ("Hippie", "hippie.png"),
+        ("Pimp", "pimp.png"),
+        ("Pretty Woman", "pretty-woman.png"),
+        ("Street Walker", "street-walker.png"),
+        ("Widow", "widow.png"),
+    ]);
+
+    let mut count = 0;
+    for (actor_name, filename) in portrait_files.iter() {
+        count += 1;
+        let path = format!("art/actors/{}", filename);
+        let handle = asset_server.load(&path);
+        game_assets.actor_portraits.insert(actor_name.to_string(), handle);
+        info!("Loading actor portrait: {} -> {}", actor_name, path);
+    }
+
+    info!("Initiated loading of {} actor portraits", count);
 }

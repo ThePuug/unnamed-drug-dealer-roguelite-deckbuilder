@@ -8,12 +8,12 @@ use super::helpers;
 use crate::{DeckPreset, EmojiFont};
 
 pub fn setup_deck_builder(mut commands: Commands, emoji_font: Res<EmojiFont>) {
-    // Deck builder root container (initially visible, game starts in DeckBuilding state)
+    // Deck builder root container - 1920x1080 design, will be scaled/positioned by scale_ui_to_fit_system
     commands.spawn((
         NodeBundle {
             style: Style {
-                width: Val::Percent(100.0),
-                height: Val::Percent(100.0),
+                width: Val::Px(1920.0),
+                height: Val::Px(1080.0),
                 flex_direction: FlexDirection::Column,
                 padding: UiRect::all(Val::Px(20.0)),
                 ..default()
@@ -221,380 +221,249 @@ pub fn setup_deck_builder(mut commands: Commands, emoji_font: Res<EmojiFont>) {
 }
 
 pub fn create_ui(commands: &mut Commands) {
-    // UI Root container
+    // Background image layer (behind everything)
     commands.spawn((
         NodeBundle {
             style: Style {
+                position_type: PositionType::Absolute,
                 width: Val::Percent(100.0),
                 height: Val::Percent(100.0),
-                flex_direction: FlexDirection::Column,
-                padding: UiRect::all(Val::Px(20.0)),
+                overflow: Overflow::clip(),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
                 ..default()
             },
+            z_index: ZIndex::Global(-1),
             background_color: theme::UI_ROOT_BG.into(),
+            ..default()
+        },
+        BackgroundImage,
+    ))
+    .with_children(|parent| {
+        // Image node inside container
+        parent.spawn((
+            NodeBundle {
+                style: Style {
+                    ..default()
+                },
+                ..default()
+            },
+            UiImage::default(),
+            BackgroundImageNode,
+        ));
+    });
+
+    // UI Root container - 1920x1080 design, will be scaled/positioned by scale_ui_to_fit_system
+    commands.spawn((
+        NodeBundle {
+            style: Style {
+                width: Val::Px(1920.0),
+                height: Val::Px(1080.0),
+                flex_direction: FlexDirection::Row,
+                padding: UiRect::all(Val::Px(8.0)),
+                ..default()
+            },
+            background_color: Color::NONE.into(),
             ..default()
         },
         UiRoot,
     ))
     .with_children(|parent| {
         // ====================================================================
-        // SOW-011-A Phase 3: TOP ROW - Active Slots + Scenario Card + Heat Bar
+        // LEFT COLUMN: Narc Hand (full height)
+        // ====================================================================
+        parent.spawn((
+            NodeBundle {
+                style: Style {
+                    height: Val::Percent(100.0),
+                    flex_direction: FlexDirection::Column,
+                    row_gap: Val::Px(8.0),
+                    justify_content: JustifyContent::FlexEnd,
+                    ..default()
+                },
+                ..default()
+            },
+            PlayAreaNarc,
+        ))
+        .with_children(|parent| {
+            // Narc's visible hand section
+            parent.spawn((
+                NodeBundle {
+                    style: Style {
+                        flex_direction: FlexDirection::Column,
+                        row_gap: Val::Px(5.0),
+                        ..default()
+                    },
+                    ..default()
+                },
+                NarcVisibleHand,
+            ));
+        });
+
+        // ====================================================================
+        // CENTER COLUMN: Game Area (4 rows)
         // ====================================================================
         parent.spawn(NodeBundle {
             style: Style {
-                width: Val::Percent(100.0),
-                position_type: PositionType::Relative,
+                flex_grow: 1.0,
+                height: Val::Percent(100.0),
+                flex_direction: FlexDirection::Column,
+                row_gap: Val::Px(5.0),
                 ..default()
             },
             ..default()
         })
         .with_children(|parent| {
-            // Status (absolute positioned, top-left, floated over main content)
-            parent.spawn((
-                NodeBundle {
-                    style: Style {
-                        position_type: PositionType::Absolute,
-                        left: Val::Px(10.0),
-                        top: Val::Px(10.0),
-                        ..default()
-                    },
-                    z_index: ZIndex::Global(10),
-                    ..default()
-                },
-                StatusDisplay,
-            ))
-            .with_children(|parent| {
-                parent.spawn(TextBundle::from_section(
-                    "Round 1/3\nCash: $0",
-                    TextStyle {
-                        font_size: 14.0,
-                        color: theme::TEXT_HEADER,
-                        ..default()
-                    },
-                ));
-            });
-
-            // Centered content (slots + scenario + heat bar)
+            // ================================================================
+            // ROW 1: Deal Row - Slots/Scenario/Heat (center aligned)
+            // ================================================================
             parent.spawn(NodeBundle {
                 style: Style {
                     width: Val::Percent(100.0),
                     flex_direction: FlexDirection::Row,
                     justify_content: JustifyContent::Center,
                     align_items: AlignItems::FlexEnd,
-                    column_gap: Val::Px(15.0),
-                    padding: UiRect::all(Val::Px(10.0)),
+                    column_gap: Val::Px(12.0),
+                    padding: UiRect::vertical(Val::Px(5.0)),
                     ..default()
                 },
                 ..default()
             })
             .with_children(|parent| {
-                // Active card slots (horizontal row - Location, Product, Conviction, Insurance)
-                // Slots are just empty containers, will be populated by update_active_slots_system
-                parent.spawn((
-                NodeBundle {
-                    style: Style {
-                        flex_direction: FlexDirection::Row,
-                        column_gap: Val::Px(10.0),
-                        align_items: AlignItems::FlexEnd, // Bottom justify to match scenario card
-                        ..default()
-                    },
-                    ..default()
-                },
-                ActiveSlotsContainer,
-                ))
-                .with_children(|parent| {
-                    // Create empty slot containers (will be populated by system)
-                    for slot_type in [SlotType::Location, SlotType::Product, SlotType::Conviction, SlotType::Insurance] {
-                        parent.spawn((
-                            NodeBundle {
-                                style: Style {
-                                    // No fixed size - let card/placeholder inside determine dimensions
-                                    flex_direction: FlexDirection::Column,
-                                    justify_content: JustifyContent::Center,
-                                    align_items: AlignItems::Center,
-                                    ..default()
-                                },
-                                ..default()
-                            },
-                            ActiveSlot { slot_type },
-                        ));
-                    }
-                });
-
-                // Scenario card (larger to match heat bar height)
-                parent.spawn((
-                NodeBundle {
-                    style: Style {
-                        width: Val::Px(280.0),
-                        height: Val::Px(220.0), // Match heat bar height
-                        flex_direction: FlexDirection::Column,
-                        padding: UiRect::all(Val::Px(12.0)),
-                        border: UiRect::all(Val::Px(3.0)),
-                        align_self: AlignSelf::FlexEnd, // Bottom align
-                        ..default()
-                    },
-                    background_color: theme::SCENARIO_CARD_BG.into(),
-                    border_color: theme::SCENARIO_CARD_BORDER.into(),
-                    ..default()
-                },
-                BuyerScenarioCard,
-            ))
-            .with_children(|parent| {
-                parent.spawn((
-                    TextBundle::from_section(
-                        "Buyer Scenario Info",
-                        TextStyle {
-                            font_size: 16.0,
-                            color: theme::SCENARIO_CARD_TEXT,
-                            ..default()
-                        },
-                    ),
-                    BuyerScenarioCardText,
-                ));
-                });
-
-                // Vertical heat bar (matches scenario card height)
-                parent.spawn(NodeBundle {
-                style: Style {
-                    width: Val::Px(40.0), // Slightly wider for visibility
-                    height: Val::Px(220.0), // Match scenario card height
-                    flex_direction: FlexDirection::Column,
-                    align_self: AlignSelf::FlexEnd, // Bottom align
-                    justify_content: JustifyContent::FlexEnd,
-                    ..default()
-                },
-                ..default()
-            })
-            .with_children(|parent| {
-                // Heat bar container
-                parent.spawn((
-                    NodeBundle {
-                        style: Style {
-                            width: Val::Percent(100.0),
-                            flex_grow: 1.0,
-                            flex_direction: FlexDirection::Column,
-                            justify_content: JustifyContent::FlexEnd, // Fill from bottom
-                            border: UiRect::all(Val::Px(2.0)),
-                            ..default()
-                        },
-                        background_color: theme::HEAT_BAR_BG.into(),
-                        border_color: theme::CARD_BORDER_NORMAL.into(),
-                        ..default()
-                    },
-                    HeatBar,
-                ))
-                .with_children(|parent| {
-                    // Heat bar fill
+                    // Active card slots (horizontal row)
                     parent.spawn((
                         NodeBundle {
                             style: Style {
-                                width: Val::Percent(100.0),
-                                height: Val::Percent(0.0), // Updated by system
+                                flex_direction: FlexDirection::Row,
+                                column_gap: Val::Px(10.0),
+                                align_items: AlignItems::FlexEnd,
                                 ..default()
                             },
-                            background_color: theme::HEAT_BAR_GREEN.into(),
                             ..default()
                         },
-                        HeatBarFill,
-                    ));
-                });
+                        ActiveSlotsContainer,
+                    ))
+                    .with_children(|parent| {
+                        // Create empty slot containers - let cards define size
+                        for slot_type in [SlotType::Location, SlotType::Product, SlotType::Conviction, SlotType::Insurance] {
+                            parent.spawn((
+                                NodeBundle {
+                                    style: Style {
+                                        flex_direction: FlexDirection::Column,
+                                        justify_content: JustifyContent::Center,
+                                        align_items: AlignItems::Center,
+                                        ..default()
+                                    },
+                                    ..default()
+                                },
+                                ActiveSlot { slot_type },
+                            ));
+                        }
+                    });
 
-                // Heat bar text below
-                parent.spawn((
-                    TextBundle::from_section(
-                        "0/100",
-                        TextStyle {
-                            font_size: 11.0,
-                            color: theme::TEXT_SECONDARY,
+                    // Scenario card - landscape orientation (870:601 aspect ratio, 275px height)
+                    parent.spawn((
+                        NodeBundle {
+                            style: Style {
+                                width: Val::Px(398.09),
+                                height: Val::Px(275.0),
+                                flex_direction: FlexDirection::Column,
+                                padding: UiRect::all(Val::Px(8.0)),
+                                border: UiRect::all(Val::Px(2.0)),
+                                align_self: AlignSelf::FlexEnd,
+                                ..default()
+                            },
+                            background_color: theme::SCENARIO_CARD_BG.into(),
+                            border_color: theme::SCENARIO_CARD_BORDER.into(),
                             ..default()
                         },
-                    ).with_text_justify(JustifyText::Center),
-                    HeatBarText,
-                ));
-                });
-            });
-        });
+                        BuyerScenarioCard,
+                    ))
+                    .with_children(|parent| {
+                        parent.spawn((
+                            TextBundle::from_section(
+                                "Buyer Scenario Info",
+                                TextStyle {
+                                    font_size: 16.0,
+                                    color: theme::SCENARIO_CARD_TEXT,
+                                    ..default()
+                                },
+                            ),
+                            BuyerScenarioCardText,
+                        ));
+                    });
 
-        // ====================================================================
-        // SOW-011-A Phase 3: MIDDLE + BOTTOM COMBINED ROW
-        // Narc and Buyer hands span full height (middle + bottom)
-        // Center has: Played cards area (middle) + Player hand (bottom)
-        // ====================================================================
-        parent.spawn(NodeBundle {
-            style: Style {
-                width: Val::Percent(100.0),
-                flex_grow: 1.0, // Take remaining space
-                flex_direction: FlexDirection::Row,
-                column_gap: Val::Px(15.0),
-                padding: UiRect::all(Val::Px(10.0)),
-                ..default()
-            },
-            ..default()
-        })
-        .with_children(|parent| {
-            // ================================================================
-            // LEFT: Narc section (spans full height - played cards + visible hand)
-            // ================================================================
-            parent.spawn((
-                NodeBundle {
-                    style: Style {
-                        width: Val::Px(150.0),
-                        flex_direction: FlexDirection::Column,
-                        padding: UiRect::all(Val::Px(8.0)),
-                        border: UiRect::all(Val::Px(2.0)),
-                        row_gap: Val::Px(10.0),
-                        justify_content: JustifyContent::FlexStart, // Top justify (not bottom)
-                        ..default()
-                    },
-                    background_color: Color::srgba(0.2, 0.1, 0.1, 0.5).into(),
-                    border_color: theme::NARC_SECTION_COLOR.into(),
-                    ..default()
-                },
-                PlayAreaNarc,
-            ))
-            .with_children(|parent| {
-                // Narc label
-                parent.spawn(TextBundle::from_section(
-                    "⚠ Narc",
-                    TextStyle {
-                        font_size: 14.0,
-                        color: theme::NARC_SECTION_COLOR,
-                        ..default()
-                    },
-                ));
-
-                // Narc's visible hand section (upcoming cards, no label)
-                parent.spawn((
-                    NodeBundle {
-                        style: Style {
-                            flex_direction: FlexDirection::Column,
-                            row_gap: Val::Px(5.0),
-                            padding: UiRect::top(Val::Px(10.0)),
-                            ..default()
-                        },
-                        ..default()
-                    },
-                    NarcVisibleHand,
-                ));
-            });
-
-            // ================================================================
-            // CENTER: Played cards area (middle) + Player hand (bottom)
-            // ================================================================
-            parent.spawn(NodeBundle {
-                style: Style {
-                    flex_grow: 1.0,
-                    flex_direction: FlexDirection::Column,
-                    row_gap: Val::Px(10.0),
-                    justify_content: JustifyContent::SpaceBetween, // Totals/pool at top, hand at bottom
-                    ..default()
-                },
-                ..default()
-            })
-            .with_children(|parent| {
-                // Top section: Totals bar + Played pool
-                parent.spawn(NodeBundle {
-                    style: Style {
-                        flex_direction: FlexDirection::Column,
-                        row_gap: Val::Px(10.0),
-                        ..default()
-                    },
-                    ..default()
-                })
-                .with_children(|parent| {
-                    // Totals bar
+                    // Vertical heat bar - 275px to match card height
                     parent.spawn(NodeBundle {
                         style: Style {
-                            width: Val::Percent(100.0),
-                            flex_direction: FlexDirection::Row,
-                            column_gap: Val::Px(30.0),
-                            justify_content: JustifyContent::Center,
-                            padding: UiRect::all(Val::Px(8.0)),
+                            width: Val::Px(42.0),
+                            height: Val::Px(275.0),
+                            flex_direction: FlexDirection::Column,
+                            align_self: AlignSelf::FlexEnd,
+                            justify_content: JustifyContent::FlexEnd,
                             ..default()
                         },
                         ..default()
                     })
-                .with_children(|parent| {
-                    // Evidence total
-                    parent.spawn((
-                        TextBundle::from_section(
-                            "● Evidence: 0",
-                            TextStyle {
-                                font_size: 16.0,
-                                color: theme::EVIDENCE_CARD_COLOR,
+                    .with_children(|parent| {
+                        // Heat bar container
+                        parent.spawn((
+                            NodeBundle {
+                                style: Style {
+                                    width: Val::Percent(100.0),
+                                    flex_grow: 1.0,
+                                    flex_direction: FlexDirection::Column,
+                                    justify_content: JustifyContent::FlexEnd,
+                                    border: UiRect::all(Val::Px(2.0)),
+                                    ..default()
+                                },
+                                background_color: theme::HEAT_BAR_BG.into(),
+                                border_color: theme::CARD_BORDER_NORMAL.into(),
                                 ..default()
                             },
-                        ),
-                        EvidencePool,
-                    ));
+                            HeatBar,
+                        ))
+                        .with_children(|parent| {
+                            // Heat bar fill
+                            parent.spawn((
+                                NodeBundle {
+                                    style: Style {
+                                        width: Val::Percent(100.0),
+                                        height: Val::Percent(0.0),
+                                        ..default()
+                                    },
+                                    background_color: theme::HEAT_BAR_GREEN.into(),
+                                    ..default()
+                                },
+                                HeatBarFill,
+                            ));
+                        });
 
-                    // Cover total
-                    parent.spawn((
-                        TextBundle::from_section(
-                            "● Cover: 0",
-                            TextStyle {
-                                font_size: 16.0,
-                                color: theme::COVER_CARD_COLOR,
-                                ..default()
-                            },
-                        ),
-                        CoverPool,
-                    ));
+                        // Heat bar text below
+                        parent.spawn((
+                            TextBundle::from_section(
+                                "0/100",
+                                TextStyle {
+                                    font_size: 11.0,
+                                    color: theme::TEXT_SECONDARY,
+                                    ..default()
+                                },
+                            ).with_text_justify(JustifyText::Center),
+                            HeatBarText,
+                        ));
+                    });
 
-                    // Multiplier total
-                    parent.spawn((
-                        TextBundle::from_section(
-                            "● Multiplier: ×1.0",
-                            TextStyle {
-                                font_size: 16.0,
-                                color: theme::DEAL_MODIFIER_CARD_COLOR,
-                                ..default()
-                            },
-                        ),
-                        DealModPool,
-                    ));
-                });
-
-                // Middle: Played pool + Discard pile (side by side)
-                parent.spawn(NodeBundle {
-                    style: Style {
-                        width: Val::Percent(100.0),
-                        flex_direction: FlexDirection::Row,
-                        column_gap: Val::Px(10.0),
-                        ..default()
-                    },
-                    ..default()
-                })
-                .with_children(|parent| {
-                    // Played cards pool (grows to fill space)
+                    // Discard pile - 275px to match card height
                     parent.spawn((
                         NodeBundle {
                             style: Style {
-                                flex_grow: 1.0,
-                                flex_direction: FlexDirection::Row,
-                                flex_wrap: FlexWrap::Wrap,
-                                column_gap: Val::Px(5.0),
-                                row_gap: Val::Px(5.0),
-                                padding: UiRect::all(Val::Px(10.0)),
-                                justify_content: JustifyContent::Center,
-                                min_height: Val::Px(140.0),
-                                ..default()
-                            },
-                            background_color: Color::srgba(0.1, 0.1, 0.15, 0.8).into(),
-                            ..default()
-                        },
-                        PlayAreaDealer,
-                    ));
-
-                    // Discard pile (right side, vertical list)
-                    parent.spawn((
-                        NodeBundle {
-                            style: Style {
-                                width: Val::Px(150.0),
+                                width: Val::Px(190.0),
+                                height: Val::Px(275.0),
                                 flex_direction: FlexDirection::Column,
-                                padding: UiRect::all(Val::Px(8.0)),
+                                padding: UiRect::all(Val::Px(6.0)),
                                 border: UiRect::all(Val::Px(2.0)),
                                 row_gap: Val::Px(3.0),
+                                align_self: AlignSelf::FlexEnd,
                                 ..default()
                             },
                             background_color: Color::srgba(0.1, 0.1, 0.1, 0.8).into(),
@@ -613,24 +482,121 @@ pub fn create_ui(commands: &mut Commands) {
                                 ..default()
                             },
                         ));
-                        // Discarded cards will be added by system
                     });
-                });
-                });
+            });
 
-                // Bottom: Player hand with betting buttons immediately to the right
-                parent.spawn(NodeBundle {
+            // ================================================================
+            // ROW 2: Counters Row - Evidence, Cover, Multiplier totals
+            // ================================================================
+            parent.spawn(NodeBundle {
+                style: Style {
+                    width: Val::Percent(100.0),
+                    flex_direction: FlexDirection::Row,
+                    column_gap: Val::Px(30.0),
+                    justify_content: JustifyContent::Center,
+                    padding: UiRect::vertical(Val::Px(5.0)),
+                    ..default()
+                },
+                ..default()
+            })
+            .with_children(|parent| {
+                // Evidence total
+                parent.spawn((
+                    TextBundle::from_section(
+                        "● Evidence: 0",
+                        TextStyle {
+                            font_size: 16.0,
+                            color: theme::EVIDENCE_CARD_COLOR,
+                            ..default()
+                        },
+                    ),
+                    EvidencePool,
+                ));
+
+                // Cover total
+                parent.spawn((
+                    TextBundle::from_section(
+                        "● Cover: 0",
+                        TextStyle {
+                            font_size: 16.0,
+                            color: theme::COVER_CARD_COLOR,
+                            ..default()
+                        },
+                    ),
+                    CoverPool,
+                ));
+
+                // Multiplier total
+                parent.spawn((
+                    TextBundle::from_section(
+                        "● Multiplier: ×1.0",
+                        TextStyle {
+                            font_size: 16.0,
+                            color: theme::DEAL_MODIFIER_CARD_COLOR,
+                            ..default()
+                        },
+                    ),
+                    DealModPool,
+                ));
+            });
+
+            // ================================================================
+            // ROW 3: Play Area Row - Played cards only (no wrapper, direct container)
+            // ================================================================
+            parent.spawn((
+                NodeBundle {
                     style: Style {
                         width: Val::Percent(100.0),
+                        flex_grow: 1.0, // Take available space
                         flex_direction: FlexDirection::Row,
+                        flex_wrap: FlexWrap::Wrap,
                         justify_content: JustifyContent::Center,
-                        align_items: AlignItems::FlexEnd, // Bottom justify content
-                        align_self: AlignSelf::FlexEnd, // Align entire panel to bottom
-                        column_gap: Val::Px(15.0),
-                        padding: UiRect::all(Val::Px(10.0)),
+                        align_content: AlignContent::FlexStart, // Align cards to top
                         ..default()
                     },
-                    background_color: theme::PLAYER_HAND_BG.into(),
+                    ..default()
+                },
+                PlayAreaDealer,
+            ));
+
+            // ================================================================
+            // ROW 4: Player Hand Row - 3 columns (Narc Image | Player Hand | Buyer Image)
+            // ================================================================
+            parent.spawn(NodeBundle {
+                style: Style {
+                    width: Val::Percent(100.0),
+                    flex_direction: FlexDirection::Row,
+                    justify_content: JustifyContent::SpaceBetween,
+                    align_items: AlignItems::FlexEnd,
+                    padding: UiRect::vertical(Val::Px(5.0)),
+                    ..default()
+                },
+                ..default()
+            })
+            .with_children(|parent| {
+                // Left: Narc portrait - 50% larger than 70% (255 * 1.5 = 383)
+                parent.spawn((
+                    NodeBundle {
+                        style: Style {
+                            width: Val::Px(383.0),
+                            height: Val::Px(383.0),
+                            ..default()
+                        },
+                        ..default()
+                    },
+                    UiImage::default(),
+                    NarcPortrait,
+                ));
+
+                // Center: Player hand + betting buttons
+                parent.spawn(NodeBundle {
+                    style: Style {
+                        flex_direction: FlexDirection::Row,
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::FlexEnd,
+                        column_gap: Val::Px(15.0),
+                        ..default()
+                    },
                     ..default()
                 })
                 .with_children(|parent| {
@@ -648,14 +614,14 @@ pub fn create_ui(commands: &mut Commands) {
                         PlayerHandDisplay,
                     ));
 
-                    // Betting buttons (immediately to right, vertically stacked)
+                    // Betting buttons (vertically stacked)
                     parent.spawn((
                         NodeBundle {
                             style: Style {
                                 flex_direction: FlexDirection::Column,
                                 justify_content: JustifyContent::Center,
                                 row_gap: Val::Px(10.0),
-                                display: Display::Flex, // Always visible
+                                display: Display::Flex,
                                 ..default()
                             },
                             ..default()
@@ -663,7 +629,7 @@ pub fn create_ui(commands: &mut Commands) {
                         BettingActionsContainer,
                     ))
                     .with_children(|parent| {
-                        // Pass button (check)
+                        // Pass button - fixed pixels
                         parent.spawn((
                             ButtonBundle {
                                 style: Style {
@@ -689,7 +655,7 @@ pub fn create_ui(commands: &mut Commands) {
                             ));
                         });
 
-                        // Bail Out button (fold)
+                        // Bail Out button - fixed pixels
                         parent.spawn((
                             ButtonBundle {
                                 style: Style {
@@ -716,57 +682,52 @@ pub fn create_ui(commands: &mut Commands) {
                         });
                     });
                 });
-            });
 
-            // ================================================================
-            // RIGHT: Buyer section (spans full height - deck panel + visible hand)
-            // ================================================================
-            parent.spawn((
-                NodeBundle {
-                    style: Style {
-                        width: Val::Px(150.0),
-                        flex_direction: FlexDirection::Column,
-                        padding: UiRect::all(Val::Px(8.0)),
-                        border: UiRect::all(Val::Px(2.0)),
-                        row_gap: Val::Px(10.0),
-                        justify_content: JustifyContent::FlexEnd, // Bottom justify
-                        ..default()
-                    },
-                    background_color: Color::srgba(0.2, 0.2, 0.1, 0.5).into(),
-                    border_color: theme::BUYER_SECTION_COLOR.into(),
-                    ..default()
-                },
-                BuyerDeckPanel,
-            ))
-            .with_children(|parent| {
-                // Buyer label
-                parent.spawn(TextBundle::from_section(
-                    "⚠ Buyer",
-                    TextStyle {
-                        font_size: 14.0,
-                        color: theme::BUYER_SECTION_COLOR,
-                        ..default()
-                    },
-                ));
-
-                // Buyer deck section (cards coming up)
-                // Will be populated by render_buyer_visible_hand_system
-                // For now, just the container
-
-                // Buyer's visible hand section (at bottom of panel, no label)
+                // Right: Buyer portrait - 50% larger than 70% (255 * 1.5 = 383)
                 parent.spawn((
                     NodeBundle {
                         style: Style {
-                            flex_direction: FlexDirection::Column,
-                            row_gap: Val::Px(5.0),
-                            flex_grow: 1.0,
+                            width: Val::Px(383.0),
+                            height: Val::Px(383.0),
                             ..default()
                         },
                         ..default()
                     },
-                    BuyerVisibleHand,
+                    UiImage::default(),
+                    BuyerPortrait,
                 ));
             });
+        });
+
+        // ====================================================================
+        // RIGHT COLUMN: Buyer Hand (full height)
+        // ====================================================================
+        parent.spawn((
+            NodeBundle {
+                style: Style {
+                    height: Val::Percent(100.0),
+                    flex_direction: FlexDirection::Column,
+                    row_gap: Val::Px(8.0),
+                    justify_content: JustifyContent::FlexEnd,
+                    ..default()
+                },
+                ..default()
+            },
+            BuyerDeckPanel,
+        ))
+        .with_children(|parent| {
+            // Buyer's visible hand section
+            parent.spawn((
+                NodeBundle {
+                    style: Style {
+                        flex_direction: FlexDirection::Column,
+                        row_gap: Val::Px(5.0),
+                        ..default()
+                    },
+                    ..default()
+                },
+                BuyerVisibleHand,
+            ));
         });
 
         // ====================================================================

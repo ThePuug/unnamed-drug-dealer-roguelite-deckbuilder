@@ -36,8 +36,10 @@ impl<'a> FragmentContext<'a> {
         defaults: &'a NarrativeFragments
     ) -> Self {
         // Find relevant cards once
-        let product_card = played_cards.iter().find(|c| matches!(c.card_type, CardType::Product { .. }));
-        let location_card = played_cards.iter().find(|c| matches!(c.card_type, CardType::Location { .. }));
+        // For override card types (Product, Location), find the LAST one played (active after overrides)
+        let product_card = played_cards.iter().rev().find(|c| matches!(c.card_type, CardType::Product { .. }));
+        let location_card = played_cards.iter().rev().find(|c| matches!(c.card_type, CardType::Location { .. }));
+        // For additive card types (Evidence), all cards matter
         let evidence_cards: Vec<&Card> = played_cards.iter()
             .filter(|c| matches!(c.card_type, CardType::Evidence { .. }))
             .collect();

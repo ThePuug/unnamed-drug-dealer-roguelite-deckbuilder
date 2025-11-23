@@ -90,6 +90,8 @@ pub fn recreate_hand_display_system(
     mut commands: Commands,
     children_query: Query<&Children>,
     _card_button_query: Query<Entity, With<CardButton>>,
+    game_assets: Res<crate::assets::GameAssets>,
+    emoji_font: Res<crate::EmojiFont>,
 ) {
     // Check if hand state changed
     if hand_state_changed.get_single().is_err() {
@@ -134,6 +136,8 @@ pub fn recreate_hand_display_system(
                         ui::CardSize::Medium,
                         ui::CardDisplayState::Active,
                         CardButton { card_index: slot_index },
+                        game_assets.card_template.clone(),
+                        &emoji_font,
                     );
                 } else {
                     // Show placeholder for empty slot (Medium size, no margin)
@@ -142,6 +146,7 @@ pub fn recreate_hand_display_system(
                         "Drawing...",
                         ui::CardSize::Medium,
                         theme::CARD_BORDER_NORMAL,
+                        game_assets.card_back.clone(),
                     );
                 }
             }
@@ -180,6 +185,8 @@ pub fn populate_deck_builder_cards_system(
     deck_builder: Res<DeckBuilder>,
     pool_container_query: Query<Entity, With<CardPoolContainer>>,
     card_button_query: Query<Entity, With<DeckBuilderCardButton>>,
+    game_assets: Res<crate::assets::GameAssets>,
+    emoji_font: Res<crate::EmojiFont>,
 ) {
     if !deck_builder.is_changed() {
         return;
@@ -228,43 +235,19 @@ pub fn populate_deck_builder_cards_system(
                     ui::CardDisplayState::Inactive
                 };
 
-                // Use helper for deck builder card buttons
-                let (width, _height) = ui::CardSize::DeckBuilder.dimensions();
-                let font_size = ui::CardSize::DeckBuilder.font_size();
-                let card_color = ui::get_card_color(&card.card_type, display_state);
-                let border_color = ui::get_border_color(display_state);
-                let card_text = ui::format_card_text_compact(&card.name, &card.card_type);
-
-                parent.spawn((
-                    ButtonBundle {
-                        style: Style {
-                            width: Val::Px(width),
-                            height: Val::Px(130.0), // Slightly taller for deck builder
-                            padding: UiRect::all(Val::Px(6.0)),
-                            margin: UiRect::all(Val::Px(3.0)),
-                            border: UiRect::all(Val::Px(2.0)),
-                            justify_content: JustifyContent::Center,
-                            align_items: AlignItems::Center,
-                            ..default()
-                        },
-                        background_color: card_color.into(),
-                        border_color: border_color.into(),
-                        ..default()
-                    },
+                // Use template-based rendering for deck builder cards
+                ui::spawn_card_button(
+                    parent,
+                    &card.name,
+                    &card.card_type,
+                    ui::CardSize::Small,
+                    display_state,
                     DeckBuilderCardButton {
                         card_id: card.id.clone(),
                     },
-                ))
-                .with_children(|parent| {
-                    parent.spawn(TextBundle::from_section(
-                        card_text,
-                        TextStyle {
-                            font_size,
-                            color: Color::WHITE,
-                            ..default()
-                        },
-                    ).with_text_justify(JustifyText::Center));
-                });
+                    game_assets.card_template.clone(),
+                    &emoji_font,
+                );
             }
         });
     }
@@ -303,6 +286,8 @@ pub fn update_played_cards_display_system(
     mut commands: Commands,
     children_query: Query<&Children>,
     card_display_query: Query<Entity, With<PlayedCardDisplay>>,
+    game_assets: Res<crate::assets::GameAssets>,
+    emoji_font: Res<crate::EmojiFont>,
 ) {
     let Ok(hand_state) = hand_state_query.get_single() else {
         return;
@@ -349,6 +334,8 @@ pub fn update_played_cards_display_system(
                             ui::CardDisplayState::Active,
                             true, // compact text
                             PlayedCardDisplay,
+                            game_assets.card_template.clone(),
+                            &emoji_font,
                         );
                     }
                     // Product, Location, Conviction, Insurance go to active slots (Phase 4)
@@ -365,6 +352,8 @@ pub fn render_buyer_visible_hand_system(
     mut commands: Commands,
     children_query: Query<&Children>,
     card_display_query: Query<Entity, With<PlayedCardDisplay>>,
+    game_assets: Res<crate::assets::GameAssets>,
+    emoji_font: Res<crate::EmojiFont>,
 ) {
     let Ok(hand_state) = hand_state_query.get_single() else {
         return;
@@ -374,56 +363,71 @@ pub fn render_buyer_visible_hand_system(
         return;
     };
 
-    // Clear old card displays
+    // Clear ALL children (cards and placeholders)
     if let Ok(children) = children_query.get(buyer_area) {
         for &child in children.iter() {
-            if card_display_query.get(child).is_ok() {
-                commands.entity(child).despawn_recursive();
+            commands.entity(child).despawn_recursive();
+        }
+    }
+
+    // Display buyer hand with placeholders for empty slots (like player hand)
+    commands.entity(buyer_area).with_children(|parent| {
+        for slot in hand_state.cards(Owner::Buyer).hand.iter() {
+            if let Some(card) = slot {
+                // Show actual card (Medium size)
+                ui::spawn_card_with_template(
+                    parent,
+                    &card.name,
+                    &card.card_type,
+                    ui::CardSize::Medium,
+                    ui::CardDisplayState::Active,
+                    PlayedCardDisplay,
+                    game_assets.card_template.clone(),
+                    &emoji_font,
+                );
+            } else {
+                // Show placeholder for empty slot (Medium size)
+                ui::spawn_placeholder(
+                    parent,
+                    "Drawing...",
+                    ui::CardSize::Medium,
+                    theme::CARD_BORDER_NORMAL,
+                    game_assets.card_back.clone(),
+                );
+            }
+        }
+    });
+}
+
+pub fn update_actor_portraits_system(
+    hand_state_query: Query<&HandState>,
+    mut buyer_portrait_query: Query<&mut UiImage, (With<BuyerPortrait>, Without<NarcPortrait>)>,
+    mut narc_portrait_query: Query<&mut UiImage, (With<NarcPortrait>, Without<BuyerPortrait>)>,
+    game_assets: Res<crate::assets::GameAssets>,
+) {
+    let Ok(hand_state) = hand_state_query.get_single() else {
+        return;
+    };
+
+    // Update buyer portrait based on current buyer persona
+    if let Ok(mut buyer_image) = buyer_portrait_query.get_single_mut() {
+        if let Some(persona) = &hand_state.buyer_persona {
+            if let Some(portrait_handle) = game_assets.actor_portraits.get(&persona.display_name) {
+                if buyer_image.texture != *portrait_handle {
+                    buyer_image.texture = portrait_handle.clone();
+                }
             }
         }
     }
 
-    // Display each card in buyer_hand (use Small size for consistency)
-    commands.entity(buyer_area).with_children(|parent| {
-        let buyer_hand: Vec<_> = hand_state.cards(Owner::Buyer).into();
-        for card in buyer_hand.iter() {
-            // Use Small size (same as Narc hand and active slots)
-            let (width, height) = ui::CardSize::Small.dimensions();
-            let font_size = ui::CardSize::Small.font_size();
-            let card_color = ui::get_buyer_card_color(&card.card_type);
-
-            let card_text = ui::format_card_text_compact(&card.name, &card.card_type);
-
-            parent.spawn((
-                NodeBundle {
-                    style: Style {
-                        width: Val::Px(width),
-                        height: Val::Px(height),
-                        justify_content: JustifyContent::Center,
-                        align_items: AlignItems::Center,
-                        padding: UiRect::all(Val::Px(theme::SPACING_SMALL)),
-                        border: UiRect::all(Val::Px(theme::CARD_BORDER_WIDTH)),
-                        margin: UiRect::all(Val::Px(4.0)),
-                        ..default()
-                    },
-                    background_color: card_color.into(),
-                    border_color: theme::BUYER_HAND_BORDER.into(),
-                    ..default()
-                },
-                PlayedCardDisplay,
-            ))
-            .with_children(|parent| {
-                parent.spawn(TextBundle::from_section(
-                    card_text,
-                    TextStyle {
-                        font_size,
-                        color: Color::WHITE,
-                        ..default()
-                    },
-                ));
-            });
+    // Update narc portrait (always "Narc")
+    if let Ok(mut narc_image) = narc_portrait_query.get_single_mut() {
+        if let Some(portrait_handle) = game_assets.actor_portraits.get("Narc") {
+            if narc_image.texture != *portrait_handle {
+                narc_image.texture = portrait_handle.clone();
+            }
         }
-    });
+    }
 }
 
 pub fn render_narc_visible_hand_system(
@@ -432,6 +436,7 @@ pub fn render_narc_visible_hand_system(
     mut commands: Commands,
     children_query: Query<&Children>,
     card_display_query: Query<Entity, With<PlayedCardDisplay>>,
+    game_assets: Res<crate::assets::GameAssets>,
 ) {
     let Ok(hand_state) = hand_state_query.get_single() else {
         return;
@@ -450,39 +455,45 @@ pub fn render_narc_visible_hand_system(
         }
     }
 
-    // Display face-down cards (? placeholders)
+    // Display face-down cards using card back image
     commands.entity(narc_area).with_children(|parent| {
         let narc_hand: Vec<_> = hand_state.cards(Owner::Narc).into();
         for _ in 0..narc_hand.len() {
-            let (width, height) = ui::CardSize::Small.dimensions();
+            let (width, _) = ui::CardSize::Medium.dimensions();
+
+            // Use template aspect ratio (601x870) to calculate height
+            let template_aspect = 601.0 / 870.0;
+            let height = width / template_aspect;
 
             parent.spawn((
                 NodeBundle {
                     style: Style {
                         width: Val::Px(width),
                         height: Val::Px(height),
-                        justify_content: JustifyContent::Center,
-                        align_items: AlignItems::Center,
-                        padding: UiRect::all(Val::Px(8.0)),
-                        border: UiRect::all(Val::Px(2.0)),
-                        margin: UiRect::all(Val::Px(4.0)),
+                        position_type: PositionType::Relative,
                         ..default()
                     },
-                    background_color: theme::PLACEHOLDER_BG.into(),
-                    border_color: theme::NARC_SECTION_COLOR.into(),
                     ..default()
                 },
                 PlayedCardDisplay,
             ))
             .with_children(|parent| {
-                parent.spawn(TextBundle::from_section(
-                    "?",
-                    TextStyle {
-                        font_size: 24.0,
-                        color: theme::NARC_SECTION_COLOR,
+                // Card back image (fills entire card)
+                parent.spawn((
+                    NodeBundle {
+                        style: Style {
+                            position_type: PositionType::Absolute,
+                            width: Val::Percent(100.0),
+                            height: Val::Percent(100.0),
+                            ..default()
+                        },
                         ..default()
                     },
-                ).with_text_justify(JustifyText::Center));
+                    UiImage {
+                        texture: game_assets.card_back.clone(),
+                        ..default()
+                    },
+                ));
             });
         }
     });

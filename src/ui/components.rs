@@ -11,6 +11,12 @@ use bevy::prelude::Component;
 pub struct UiRoot;
 
 #[derive(Component)]
+pub struct BackgroundImage; // POC: Location background image container (clips overflow)
+
+#[derive(Component)]
+pub struct BackgroundImageNode; // POC: Actual image node inside container
+
+#[derive(Component)]
 pub struct TotalsDisplay;
 
 #[derive(Component)]
@@ -34,6 +40,12 @@ pub struct PlayAreaDealer; // SOW-008: Shows dealer (now buyer) played cards
 
 #[derive(Component)]
 pub struct BuyerVisibleHand; // SOW-009: Displays Buyer's 3 visible cards (not yet played)
+
+#[derive(Component)]
+pub struct BuyerPortrait; // Buyer actor portrait image
+
+#[derive(Component)]
+pub struct NarcPortrait; // Narc actor portrait image
 
 #[derive(Component)]
 pub struct PlayerHandDisplay;

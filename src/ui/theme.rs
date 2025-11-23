@@ -105,14 +105,11 @@ pub const PLACEHOLDER_BG: Color = Color::srgb(0.35, 0.35, 0.35);       // Placeh
 // Card Sizing Constants
 // ============================================================================
 
-pub const CARD_WIDTH_SMALL: f32 = 110.0;      // Small cards (narc/buyer hands, played pool)
-pub const CARD_HEIGHT_SMALL: f32 = 140.0;
+pub const CARD_WIDTH_SMALL: f32 = 158.65;         // Small cards - played pool, deck builder
+pub const CARD_HEIGHT_SMALL: f32 = 202.35;
 
-pub const CARD_WIDTH_MEDIUM: f32 = 120.0;     // Medium cards (player hand, override slots)
-pub const CARD_HEIGHT_MEDIUM: f32 = 152.0;
-
-pub const CARD_WIDTH_DECK_BUILDER: f32 = 110.0; // Deck builder cards
-pub const CARD_HEIGHT_DECK_BUILDER: f32 = 140.0;
+pub const CARD_WIDTH_MEDIUM: f32 = 189.94;        // Medium cards - player hand, active slots, narc/buyer hands (275px height)
+pub const CARD_HEIGHT_MEDIUM: f32 = 275.0;
 
 // SOW-AAA: Unused card size constants removed (HAND, BUYER_VISIBLE, LARGE)
 

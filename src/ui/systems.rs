@@ -16,6 +16,8 @@ pub fn update_active_slots_system(
     mut commands: Commands,
     children_query: Query<&Children>,
     _card_display_query: Query<Entity, With<PlayedCardDisplay>>,
+    game_assets: Res<crate::assets::GameAssets>,
+    emoji_font: Res<crate::EmojiFont>,
 ) {
     let Ok(mut hand_state) = hand_state_query.get_single_mut() else {
         return;
@@ -100,40 +102,17 @@ pub fn update_active_slots_system(
         // Spawn card or placeholder (Medium size, no margin for override slots)
         commands.entity(slot_entity).with_children(|parent| {
             if let Some(card) = active_card {
-                // Spawn actual card with Medium size (no margin)
-                let (width, height) = helpers::CardSize::Medium.dimensions();
-                let font_size = helpers::CardSize::Medium.font_size();
-                let card_color = helpers::get_card_color(&card.card_type, helpers::CardDisplayState::Active);
-
-                parent.spawn((
-                    NodeBundle {
-                        style: Style {
-                            width: Val::Px(width),
-                            height: Val::Px(height),
-                            justify_content: JustifyContent::Center,
-                            align_items: AlignItems::Center,
-                            padding: UiRect::all(Val::Px(8.0)),
-                            border: UiRect::all(Val::Px(theme::CARD_BORDER_WIDTH)),
-                            // No margin for Medium cards (override slots)
-                            ..default()
-                        },
-                        background_color: card_color.into(),
-                        border_color: theme::CARD_BORDER_BRIGHT.into(),
-                        ..default()
-                    },
+                // Spawn actual card with Medium size, no margin - use template
+                helpers::spawn_card_with_template(
+                    parent,
+                    &card.name,
+                    &card.card_type,
+                    helpers::CardSize::Medium,
+                    helpers::CardDisplayState::Active,
                     PlayedCardDisplay,
-                ))
-                .with_children(|parent| {
-                    let card_text = helpers::format_card_text_compact(&card.name, &card.card_type);
-                    parent.spawn(TextBundle::from_section(
-                        card_text,
-                        TextStyle {
-                            font_size,
-                            color: theme::TEXT_PRIMARY,
-                            ..default()
-                        },
-                    ));
-                });
+                    game_assets.card_template.clone(),
+                    &emoji_font,
+                );
             } else {
                 // Spawn ghosted placeholder (Medium size, no margin)
                 let (color, label) = match slot.slot_type {
@@ -148,6 +127,7 @@ pub fn update_active_slots_system(
                     label,
                     helpers::CardSize::Medium,
                     color,
+                    game_assets.card_placeholder.clone(),
                 );
             }
         });
@@ -324,6 +304,129 @@ pub fn update_resolution_overlay_system(
         results_text.sections[0].value = results;
     } else {
         overlay_style.display = Display::None;
+    }
+}
+
+/// Scale UI to fit screen while maintaining 16:9 aspect ratio
+/// Designed for 1920x1080 (1080p) base layout with letterboxing/pillarboxing
+pub fn scale_ui_to_fit_system(
+    mut ui_scale: ResMut<UiScale>,
+    mut ui_root_query: Query<&mut Style, With<super::components::UiRoot>>,
+    mut deck_builder_root_query: Query<&mut Style, (With<super::components::DeckBuilderRoot>, Without<super::components::UiRoot>)>,
+    windows: Query<&Window>,
+) {
+    let Ok(window) = windows.get_single() else {
+        return;
+    };
+
+    // Early return if no UI roots exist yet (during initial setup)
+    if ui_root_query.is_empty() && deck_builder_root_query.is_empty() {
+        return;
+    }
+
+    const DESIGN_WIDTH: f32 = 1920.0;
+    const DESIGN_HEIGHT: f32 = 1080.0;
+    const DESIGN_ASPECT: f32 = DESIGN_WIDTH / DESIGN_HEIGHT;
+
+    let window_width = window.width();
+    let window_height = window.height();
+    let window_aspect = window_width / window_height;
+
+    // Calculate scale to fit screen while maintaining aspect ratio
+    let scale = if window_aspect > DESIGN_ASPECT {
+        // Window is wider - fit to height (pillarbox on sides)
+        window_height / DESIGN_HEIGHT
+    } else {
+        // Window is taller - fit to width (letterbox top/bottom)
+        window_width / DESIGN_WIDTH
+    };
+
+    // Apply uniform scale to all UI elements
+    ui_scale.0 = scale;
+
+    // Calculate the scaled UI size (in physical pixels, before UiScale is applied)
+    let scaled_width = DESIGN_WIDTH * scale;
+    let scaled_height = DESIGN_HEIGHT * scale;
+
+    // Position the UI root centered (using unscaled offsets since UiScale will apply to these too)
+    let offset_x = (window_width - scaled_width) / (2.0 * scale);
+    let offset_y = (window_height - scaled_height) / (2.0 * scale);
+
+    // Update UI root to be centered (position values will be scaled by UiScale)
+    for mut style in ui_root_query.iter_mut() {
+        style.position_type = PositionType::Absolute;
+        style.left = Val::Px(offset_x);
+        style.top = Val::Px(offset_y);
+    }
+
+    // Also update deck builder root if it exists
+    for mut style in deck_builder_root_query.iter_mut() {
+        style.position_type = PositionType::Absolute;
+        style.left = Val::Px(offset_x);
+        style.top = Val::Px(offset_y);
+    }
+}
+
+/// POC: Update background image based on active location
+/// Uses "cover" scaling: maintains aspect ratio, scales to fill screen
+pub fn update_background_system(
+    hand_state_query: Query<&HandState, Changed<HandState>>,
+    mut background_image_query: Query<(&mut UiImage, &mut Style), With<BackgroundImageNode>>,
+    game_assets: Res<crate::assets::GameAssets>,
+    images: Res<Assets<Image>>,
+    windows: Query<&Window>,
+) {
+    let Ok(hand_state) = hand_state_query.get_single() else {
+        return;
+    };
+
+    let Ok((mut ui_image, mut style)) = background_image_query.get_single_mut() else {
+        return;
+    };
+
+    let Ok(window) = windows.get_single() else {
+        return;
+    };
+
+    // Get the active location
+    if let Some(location_card) = hand_state.active_location(true) {
+        // Try to find the background image for this location
+        if let Some(image_handle) = game_assets.background_images.get(&location_card.name) {
+            // Check if image is loaded
+            if let Some(image_asset) = images.get(image_handle) {
+                ui_image.texture = image_handle.clone();
+
+                let window_width = window.width();
+                let window_height = window.height();
+                let window_aspect = window_width / window_height;
+
+                let image_width = image_asset.width() as f32;
+                let image_height = image_asset.height() as f32;
+                let image_aspect = image_width / image_height;
+
+                // Scale to cover window
+                let (scaled_width, scaled_height) = if window_aspect > image_aspect {
+                    // Window is wider - fit to width, crop height
+                    (window_width, window_width / image_aspect)
+                } else {
+                    // Window is taller - fit to height, crop width
+                    (window_height * image_aspect, window_height)
+                };
+
+                style.width = Val::Px(scaled_width);
+                style.height = Val::Px(scaled_height);
+
+                info!("Background: {}", location_card.name);
+            }
+        }
+    } else {
+        // No active location - clear the background image
+        if ui_image.texture != Handle::default() {
+            ui_image.texture = Handle::default();
+            style.width = Val::Px(0.0);
+            style.height = Val::Px(0.0);
+            info!("Background cleared");
+        }
     }
 }
 
