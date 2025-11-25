@@ -1,9 +1,11 @@
 // SOW-AAA: Input and button systems
 // Extracted from main.rs
+// Updated for Bevy 0.17
 
 use bevy::prelude::*;
 use rand::seq::SliceRandom;
 use rand::Rng;
+use rand::thread_rng;
 use crate::{Owner, HandState, HandPhase, HandOutcome, DeckBuilder};
 use crate::game_state::GameState;
 use crate::ui::components::*;
@@ -20,7 +22,7 @@ pub fn betting_button_system(
     mut hand_state_query: Query<&mut HandState>,
     story_composer: Res<crate::models::narrative::StoryComposer>,
 ) {
-    let Ok(mut hand_state) = hand_state_query.get_single_mut() else {
+    let Ok(mut hand_state) = hand_state_query.single_mut() else {
         return;
     };
 
@@ -76,7 +78,7 @@ pub fn update_betting_button_states(
     mut check_button_query: Query<&mut BackgroundColor, (With<CheckButton>, Without<FoldButton>)>,
     mut fold_button_query: Query<&mut BackgroundColor, (With<FoldButton>, Without<CheckButton>)>,
 ) {
-    let Ok(hand_state) = hand_state_query.get_single() else {
+    let Ok(hand_state) = hand_state_query.single() else {
         return;
     };
 
@@ -85,7 +87,7 @@ pub fn update_betting_button_states(
                          hand_state.current_player() == Owner::Player;
 
     // Update Pass button (Check) - enabled when player's turn, disabled otherwise
-    let mut bg = check_button_query.get_single_mut()
+    let mut bg = check_button_query.single_mut()
         .expect("Expected exactly one CheckButton");
     *bg = if is_player_turn {
         theme::BUTTON_ENABLED_BG.into()
@@ -94,7 +96,7 @@ pub fn update_betting_button_states(
     };
 
     // Update Bail Out button (Fold) - enabled when player's turn, disabled otherwise
-    let mut bg = fold_button_query.get_single_mut()
+    let mut bg = fold_button_query.single_mut()
         .expect("Expected exactly one FoldButton");
     *bg = if is_player_turn {
         theme::BUTTON_NEUTRAL_BG.into()
@@ -110,7 +112,7 @@ pub fn restart_button_system(
     restart_query: Query<&Interaction, (Changed<Interaction>, With<RestartButton>)>,
     mut hand_state_query: Query<&mut HandState>,
 ) {
-    let Ok(mut hand_state) = hand_state_query.get_single_mut() else {
+    let Ok(mut hand_state) = hand_state_query.single_mut() else {
         return;
     };
 
@@ -148,7 +150,7 @@ pub fn update_restart_button_states(
     go_home_button_query: Query<(Entity, &Children), With<GoHomeButton>>,
     mut text_query: Query<&mut Text>,
 ) {
-    let Ok(hand_state) = hand_state_query.get_single() else {
+    let Ok(hand_state) = hand_state_query.single() else {
         return;
     };
 
@@ -161,7 +163,7 @@ pub fn update_restart_button_states(
 
     // NEW DEAL button: Hide if busted, disable if deck exhausted
     let (mut bg_color, mut visibility) = restart_button_query
-        .get_single_mut()
+        .single_mut()
         .expect("Expected exactly one RestartButton in resolution overlay");
 
     if is_busted {
@@ -180,12 +182,12 @@ pub fn update_restart_button_states(
 
     // GO HOME button text: "GO HOME" if safe, "END RUN" if busted
     let (_button_entity, children) = go_home_button_query
-        .get_single()
+        .single()
         .expect("Expected exactly one GoHomeButton in resolution overlay");
 
-    for &child in children.iter() {
+    for child in children.iter() {
         if let Ok(mut text) = text_query.get_mut(child) {
-            text.sections[0].value = if is_busted {
+            **text = if is_busted {
                 "END RUN".to_string()
             } else {
                 "GO HOME".to_string()
@@ -204,7 +206,7 @@ pub fn go_home_button_system(
     mut next_state: ResMut<NextState<GameState>>,
     game_assets: Res<crate::assets::GameAssets>, // SOW-013-B: Need for DeckBuilder::from_assets
 ) {
-    let Ok((entity, hand_state)) = hand_state_query.get_single() else {
+    let Ok((entity, hand_state)) = hand_state_query.single() else {
         return;
     };
 
@@ -271,16 +273,6 @@ pub fn deck_builder_card_click_system(
     }
 }
 
-pub fn preset_button_system(
-    interaction_query: Query<(&Interaction, &PresetButton), Changed<Interaction>>,
-    mut deck_builder: ResMut<DeckBuilder>,
-) {
-    for (interaction, preset_btn) in interaction_query.iter() {
-        if *interaction == Interaction::Pressed {
-            deck_builder.load_preset(preset_btn.preset);
-        }
-    }
-}
 
 pub fn start_run_button_system(
     mut commands: Commands,
@@ -299,11 +291,11 @@ pub fn start_run_button_system(
 
             // SOW-013-B: Select random Buyer persona from loaded assets
             let buyer_personas = create_buyer_personas(&game_assets);
-            let mut random_buyer = buyer_personas.choose(&mut rand::thread_rng()).unwrap().clone();
+            let mut random_buyer = buyer_personas.choose(&mut thread_rng()).unwrap().clone();
 
             // SOW-010: Randomly select one of the Buyer's 2 scenarios
             if !random_buyer.scenarios.is_empty() {
-                let scenario_index = rand::thread_rng().gen_range(0..random_buyer.scenarios.len());
+                let scenario_index = thread_rng().gen_range(0..random_buyer.scenarios.len());
                 random_buyer.active_scenario_index = Some(scenario_index);
             }
 
@@ -326,7 +318,7 @@ pub fn card_click_system(
     mut interaction_query: Query<(&Interaction, &CardButton), Changed<Interaction>>,
     mut hand_state_query: Query<&mut HandState>,
 ) {
-    let Ok(mut hand_state) = hand_state_query.get_single_mut() else {
+    let Ok(mut hand_state) = hand_state_query.single_mut() else {
         return;
     };
 

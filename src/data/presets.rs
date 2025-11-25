@@ -58,50 +58,6 @@ pub fn create_default_deck(available: &[Card]) -> Vec<Card> {
     ]
 }
 
-/// Create aggro preset deck (12-14 cards: high-profit, risky, minimal defense)
-pub fn create_aggro_deck(available: &[Card]) -> Vec<Card> {
-    vec![
-        // High-profit products (5)
-        get_card(available, "Weed"),
-        get_card(available, "Ice"),
-        get_card(available, "Heroin"),
-        get_card(available, "Coke"),
-        get_card(available, "Fentanyl"),
-        // Minimal defense - just 1 Cover
-        get_card(available, "Alibi"),
-        // 2 modifiers (to reach minimum)
-        get_card(available, "Disguise"),
-        get_card(available, "Lookout"),
-    ]
-}
-
-/// Create control preset deck (15-18 cards: heavy defense, safe locations)
-pub fn create_control_deck(available: &[Card]) -> Vec<Card> {
-    vec![
-        // Conservative products (2)
-        get_card(available, "Weed"),
-        get_card(available, "Ice"),
-        // Safe locations (all)
-        get_card(available, "Safe House"),
-        get_card(available, "Abandoned Warehouse"),
-        get_card(available, "Storage Unit"),
-        get_card(available, "Dead Drop"),
-        // All Cover cards (4)
-        get_card(available, "Alibi"),
-        get_card(available, "Bribe"),
-        get_card(available, "Fake Receipts"),
-        get_card(available, "Bribed Witness"),
-        // All Insurance (2)
-        get_card(available, "Plea Bargain"),
-        get_card(available, "Fake ID"),
-        // All defensive modifiers (5)
-        get_card(available, "Disguise"),
-        get_card(available, "Burner Phone"),
-        get_card(available, "Lookout"),
-        get_card(available, "Clean Money"),
-        get_card(available, "False Trail"),
-    ]
-}
 
 #[cfg(test)]
 mod tests {

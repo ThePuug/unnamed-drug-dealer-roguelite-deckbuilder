@@ -1,6 +1,7 @@
 // UI Systems - Update systems for active slots, heat bar, etc.
 // SOW-011-A Phase 4: Active slot population and heat bar updates
 // SOW-011-B Phase 1: Resolution overlay system
+// Updated for Bevy 0.17
 
 use bevy::prelude::*;
 use crate::{HandState, CardType, Card, HandPhase, HandOutcome, Owner};
@@ -19,7 +20,7 @@ pub fn update_active_slots_system(
     game_assets: Res<crate::assets::GameAssets>,
     emoji_font: Res<crate::EmojiFont>,
 ) {
-    let Ok(mut hand_state) = hand_state_query.get_single_mut() else {
+    let Ok(mut hand_state) = hand_state_query.single_mut() else {
         return;
     };
 
@@ -58,25 +59,22 @@ pub fn update_active_slots_system(
     }
 
     // Update discard pile display (vertical list of card names)
-    if let Ok(discard_entity) = discard_pile_query.get_single() {
+    if let Ok(discard_entity) = discard_pile_query.single() {
         // Clear old discard items (except header)
         if let Ok(children) = children_query.get(discard_entity) {
             // Skip first child (header "Discard Pile")
-            for &child in children.iter().skip(1) {
-                commands.entity(child).despawn_recursive();
+            for child in children.iter().skip(1) {
+                commands.entity(child).despawn();
             }
         }
 
         // Add discarded cards (most recent first)
         commands.entity(discard_entity).with_children(|parent| {
             for card in hand_state.discard_pile.iter().rev() {
-                parent.spawn(TextBundle::from_section(
-                    &card.name,
-                    TextStyle {
-                        font_size: 11.0,
-                        color: theme::TEXT_SECONDARY,
-                        ..default()
-                    },
+                parent.spawn((
+                    Text::new(&card.name),
+                    TextFont::from_font_size(11.0),
+                    TextColor(theme::TEXT_SECONDARY),
                 ));
             }
         });
@@ -86,8 +84,8 @@ pub fn update_active_slots_system(
     for (slot_entity, slot) in slots_query.iter() {
         // Clear ALL children from this slot (cards and placeholders)
         if let Ok(children) = children_query.get(slot_entity) {
-            for &child in children.iter() {
-                commands.entity(child).despawn_recursive();
+            for child in children.iter() {
+                commands.entity(child).despawn();
             }
         }
 
@@ -137,11 +135,11 @@ pub fn update_active_slots_system(
 /// Update heat bar fill and color based on current heat
 pub fn update_heat_bar_system(
     hand_state_query: Query<&HandState, Changed<HandState>>,
-    mut bar_fill_query: Query<&mut Style, (With<HeatBarFill>, Without<HeatBar>)>,
+    mut bar_fill_query: Query<&mut Node, (With<HeatBarFill>, Without<HeatBar>)>,
     mut bar_color_query: Query<&mut BackgroundColor, With<HeatBarFill>>,
     mut bar_text_query: Query<&mut Text, With<HeatBarText>>,
 ) {
-    let Ok(hand_state) = hand_state_query.get_single() else {
+    let Ok(hand_state) = hand_state_query.single() else {
         return;
     };
 
@@ -171,12 +169,12 @@ pub fn update_heat_bar_system(
         0.0
     };
 
-    if let Ok(mut style) = bar_fill_query.get_single_mut() {
-        style.height = Val::Percent(fill_percentage);
+    if let Ok(mut node) = bar_fill_query.single_mut() {
+        node.height = Val::Percent(fill_percentage);
     }
 
     // Update heat bar color based on percentage
-    if let Ok(mut color) = bar_color_query.get_single_mut() {
+    if let Ok(mut color) = bar_color_query.single_mut() {
         let bar_color = if fill_percentage >= 80.0 {
             theme::HEAT_BAR_RED
         } else if fill_percentage >= 50.0 {
@@ -188,36 +186,36 @@ pub fn update_heat_bar_system(
     }
 
     // Update heat bar text
-    if let Ok(mut text) = bar_text_query.get_single_mut() {
-        text.sections[0].value = format!("{current_heat}/{heat_threshold}");
+    if let Ok(mut text) = bar_text_query.single_mut() {
+        **text = format!("{current_heat}/{heat_threshold}");
     }
 }
 
 /// Show/hide resolution overlay and update results text
 pub fn update_resolution_overlay_system(
     hand_state_query: Query<&HandState, Changed<HandState>>,
-    mut overlay_query: Query<&mut Style, With<ResolutionOverlay>>,
-    mut title_query: Query<&mut Text, (With<ResolutionTitle>, Without<ResolutionResults>, Without<ResolutionStory>)>,
+    mut overlay_query: Query<&mut Node, With<ResolutionOverlay>>,
+    mut title_query: Query<(&mut Text, &mut TextColor), (With<ResolutionTitle>, Without<ResolutionResults>, Without<ResolutionStory>)>,
     mut story_query: Query<&mut Text, (With<ResolutionStory>, Without<ResolutionTitle>, Without<ResolutionResults>)>,
     mut results_query: Query<&mut Text, (With<ResolutionResults>, Without<ResolutionTitle>, Without<ResolutionStory>)>,
 ) {
-    let Ok(hand_state) = hand_state_query.get_single() else {
+    let Ok(hand_state) = hand_state_query.single() else {
         return;
     };
 
-    let Ok(mut overlay_style) = overlay_query.get_single_mut() else {
+    let Ok(mut overlay_node) = overlay_query.single_mut() else {
         return;
     };
 
     // Show overlay when hand reaches Bust state
     if hand_state.current_state == HandPhase::Bust {
-        overlay_style.display = Display::Flex;
+        overlay_node.display = Display::Flex;
 
         // Update title based on outcome
-        let mut title_text = title_query.get_single_mut()
+        let (mut title_text, mut title_color) = title_query.single_mut()
             .expect("Expected exactly one ResolutionTitle");
 
-        title_text.sections[0].value = match hand_state.outcome {
+        **title_text = match hand_state.outcome {
             Some(HandOutcome::Safe) => "DEAL COMPLETE!".to_string(),
             Some(HandOutcome::Busted) => "BUSTED!".to_string(),
             Some(HandOutcome::Folded) => "HAND FOLDED".to_string(),
@@ -227,7 +225,7 @@ pub fn update_resolution_overlay_system(
         };
 
         // Color code title
-        title_text.sections[0].style.color = match hand_state.outcome {
+        title_color.0 = match hand_state.outcome {
             Some(HandOutcome::Safe) => theme::STATUS_SAFE,
             Some(HandOutcome::Busted) => theme::STATUS_BUSTED,
             Some(HandOutcome::Folded) => theme::STATUS_FOLDED,
@@ -237,17 +235,17 @@ pub fn update_resolution_overlay_system(
         };
 
         // SOW-012: Update story text
-        let mut story_text = story_query.get_single_mut()
+        let mut story_text = story_query.single_mut()
             .expect("Expected exactly one ResolutionStory");
 
         if let Some(story) = &hand_state.hand_story {
-            story_text.sections[0].value = story.clone();
+            **story_text = story.clone();
         } else {
-            story_text.sections[0].value = "".to_string();
+            **story_text = "".to_string();
         }
 
         // Update results breakdown
-        let mut results_text = results_query.get_single_mut()
+        let mut results_text = results_query.single_mut()
             .expect("Expected exactly one ResolutionResults");
 
         let totals = hand_state.calculate_totals(true);
@@ -301,9 +299,9 @@ pub fn update_resolution_overlay_system(
             }
         }
 
-        results_text.sections[0].value = results;
+        **results_text = results;
     } else {
-        overlay_style.display = Display::None;
+        overlay_node.display = Display::None;
     }
 }
 
@@ -311,11 +309,11 @@ pub fn update_resolution_overlay_system(
 /// Designed for 1920x1080 (1080p) base layout with letterboxing/pillarboxing
 pub fn scale_ui_to_fit_system(
     mut ui_scale: ResMut<UiScale>,
-    mut ui_root_query: Query<&mut Style, With<super::components::UiRoot>>,
-    mut deck_builder_root_query: Query<&mut Style, (With<super::components::DeckBuilderRoot>, Without<super::components::UiRoot>)>,
+    mut ui_root_query: Query<&mut Node, With<super::components::UiRoot>>,
+    mut deck_builder_root_query: Query<&mut Node, (With<super::components::DeckBuilderRoot>, Without<super::components::UiRoot>)>,
     windows: Query<&Window>,
 ) {
-    let Ok(window) = windows.get_single() else {
+    let Ok(window) = windows.single() else {
         return;
     };
 
@@ -353,17 +351,17 @@ pub fn scale_ui_to_fit_system(
     let offset_y = (window_height - scaled_height) / (2.0 * scale);
 
     // Update UI root to be centered (position values will be scaled by UiScale)
-    for mut style in ui_root_query.iter_mut() {
-        style.position_type = PositionType::Absolute;
-        style.left = Val::Px(offset_x);
-        style.top = Val::Px(offset_y);
+    for mut node in ui_root_query.iter_mut() {
+        node.position_type = PositionType::Absolute;
+        node.left = Val::Px(offset_x);
+        node.top = Val::Px(offset_y);
     }
 
     // Also update deck builder root if it exists
-    for mut style in deck_builder_root_query.iter_mut() {
-        style.position_type = PositionType::Absolute;
-        style.left = Val::Px(offset_x);
-        style.top = Val::Px(offset_y);
+    for mut node in deck_builder_root_query.iter_mut() {
+        node.position_type = PositionType::Absolute;
+        node.left = Val::Px(offset_x);
+        node.top = Val::Px(offset_y);
     }
 }
 
@@ -371,20 +369,21 @@ pub fn scale_ui_to_fit_system(
 /// Uses "cover" scaling: maintains aspect ratio, scales to fill screen
 pub fn update_background_system(
     hand_state_query: Query<&HandState, Changed<HandState>>,
-    mut background_image_query: Query<(&mut UiImage, &mut Style), With<BackgroundImageNode>>,
+    mut background_image_query: Query<(&mut ImageNode, &mut Node), With<BackgroundImageNode>>,
     game_assets: Res<crate::assets::GameAssets>,
     images: Res<Assets<Image>>,
     windows: Query<&Window>,
+    ui_scale: Res<UiScale>,
 ) {
-    let Ok(hand_state) = hand_state_query.get_single() else {
+    let Ok(hand_state) = hand_state_query.single() else {
         return;
     };
 
-    let Ok((mut ui_image, mut style)) = background_image_query.get_single_mut() else {
+    let Ok((mut image_node, mut node)) = background_image_query.single_mut() else {
         return;
     };
 
-    let Ok(window) = windows.get_single() else {
+    let Ok(window) = windows.single() else {
         return;
     };
 
@@ -394,17 +393,18 @@ pub fn update_background_system(
         if let Some(image_handle) = game_assets.background_images.get(&location_card.name) {
             // Check if image is loaded
             if let Some(image_asset) = images.get(image_handle) {
-                ui_image.texture = image_handle.clone();
+                image_node.image = image_handle.clone();
 
-                let window_width = window.width();
-                let window_height = window.height();
+                // Account for UiScale when calculating dimensions
+                let window_width = window.width() / ui_scale.0;
+                let window_height = window.height() / ui_scale.0;
                 let window_aspect = window_width / window_height;
 
                 let image_width = image_asset.width() as f32;
                 let image_height = image_asset.height() as f32;
                 let image_aspect = image_width / image_height;
 
-                // Scale to cover window
+                // Scale to cover window (fills entire area, crops overflow)
                 let (scaled_width, scaled_height) = if window_aspect > image_aspect {
                     // Window is wider - fit to width, crop height
                     (window_width, window_width / image_aspect)
@@ -413,20 +413,51 @@ pub fn update_background_system(
                     (window_height * image_aspect, window_height)
                 };
 
-                style.width = Val::Px(scaled_width);
-                style.height = Val::Px(scaled_height);
+                node.width = Val::Px(scaled_width);
+                node.height = Val::Px(scaled_height);
 
                 info!("Background: {}", location_card.name);
             }
         }
     } else {
         // No active location - clear the background image
-        if ui_image.texture != Handle::default() {
-            ui_image.texture = Handle::default();
-            style.width = Val::Px(0.0);
-            style.height = Val::Px(0.0);
+        if image_node.image != Handle::default() {
+            image_node.image = Handle::default();
+            node.width = Val::Px(0.0);
+            node.height = Val::Px(0.0);
             info!("Background cleared");
         }
     }
 }
 
+/// Handle mouse wheel scrolling for UI containers with ScrollPosition
+/// Bevy 0.17 requires manual scroll handling
+pub fn ui_scroll_system(
+    mut mouse_wheel_events: EventReader<bevy::input::mouse::MouseWheel>,
+    mut scroll_query: Query<(&Interaction, &mut ScrollPosition, &ComputedNode), With<CardPoolContainer>>,
+) {
+    use bevy::input::mouse::MouseScrollUnit;
+
+    const LINE_HEIGHT: f32 = 21.0;
+
+    for event in mouse_wheel_events.read() {
+        for (interaction, mut scroll_position, computed) in scroll_query.iter_mut() {
+            // Only scroll when hovering over the container
+            if *interaction == Interaction::None || *interaction == Interaction::Hovered {
+                let delta_y = match event.unit {
+                    MouseScrollUnit::Line => event.y * LINE_HEIGHT,
+                    MouseScrollUnit::Pixel => event.y,
+                };
+
+                // Calculate max scroll based on content size vs visible size
+                let content_height = computed.content_size().y;
+                let visible_height = computed.size().y;
+                let max_scroll = (content_height - visible_height).max(0.0);
+
+                // Update scroll position (negative because scroll down = positive y offset)
+                let new_y = (scroll_position.y - delta_y).clamp(0.0, max_scroll);
+                scroll_position.y = new_y;
+            }
+        }
+    }
+}

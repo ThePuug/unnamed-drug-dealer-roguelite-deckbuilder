@@ -1,5 +1,6 @@
 // SOW-AAA: UI update systems
 // Extracted from main.rs
+// Updated for Bevy 0.17
 
 use bevy::prelude::*;
 use crate::{CardType, HandState, HandPhase, DeckBuilder, Owner};
@@ -12,18 +13,18 @@ use crate::data::validate_deck;
 pub fn ui_update_system(
     hand_state_query: Query<&HandState>,
     mut totals_query: Query<&mut Text, (With<TotalsDisplay>, Without<StatusDisplay>, Without<BuyerScenarioCardText>)>,
-    mut status_query: Query<&mut Text, (With<StatusDisplay>, Without<TotalsDisplay>, Without<BuyerScenarioCardText>)>,
+    mut status_query: Query<(&mut Text, &mut TextColor), (With<StatusDisplay>, Without<TotalsDisplay>, Without<BuyerScenarioCardText>)>,
     mut scenario_query: Query<&mut Text, (With<BuyerScenarioCardText>, Without<StatusDisplay>, Without<TotalsDisplay>)>,
 ) {
-    let Ok(hand_state) = hand_state_query.get_single() else {
+    let Ok(hand_state) = hand_state_query.single() else {
         return;
     };
 
     // Update totals display (only exists during InRun state)
-    if let Ok(mut text) = totals_query.get_single_mut() {
+    if let Ok(mut text) = totals_query.single_mut() {
         let include_current_round = true;
         let totals = hand_state.calculate_totals(include_current_round);
-        text.sections[0].value = format!(
+        **text = format!(
             "Evidence: {} | Cover: {} | Heat: {} | Profit: ${}\nCash: ${} | Total Heat: {} | Deck: {} cards",
             totals.evidence, totals.cover, totals.heat, totals.profit,
             hand_state.cash, hand_state.current_heat, hand_state.cards(Owner::Player).deck.len()
@@ -31,24 +32,24 @@ pub fn ui_update_system(
     }
 
     // Simplified status display - just Round and Cash (only exists during InRun state)
-    if let Ok(mut text) = status_query.get_single_mut() {
+    if let Ok((mut text, mut text_color)) = status_query.single_mut() {
         let turn_info = if hand_state.current_state == HandPhase::PlayerPhase {
             format!(" - Turn: {:?}", hand_state.current_player())
         } else {
             String::new()
         };
 
-        text.sections[0].value = format!(
+        **text = format!(
             "Round {}/3{}\nCash: ${}",
             hand_state.current_round,
             turn_info,
             hand_state.cash
         );
-        text.sections[0].style.color = theme::TEXT_HEADER;
+        text_color.0 = theme::TEXT_HEADER;
     }
 
     // Update scenario card (only exists during InRun state)
-    if let Ok(mut text) = scenario_query.get_single_mut() {
+    if let Ok(mut text) = scenario_query.single_mut() {
         let scenario_info = if let Some(persona) = &hand_state.buyer_persona {
             let scenario_idx = persona.active_scenario_index
                 .expect("Buyer persona should have an active scenario");
@@ -79,7 +80,7 @@ pub fn ui_update_system(
             "No Buyer Selected".to_string()
         };
 
-        text.sections[0].value = scenario_info;
+        **text = scenario_info;
     }
 }
 
@@ -94,23 +95,23 @@ pub fn recreate_hand_display_system(
     emoji_font: Res<crate::EmojiFont>,
 ) {
     // Check if hand state changed
-    if hand_state_changed.get_single().is_err() {
+    if hand_state_changed.single().is_err() {
         return; // Nothing changed
     }
 
     // Get current state
-    let Ok(hand_state) = hand_state_all.get_single() else {
+    let Ok(hand_state) = hand_state_all.single() else {
         return;
     };
 
-    let Ok(hand_entity) = hand_display_query.get_single() else {
+    let Ok(hand_entity) = hand_display_query.single() else {
         return;
     };
 
     // Clear ALL existing children (card buttons and played card displays)
     if let Ok(children) = children_query.get(hand_entity) {
-        for &child in children.iter() {
-            commands.entity(child).despawn_recursive();
+        for child in children.iter() {
+            commands.entity(child).despawn();
         }
     }
 
@@ -156,23 +157,23 @@ pub fn recreate_hand_display_system(
 
 pub fn update_deck_builder_ui_system(
     deck_builder: Res<DeckBuilder>,
-    mut stats_query: Query<&mut Text, With<DeckStatsDisplay>>,
+    mut stats_query: Query<(&mut Text, &mut TextColor), With<DeckStatsDisplay>>,
 ) {
     if !deck_builder.is_changed() {
         return;
     }
 
-    for mut text in stats_query.iter_mut() {
+    for (mut text, mut text_color) in stats_query.iter_mut() {
         let count = deck_builder.selected_cards.len();
         let validation = validate_deck(&deck_builder.selected_cards);
 
         let is_valid = validation.is_ok();
-        text.sections[0].value = match validation {
+        **text = match validation {
             Ok(_) => format!("Deck: {count}/20 cards ✓ VALID"),
             Err(msg) => format!("Deck: {count}/20 cards ✗ {msg}"),
         };
 
-        text.sections[0].style.color = if is_valid {
+        text_color.0 = if is_valid {
             theme::SELECTED_DECK_BG_VALID
         } else {
             theme::SELECTED_DECK_BG_INVALID
@@ -194,11 +195,11 @@ pub fn populate_deck_builder_cards_system(
 
     // Clear existing card buttons
     for entity in card_button_query.iter() {
-        commands.entity(entity).despawn_recursive();
+        commands.entity(entity).despawn();
     }
 
     // SOW-010: Populate single grid with all cards (styled like played cards)
-    if let Ok(pool_entity) = pool_container_query.get_single() {
+    if let Ok(pool_entity) = pool_container_query.single() {
         commands.entity(pool_entity).with_children(|parent| {
             // Sort cards by type, then alphabetically by name
             let mut sorted_cards = deck_builder.available_cards.clone();
@@ -255,12 +256,12 @@ pub fn populate_deck_builder_cards_system(
 
 pub fn toggle_game_state_ui_system(
     current_state: Res<bevy::state::state::State<GameState>>,
-    mut deck_builder_query: Query<&mut Style, (With<DeckBuilderRoot>, Without<UiRoot>)>,
-    mut gameplay_ui_query: Query<&mut Style, (With<UiRoot>, Without<DeckBuilderRoot>)>,
+    mut deck_builder_query: Query<&mut Node, (With<DeckBuilderRoot>, Without<UiRoot>)>,
+    mut gameplay_ui_query: Query<&mut Node, (With<UiRoot>, Without<DeckBuilderRoot>)>,
 ) {
     // Show deck builder in DeckBuilding state, hide in InRun
-    if let Ok(mut style) = deck_builder_query.get_single_mut() {
-        style.display = if current_state.get() == &GameState::DeckBuilding {
+    if let Ok(mut node) = deck_builder_query.single_mut() {
+        node.display = if current_state.get() == &GameState::DeckBuilding {
             Display::Flex
         } else {
             Display::None
@@ -268,8 +269,8 @@ pub fn toggle_game_state_ui_system(
     }
 
     // Show gameplay UI in InRun state, hide in DeckBuilding
-    if let Ok(mut style) = gameplay_ui_query.get_single_mut() {
-        style.display = if current_state.get() == &GameState::InRun {
+    if let Ok(mut node) = gameplay_ui_query.single_mut() {
+        node.display = if current_state.get() == &GameState::InRun {
             Display::Flex
         } else {
             Display::None
@@ -289,16 +290,16 @@ pub fn update_played_cards_display_system(
     game_assets: Res<crate::assets::GameAssets>,
     emoji_font: Res<crate::EmojiFont>,
 ) {
-    let Ok(hand_state) = hand_state_query.get_single() else {
+    let Ok(hand_state) = hand_state_query.single() else {
         return;
     };
 
     // SOW-011-A: Clear old cards from single played pool
-    if let Ok(pool_entity) = played_pool_query.get_single() {
+    if let Ok(pool_entity) = played_pool_query.single() {
         if let Ok(children) = children_query.get(pool_entity) {
-            for &child in children.iter() {
+            for child in children.iter() {
                 if card_display_query.get(child).is_ok() {
-                    commands.entity(child).despawn_recursive();
+                    commands.entity(child).despawn();
                 }
             }
         }
@@ -308,19 +309,19 @@ pub fn update_played_cards_display_system(
     let totals = hand_state.calculate_totals(true);
 
     // Update totals text
-    if let Ok(mut text) = evidence_text_query.get_single_mut() {
-        text.sections[0].value = format!("● Evidence: {}", totals.evidence);
+    if let Ok(mut text) = evidence_text_query.single_mut() {
+        **text = format!("● Evidence: {}", totals.evidence);
     }
-    if let Ok(mut text) = cover_text_query.get_single_mut() {
-        text.sections[0].value = format!("● Cover: {}", totals.cover);
+    if let Ok(mut text) = cover_text_query.single_mut() {
+        **text = format!("● Cover: {}", totals.cover);
     }
-    if let Ok(mut text) = deal_mod_text_query.get_single_mut() {
+    if let Ok(mut text) = deal_mod_text_query.single_mut() {
         let multiplier = hand_state.get_profit_multiplier();
-        text.sections[0].value = format!("● Multiplier: ×{multiplier:.1}");
+        **text = format!("● Multiplier: ×{multiplier:.1}");
     }
 
     // SOW-011-A: ALL Evidence/Cover/DealModifier cards go to single shared pool
-    if let Ok(pool) = played_pool_query.get_single() {
+    if let Ok(pool) = played_pool_query.single() {
         commands.entity(pool).with_children(|parent| {
             for card in hand_state.cards_played.iter() {
                 // Only show Evidence, Cover, DealModifier in played pool
@@ -351,22 +352,22 @@ pub fn render_buyer_visible_hand_system(
     buyer_area_query: Query<Entity, With<BuyerVisibleHand>>,
     mut commands: Commands,
     children_query: Query<&Children>,
-    card_display_query: Query<Entity, With<PlayedCardDisplay>>,
+    _card_display_query: Query<Entity, With<PlayedCardDisplay>>,
     game_assets: Res<crate::assets::GameAssets>,
     emoji_font: Res<crate::EmojiFont>,
 ) {
-    let Ok(hand_state) = hand_state_query.get_single() else {
+    let Ok(hand_state) = hand_state_query.single() else {
         return;
     };
 
-    let Ok(buyer_area) = buyer_area_query.get_single() else {
+    let Ok(buyer_area) = buyer_area_query.single() else {
         return;
     };
 
     // Clear ALL children (cards and placeholders)
     if let Ok(children) = children_query.get(buyer_area) {
-        for &child in children.iter() {
-            commands.entity(child).despawn_recursive();
+        for child in children.iter() {
+            commands.entity(child).despawn();
         }
     }
 
@@ -401,30 +402,30 @@ pub fn render_buyer_visible_hand_system(
 
 pub fn update_actor_portraits_system(
     hand_state_query: Query<&HandState>,
-    mut buyer_portrait_query: Query<&mut UiImage, (With<BuyerPortrait>, Without<NarcPortrait>)>,
-    mut narc_portrait_query: Query<&mut UiImage, (With<NarcPortrait>, Without<BuyerPortrait>)>,
+    mut buyer_portrait_query: Query<&mut ImageNode, (With<BuyerPortrait>, Without<NarcPortrait>)>,
+    mut narc_portrait_query: Query<&mut ImageNode, (With<NarcPortrait>, Without<BuyerPortrait>)>,
     game_assets: Res<crate::assets::GameAssets>,
 ) {
-    let Ok(hand_state) = hand_state_query.get_single() else {
+    let Ok(hand_state) = hand_state_query.single() else {
         return;
     };
 
     // Update buyer portrait based on current buyer persona
-    if let Ok(mut buyer_image) = buyer_portrait_query.get_single_mut() {
+    if let Ok(mut buyer_image) = buyer_portrait_query.single_mut() {
         if let Some(persona) = &hand_state.buyer_persona {
             if let Some(portrait_handle) = game_assets.actor_portraits.get(&persona.display_name) {
-                if buyer_image.texture != *portrait_handle {
-                    buyer_image.texture = portrait_handle.clone();
+                if buyer_image.image != *portrait_handle {
+                    buyer_image.image = portrait_handle.clone();
                 }
             }
         }
     }
 
     // Update narc portrait (always "Narc")
-    if let Ok(mut narc_image) = narc_portrait_query.get_single_mut() {
+    if let Ok(mut narc_image) = narc_portrait_query.single_mut() {
         if let Some(portrait_handle) = game_assets.actor_portraits.get("Narc") {
-            if narc_image.texture != *portrait_handle {
-                narc_image.texture = portrait_handle.clone();
+            if narc_image.image != *portrait_handle {
+                narc_image.image = portrait_handle.clone();
             }
         }
     }
@@ -438,19 +439,19 @@ pub fn render_narc_visible_hand_system(
     card_display_query: Query<Entity, With<PlayedCardDisplay>>,
     game_assets: Res<crate::assets::GameAssets>,
 ) {
-    let Ok(hand_state) = hand_state_query.get_single() else {
+    let Ok(hand_state) = hand_state_query.single() else {
         return;
     };
 
-    let Ok(narc_area) = narc_area_query.get_single() else {
+    let Ok(narc_area) = narc_area_query.single() else {
         return;
     };
 
     // Clear old card displays
     if let Ok(children) = children_query.get(narc_area) {
-        for &child in children.iter() {
+        for child in children.iter() {
             if card_display_query.get(child).is_ok() {
-                commands.entity(child).despawn_recursive();
+                commands.entity(child).despawn();
             }
         }
     }
@@ -466,13 +467,10 @@ pub fn render_narc_visible_hand_system(
             let height = width / template_aspect;
 
             parent.spawn((
-                NodeBundle {
-                    style: Style {
-                        width: Val::Px(width),
-                        height: Val::Px(height),
-                        position_type: PositionType::Relative,
-                        ..default()
-                    },
+                Node {
+                    width: Val::Px(width),
+                    height: Val::Px(height),
+                    position_type: PositionType::Relative,
                     ..default()
                 },
                 PlayedCardDisplay,
@@ -480,17 +478,11 @@ pub fn render_narc_visible_hand_system(
             .with_children(|parent| {
                 // Card back image (fills entire card)
                 parent.spawn((
-                    NodeBundle {
-                        style: Style {
-                            position_type: PositionType::Absolute,
-                            width: Val::Percent(100.0),
-                            height: Val::Percent(100.0),
-                            ..default()
-                        },
-                        ..default()
-                    },
-                    UiImage {
-                        texture: game_assets.card_back.clone(),
+                    ImageNode::new(game_assets.card_back.clone()),
+                    Node {
+                        position_type: PositionType::Absolute,
+                        width: Val::Percent(100.0),
+                        height: Val::Percent(100.0),
                         ..default()
                     },
                 ));

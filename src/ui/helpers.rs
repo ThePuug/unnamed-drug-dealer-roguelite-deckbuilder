@@ -1,5 +1,6 @@
 // UI Helpers - Reusable card display functions
 // SOW-011-A Phase 2: Eliminates ~200 lines of duplicated card rendering logic
+// Updated for Bevy 0.17
 
 use bevy::prelude::*;
 use crate::CardType;
@@ -18,13 +19,6 @@ impl CardSize {
         match self {
             CardSize::Small => (theme::CARD_WIDTH_SMALL, theme::CARD_HEIGHT_SMALL),
             CardSize::Medium => (theme::CARD_WIDTH_MEDIUM, theme::CARD_HEIGHT_MEDIUM),
-        }
-    }
-
-    pub fn font_size(&self) -> f32 {
-        match self {
-            CardSize::Small => 9.5,
-            CardSize::Medium => 12.0,
         }
     }
 }
@@ -52,26 +46,6 @@ pub fn get_card_color(card_type: &CardType, state: CardDisplayState) -> Color {
     match state {
         CardDisplayState::Active | CardDisplayState::Selected => base_color,
         CardDisplayState::Inactive => theme::dim_color(base_color, 0.6),
-    }
-}
-
-/// Get buyer-specific color for a card type (for buyer visible hand)
-pub fn get_buyer_card_color(card_type: &CardType) -> Color {
-    match card_type {
-        CardType::Location { .. } => theme::BUYER_LOCATION_COLOR,
-        CardType::DealModifier { .. } => theme::BUYER_MODIFIER_COLOR,
-        _ => theme::BUYER_DEFAULT_COLOR,
-    }
-}
-
-// SOW-AAA: get_card_color_dim removed (unused)
-
-/// Get border color based on display state
-pub fn get_border_color(state: CardDisplayState) -> Color {
-    match state {
-        CardDisplayState::Active => theme::CARD_BORDER_BRIGHT,
-        CardDisplayState::Selected => theme::CARD_BORDER_SELECTED,
-        CardDisplayState::Inactive => theme::CARD_BORDER_PLAYED,
     }
 }
 
@@ -144,7 +118,7 @@ fn get_card_category(card_type: &CardType) -> &'static str {
 
 /// POC: Spawn a card button using the template image with text overlays
 pub fn spawn_card_button_with_template<T: Component>(
-    parent: &mut ChildBuilder,
+    parent: &mut ChildSpawnerCommands,
     card_name: &str,
     card_type: &CardType,
     size: CardSize,
@@ -166,13 +140,11 @@ pub fn spawn_card_button_with_template<T: Component>(
     let scale = width / 120.0; // Base measurements for 120px width
 
     parent.spawn((
-        ButtonBundle {
-            style: Style {
-                width: Val::Px(width),
-                height: Val::Px(height),
-                position_type: PositionType::Relative,
-                ..default()
-            },
+        Button,
+        Node {
+            width: Val::Px(width),
+            height: Val::Px(height),
+            position_type: PositionType::Relative,
             ..default()
         },
         marker,
@@ -180,18 +152,11 @@ pub fn spawn_card_button_with_template<T: Component>(
     .with_children(|parent| {
         // Template background image (colorized, maintains aspect ratio)
         parent.spawn((
-            NodeBundle {
-                style: Style {
-                    position_type: PositionType::Absolute,
-                    width: Val::Percent(100.0),
-                    height: Val::Percent(100.0),
-                    ..default()
-                },
-                ..default()
-            },
-            UiImage {
-                texture: template_image.clone(),
-                color: card_color,
+            ImageNode::new(template_image.clone()).with_color(card_color),
+            Node {
+                position_type: PositionType::Absolute,
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
                 ..default()
             },
         ));
@@ -202,7 +167,7 @@ pub fn spawn_card_button_with_template<T: Component>(
 
 /// POC: Spawn a card display using the template image with text overlays
 pub fn spawn_card_with_template<T: Component>(
-    parent: &mut ChildBuilder,
+    parent: &mut ChildSpawnerCommands,
     card_name: &str,
     card_type: &CardType,
     size: CardSize,
@@ -224,13 +189,10 @@ pub fn spawn_card_with_template<T: Component>(
     let scale = width / 120.0; // Base measurements for 120px width
 
     parent.spawn((
-        NodeBundle {
-            style: Style {
-                width: Val::Px(width),
-                height: Val::Px(height),
-                position_type: PositionType::Relative,
-                ..default()
-            },
+        Node {
+            width: Val::Px(width),
+            height: Val::Px(height),
+            position_type: PositionType::Relative,
             ..default()
         },
         marker,
@@ -238,18 +200,11 @@ pub fn spawn_card_with_template<T: Component>(
     .with_children(|parent| {
         // Template background image (colorized, maintains aspect ratio)
         parent.spawn((
-            NodeBundle {
-                style: Style {
-                    position_type: PositionType::Absolute,
-                    width: Val::Percent(100.0),
-                    height: Val::Percent(100.0),
-                    ..default()
-                },
-                ..default()
-            },
-            UiImage {
-                texture: template_image,
-                color: card_color,
+            ImageNode::new(template_image).with_color(card_color),
+            Node {
+                position_type: PositionType::Absolute,
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
                 ..default()
             },
         ));
@@ -260,7 +215,7 @@ pub fn spawn_card_with_template<T: Component>(
 
 /// POC: Helper to spawn text overlays on card template
 fn spawn_card_text_overlays(
-    parent: &mut ChildBuilder,
+    parent: &mut ChildSpawnerCommands,
     card_name: &str,
     stats: &[StatInfo],
     category: &str,
@@ -268,161 +223,101 @@ fn spawn_card_text_overlays(
     emoji_font: &EmojiFont,
 ) {
     // Top banner: Card type/category
-    parent.spawn(NodeBundle {
-        style: Style {
-            position_type: PositionType::Absolute,
-            left: Val::Percent(10.0),
-            right: Val::Percent(10.0),
-            top: Val::Px(7.0 * scale),
-            justify_content: JustifyContent::Center,
-            ..default()
-        },
+    parent.spawn(Node {
+        position_type: PositionType::Absolute,
+        left: Val::Percent(10.0),
+        right: Val::Percent(10.0),
+        top: Val::Px(7.0 * scale),
+        justify_content: JustifyContent::Center,
         ..default()
     })
     .with_children(|parent| {
-        parent.spawn(TextBundle::from_section(
-            category,
-            TextStyle {
-                font_size: 8.0 * scale,
-                color: Color::srgb(0.8, 0.8, 0.8),
-                ..default()
-            },
+        parent.spawn((
+            Text::new(category),
+            TextFont::from_font_size(8.0 * scale),
+            TextColor(Color::srgb(0.8, 0.8, 0.8)),
         ));
     });
 
     // Stats (up to 4 rows) - adjusted for actual template layout
-    let stat_start_y = 34.0 * scale;  // Start of first stat row (moved 2px down)
-    let stat_row_height = 20.0 * scale; // Spacing between rows
+    let stat_start_y = 34.0 * scale;  // Start of first stat row
+    let stat_row_height = 19.0 * scale; // Spacing between rows (reduced by 1px)
 
     for (idx, stat) in stats.iter().enumerate().take(4) {
         let y_pos = stat_start_y + (idx as f32 * stat_row_height);
 
-        // Emoji icon (left circle)
-        parent.spawn(NodeBundle {
-            style: Style {
-                position_type: PositionType::Absolute,
-                left: Val::Px(9.0 * scale),
-                top: Val::Px(y_pos),
-                width: Val::Px(18.0 * scale),
-                height: Val::Px(18.0 * scale),
-                justify_content: JustifyContent::Center,
-                align_items: AlignItems::Center,
-                ..default()
-            },
+        // Emoji icon (left circle) - shifted 1px left
+        parent.spawn(Node {
+            position_type: PositionType::Absolute,
+            left: Val::Px(8.0 * scale),
+            top: Val::Px(y_pos),
+            width: Val::Px(18.0 * scale),
+            height: Val::Px(18.0 * scale),
+            justify_content: JustifyContent::Center,
+            align_items: AlignItems::Center,
             ..default()
         })
         .with_children(|parent| {
-            parent.spawn(text_bundle_with_emoji(
-                stat.emoji,
-                10.0 * scale,
-                Color::WHITE,
-                emoji_font,
+            parent.spawn((
+                Text::new(stat.emoji),
+                TextFont {
+                    font: emoji_font.0.clone(),
+                    font_size: 10.0 * scale,
+                    ..default()
+                },
+                TextColor(Color::WHITE),
             ));
         });
 
         // Stat label + value (right box) - moved 4px left total
-        parent.spawn(NodeBundle {
-            style: Style {
-                position_type: PositionType::Absolute,
-                left: Val::Px(27.0 * scale),
-                right: Val::Px(10.0 * scale),
-                top: Val::Px(y_pos),
-                flex_direction: FlexDirection::Column,
-                ..default()
-            },
+        parent.spawn(Node {
+            position_type: PositionType::Absolute,
+            left: Val::Px(27.0 * scale),
+            right: Val::Px(10.0 * scale),
+            top: Val::Px(y_pos),
+            flex_direction: FlexDirection::Column,
             ..default()
         })
         .with_children(|parent| {
             // Stat label (small)
-            parent.spawn(TextBundle::from_section(
-                stat.label,
-                TextStyle {
-                    font_size: 7.0 * scale,
-                    color: Color::srgb(0.7, 0.7, 0.7),
-                    ..default()
-                },
+            parent.spawn((
+                Text::new(stat.label),
+                TextFont::from_font_size(7.0 * scale),
+                TextColor(Color::srgb(0.7, 0.7, 0.7)),
             ));
-            // Stat value (larger)
-            parent.spawn(text_bundle_with_emoji(
-                &stat.value,
-                10.0 * scale,
-                Color::WHITE,
-                emoji_font,
+            // Stat value (larger) - use default font, not emoji font
+            parent.spawn((
+                Text::new(&stat.value),
+                TextFont::from_font_size(10.0 * scale),
+                TextColor(Color::WHITE),
             ));
         });
     }
 
-    // Bottom banner: Card name (moved 1px down, font size reduced by 1)
-    parent.spawn(NodeBundle {
-        style: Style {
-            position_type: PositionType::Absolute,
-            left: Val::Percent(10.0),
-            right: Val::Percent(10.0),
-            bottom: Val::Px(41.0 * scale), // Moved 1px down (was 42.0 originally)
-            justify_content: JustifyContent::Center,
-            ..default()
-        },
+    // Bottom banner: Card name (font size reduced for Bevy 0.17)
+    parent.spawn(Node {
+        position_type: PositionType::Absolute,
+        left: Val::Percent(8.0),
+        right: Val::Percent(8.0),
+        bottom: Val::Px(41.0 * scale),
+        justify_content: JustifyContent::Center,
         ..default()
     })
     .with_children(|parent| {
-        parent.spawn(TextBundle::from_section(
-            card_name,
-            TextStyle {
-                font_size: 10.0 * scale, // Reduced from 11.0
-                color: Color::WHITE,
-                ..default()
-            },
+        parent.spawn((
+            Text::new(card_name),
+            TextFont::from_font_size(8.0 * scale),
+            TextColor(Color::WHITE),
+            TextLayout::new_with_linebreak(bevy::text::LineBreak::NoWrap),
         ));
     });
 }
-
-/// Format card text based on card type
-pub fn format_card_text(card_name: &str, card_type: &CardType) -> String {
-    match card_type {
-        CardType::Product { price, heat } =>
-            format!("{card_name}\n${price} | Heat: {heat}"),
-        CardType::Location { evidence, cover, heat } =>
-            format!("{card_name}\nE:{evidence} C:{cover} H:{heat}"),
-        CardType::Evidence { evidence, heat } =>
-            format!("{card_name}\nEvidence: {evidence} | Heat: {heat}"),
-        CardType::Cover { cover, heat } =>
-            format!("{card_name}\nCover: {cover} | Heat: {heat}"),
-        CardType::DealModifier { price_multiplier, evidence, cover, heat } =>
-            format!("{card_name}\n×{price_multiplier:.1} | E:{evidence} C:{cover} H:{heat}"),
-        CardType::Insurance { cover, cost, heat_penalty } =>
-            format!("{card_name}\nCover: {cover} | Cost: ${cost} | Heat: {heat_penalty}"),
-        CardType::Conviction { heat_threshold } =>
-            format!("{card_name}\nThreshold: {heat_threshold}"),
-    }
-}
-
-/// Compact format for small cards (played cards display)
-pub fn format_card_text_compact(card_name: &str, card_type: &CardType) -> String {
-    match card_type {
-        CardType::Product { price, heat } =>
-            format!("{card_name}\n${price} H:{heat}"),
-        CardType::Location { evidence, cover, heat } =>
-            format!("{card_name}\nE:{evidence} C:{cover} H:{heat}"),
-        CardType::Evidence { evidence, heat } =>
-            format!("{card_name}\nE:{evidence} H:{heat}"),
-        CardType::Cover { cover, heat } =>
-            format!("{card_name}\nC:{cover} H:{heat}"),
-        CardType::DealModifier { price_multiplier, evidence, cover, heat } =>
-            format!("{card_name}\n×{price_multiplier:.1} E:{evidence} C:{cover} H:{heat}"),
-        CardType::Insurance { cover, cost, heat_penalty } =>
-            format!("{card_name}\nC:{cover} ${cost} H:{heat_penalty}"),
-        CardType::Conviction { heat_threshold } =>
-            format!("{card_name}\nT:{heat_threshold}"),
-    }
-}
-
-// SOW-AAA: spawn_card_display removed (unused, use spawn_card_display_with_marker)
 
 /// Spawn a card display node with a marker component
 /// Use this when you need to query for specific card entities
 /// POC: Now uses template image rendering
 pub fn spawn_card_display_with_marker<T: Component>(
-    parent: &mut ChildBuilder,
+    parent: &mut ChildSpawnerCommands,
     card_name: &str,
     card_type: &CardType,
     size: CardSize,
@@ -439,7 +334,7 @@ pub fn spawn_card_display_with_marker<T: Component>(
 /// Use this for player hand cards, deck builder cards
 /// POC: Now uses template image rendering
 pub fn spawn_card_button<T: Component>(
-    parent: &mut ChildBuilder,
+    parent: &mut ChildSpawnerCommands,
     card_name: &str,
     card_type: &CardType,
     size: CardSize,
@@ -453,7 +348,7 @@ pub fn spawn_card_button<T: Component>(
 
 /// Spawn a ghosted placeholder for an empty slot
 pub fn spawn_placeholder(
-    parent: &mut ChildBuilder,
+    parent: &mut ChildSpawnerCommands,
     _placeholder_text: &str,
     size: CardSize,
     color_hint: Color,
@@ -465,130 +360,22 @@ pub fn spawn_placeholder(
     let template_aspect = 601.0 / 870.0;
     let height = width / template_aspect;
 
-    parent.spawn(NodeBundle {
-        style: Style {
-            width: Val::Px(width),
-            height: Val::Px(height),
-            position_type: PositionType::Relative,
-            ..default()
-        },
+    parent.spawn(Node {
+        width: Val::Px(width),
+        height: Val::Px(height),
+        position_type: PositionType::Relative,
         ..default()
     })
     .with_children(|parent| {
         // Placeholder background image (colorized, maintains aspect ratio)
         parent.spawn((
-            NodeBundle {
-                style: Style {
-                    position_type: PositionType::Absolute,
-                    width: Val::Percent(100.0),
-                    height: Val::Percent(100.0),
-                    ..default()
-                },
-                ..default()
-            },
-            UiImage {
-                texture: placeholder_image,
-                color: theme::dim_color(color_hint, 0.5), // Dimmed version of card type color
+            ImageNode::new(placeholder_image).with_color(theme::dim_color(color_hint, 0.5)),
+            Node {
+                position_type: PositionType::Absolute,
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
                 ..default()
             },
         ));
     });
-}
-
-/// Create a TextStyle with emoji font support
-/// Use this for any text that contains emoji characters
-pub fn text_style_with_emoji(font_size: f32, color: Color, emoji_font: &EmojiFont) -> TextStyle {
-    TextStyle {
-        font: emoji_font.0.clone(),
-        font_size,
-        color,
-    }
-}
-
-/// Create a TextBundle with mixed text and emojis
-/// Automatically separates emoji characters to use emoji font, regular text uses default font
-/// Example: "🃏 DECK BUILDER 🎴" -> emoji font for 🃏🎴, default font for " DECK BUILDER "
-pub fn text_bundle_with_emoji(text: impl Into<String>, font_size: f32, color: Color, emoji_font: &EmojiFont) -> TextBundle {
-    let text_string: String = text.into();
-    let mut sections = Vec::new();
-    let mut current_text = String::new();
-    let mut current_is_emoji = false;
-    let mut first_char = true;
-
-    for ch in text_string.chars() {
-        let is_emoji = is_emoji_char(ch);
-
-        if first_char {
-            current_is_emoji = is_emoji;
-            first_char = false;
-        }
-
-        // If we're switching between emoji/non-emoji, create a new section
-        if is_emoji != current_is_emoji {
-            if !current_text.is_empty() {
-                let style = if current_is_emoji {
-                    TextStyle {
-                        font: emoji_font.0.clone(),
-                        font_size,
-                        color,
-                    }
-                } else {
-                    TextStyle {
-                        font_size,
-                        color,
-                        ..default()
-                    }
-                };
-                sections.push(TextSection::new(current_text.clone(), style));
-                current_text.clear();
-            }
-            current_is_emoji = is_emoji;
-        }
-
-        current_text.push(ch);
-    }
-
-    // Add the last section
-    if !current_text.is_empty() {
-        let style = if current_is_emoji {
-            TextStyle {
-                font: emoji_font.0.clone(),
-                font_size,
-                color,
-            }
-        } else {
-            TextStyle {
-                font_size,
-                color,
-                ..default()
-            }
-        };
-        sections.push(TextSection::new(current_text, style));
-    }
-
-    TextBundle::from_sections(sections)
-}
-
-/// Check if a character is an emoji
-/// This is a simplified check - covers most common emojis
-fn is_emoji_char(ch: char) -> bool {
-    matches!(ch as u32,
-        0x1F300..=0x1F9FF | // Misc Symbols and Pictographs, Emoticons, Transport, etc.
-        0x2600..=0x26FF |   // Misc symbols
-        0x2700..=0x27BF |   // Dingbats
-        0x1F000..=0x1F02F | // Mahjong Tiles, Domino Tiles
-        0x1F0A0..=0x1F0FF | // Playing Cards
-        0x1F100..=0x1F64F | // Enclosed Alphanumeric Supplement, Emoticons
-        0x1F680..=0x1F6FF | // Transport and Map Symbols
-        0x1F900..=0x1F9FF | // Supplemental Symbols and Pictographs
-        0x1FA00..=0x1FA6F | // Chess Symbols, Symbols and Pictographs Extended-A
-        0x1FA70..=0x1FAFF | // Symbols and Pictographs Extended-A
-        0x2300..=0x23FF |   // Miscellaneous Technical
-        0x2B50 | 0x2B55 |   // Star, Circle
-        0x231A | 0x231B |   // Watch, Hourglass
-        0x23E9..=0x23F3 |   // Play/Pause buttons
-        0x25AA | 0x25AB |   // Squares
-        0x25B6 | 0x25C0 |   // Play buttons
-        0x25FB..=0x25FE     // Squares
-    )
 }

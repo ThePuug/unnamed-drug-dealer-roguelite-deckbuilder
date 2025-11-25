@@ -8,7 +8,7 @@ use crate::ui::setup::create_ui;
 use crate::models::fonts::EmojiFont;
 
 pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
-    commands.spawn(Camera2dBundle::default());
+    commands.spawn(Camera2d);
 
     // Load emoji font and insert as resource
     let emoji_font = asset_server.load("fonts/NotoEmoji-VariableFont_wght.ttf");
@@ -27,7 +27,7 @@ pub fn auto_flip_system(
     story_composer: Res<crate::models::narrative::StoryComposer>,
     time: Res<Time>,
 ) {
-    let Ok(mut hand_state) = hand_state_query.get_single_mut() else {
+    let Ok(mut hand_state) = hand_state_query.single_mut() else {
         return;
     };
 
@@ -94,7 +94,7 @@ pub fn ai_betting_system(
     mut ai_timer: ResMut<AiActionTimer>,
     time: Res<Time>,
 ) {
-    let Ok(mut hand_state) = hand_state_query.get_single_mut() else {
+    let Ok(mut hand_state) = hand_state_query.single_mut() else {
         return;
     };
 

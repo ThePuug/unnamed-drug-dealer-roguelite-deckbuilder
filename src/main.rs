@@ -20,7 +20,7 @@ fn main() {
     app.add_plugins(DefaultPlugins.set(WindowPlugin {
         primary_window: Some(Window {
             title: "Drug Dealer Deckbuilder".to_string(),
-            resolution: (1920.0, 1080.0).into(),
+            resolution: (1920, 1080).into(),
             ..default()
         }),
         ..default()
@@ -63,10 +63,10 @@ fn main() {
         ).run_if(in_state(GameState::InRun)))
         .add_systems(Update, (
             deck_builder_card_click_system,
-            preset_button_system,
             start_run_button_system,
             update_deck_builder_ui_system,
             populate_deck_builder_cards_system,
+            ui::ui_scroll_system, // Bevy 0.17: Manual scroll handling
         ).chain().run_if(in_state(GameState::DeckBuilding)))
         .run();
 }
@@ -95,6 +95,6 @@ fn cleanup_deck_builder_ui(
     deck_builder_root_query: Query<Entity, With<ui::components::DeckBuilderRoot>>,
 ) {
     for entity in deck_builder_root_query.iter() {
-        commands.entity(entity).despawn_recursive();
+        commands.entity(entity).despawn();
     }
 }

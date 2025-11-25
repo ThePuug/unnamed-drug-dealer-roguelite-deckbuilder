@@ -103,11 +103,6 @@ pub struct DeckBuilderCardButton {
     pub card_id: String,
 }
 
-// Note: DeckPreset enum temporarily in main.rs root, will be moved to game module
-#[derive(Component)]
-pub struct PresetButton {
-    pub preset: crate::DeckPreset,
-}
 
 #[derive(Component)]
 pub struct StartRunButton;
