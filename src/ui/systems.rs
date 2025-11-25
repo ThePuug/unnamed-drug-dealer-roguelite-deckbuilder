@@ -100,8 +100,25 @@ pub fn update_active_slots_system(
         // Spawn card or placeholder (Medium size, no margin for override slots)
         commands.entity(slot_entity).with_children(|parent| {
             if let Some(card) = active_card {
-                // Spawn actual card with Medium size, no margin - use template
-                helpers::spawn_card_with_template(
+                // RFC-017: Get upgrade info for player cards
+                let upgrade_info = match card.card_type {
+                    CardType::Product { .. } | CardType::Location { .. } | CardType::Insurance { .. } => {
+                        let tier = hand_state.get_card_tier(&card.name);
+                        let play_count = hand_state.card_play_counts.get(&card.name).copied().unwrap_or(0);
+                        Some(helpers::UpgradeInfo {
+                            tier_name: tier.name().to_string(),
+                            plays: play_count,
+                            plays_to_next: tier.plays_to_next(),
+                            multiplier: tier.multiplier(),
+                            star_color: tier.star_color(),
+                            is_foil: tier.is_foil(),
+                        })
+                    }
+                    _ => None, // Conviction doesn't upgrade
+                };
+
+                // Spawn actual card with Medium size, no margin - use template with upgrade
+                helpers::spawn_card_display_with_upgrade(
                     parent,
                     &card.name,
                     &card.card_type,
@@ -110,6 +127,7 @@ pub fn update_active_slots_system(
                     PlayedCardDisplay,
                     game_assets.card_template.clone(),
                     &emoji_font,
+                    upgrade_info,
                 );
             } else {
                 // Spawn ghosted placeholder (Medium size, no margin)

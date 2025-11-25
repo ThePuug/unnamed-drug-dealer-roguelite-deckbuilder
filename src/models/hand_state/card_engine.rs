@@ -65,6 +65,11 @@ impl HandState {
     /// Special rules:
     /// - Insurance acts as Cover card during totals calculation
     /// - Conviction has no effect on totals (only affects bust resolution)
+    ///
+    /// RFC-017 Upgrade Tiers:
+    /// - Cards with 5+ plays get +10% bonus to primary stat
+    /// - Product: +10% price, Location: +10% cover/-10% evidence
+    /// - Cover: +10% cover, Insurance: +10% cover
     pub fn calculate_totals(&self, include_current_round: bool) -> Totals {
         let mut totals = Totals::default();
         let mut price_multiplier: f32 = 1.0;
@@ -73,8 +78,12 @@ impl HandState {
         if let Some(location) = self.active_location(include_current_round) {
             match location.card_type {
                 CardType::Location { evidence, cover, heat } => {
-                    totals.evidence = evidence;
-                    totals.cover = cover;
+                    // RFC-017: Apply upgrade tier to Location stats
+                    let tier_mult = self.get_card_tier(&location.name).multiplier();
+                    let evidence_mult = if tier_mult > 1.0 { 2.0 - tier_mult } else { 1.0 }; // -10% evidence at Tier1
+
+                    totals.evidence = (evidence as f32 * evidence_mult) as u32;
+                    totals.cover = (cover as f32 * tier_mult) as u32;
                     totals.heat += heat;
                 }
                 _ => {} // Shouldn't happen
@@ -82,23 +91,34 @@ impl HandState {
         }
 
         for card in self.get_cards_for_calculation(include_current_round) {
+            // RFC-017: Get tier multiplier for this card
+            let tier_mult = self.get_card_tier(&card.name).multiplier();
+
             match card.card_type {
                 CardType::Evidence { evidence, heat } => {
+                    // Evidence cards are from Narc, no upgrade bonus (only player cards get upgrades)
                     totals.evidence += evidence;
                     totals.heat += heat;
                 }
                 CardType::Cover { cover, heat } => {
-                    totals.cover += cover;
+                    // RFC-017: Apply upgrade tier to Cover value
+                    let upgraded_cover = (cover as f32 * tier_mult) as u32;
+                    totals.cover += upgraded_cover;
                     totals.heat += heat;
                 }
                 CardType::DealModifier { price_multiplier: multiplier, evidence, cover, heat } => {
-                    price_multiplier *= multiplier;
+                    // RFC-017: Apply upgrade tier to DealModifier multiplier bonus
+                    // Add extra 10% at Tier1: 1.2x becomes 1.32x (1.2 * 1.1)
+                    let upgraded_multiplier = multiplier * tier_mult;
+                    price_multiplier *= upgraded_multiplier;
                     totals.evidence = totals.evidence.saturating_add_signed(evidence);
                     totals.cover = totals.cover.saturating_add_signed(cover);
                     totals.heat += heat;
                 }
                 CardType::Insurance { cover, .. } => {
-                    totals.cover += cover;
+                    // RFC-017: Apply upgrade tier to Insurance cover value
+                    let upgraded_cover = (cover as f32 * tier_mult) as u32;
+                    totals.cover += upgraded_cover;
                 }
                 CardType::Conviction { .. } => {}
                 _ => {}
@@ -108,8 +128,12 @@ impl HandState {
         // Get profit from active Product (apply multipliers)
         if let Some(product) = self.active_product(include_current_round) {
             if let CardType::Product { price, heat } = product.card_type {
+                // RFC-017: Apply upgrade tier to Product price
+                let tier_mult = self.get_card_tier(&product.name).multiplier();
+                let upgraded_price = (price as f32 * tier_mult) as u32;
+
                 let buyer_multiplier = self.get_profit_multiplier();
-                totals.profit = (price as f32 * price_multiplier * buyer_multiplier) as u32;
+                totals.profit = (upgraded_price as f32 * price_multiplier * buyer_multiplier) as u32;
                 totals.heat += heat;
             }
         }
@@ -281,5 +305,102 @@ mod tests {
         assert_eq!(totals.evidence, 20);
         assert_eq!(totals.cover, 20);
         assert_eq!(totals.heat, 0);
+    }
+
+    // ========================================================================
+    // RFC-017: Upgrade Tier Tests
+    // ========================================================================
+
+    #[test]
+    fn test_upgrade_tier_bonus_on_product() {
+        let mut hand_state = HandState::default();
+
+        // Product with base price 100
+        hand_state.cards_played.push(create_product("Test Product", 100, 0));
+        hand_state.cards_played.push(create_location("Location", 10, 10, 0));
+
+        // Without upgrades, profit = 100
+        let totals_base = hand_state.calculate_totals(true);
+        assert_eq!(totals_base.profit, 100);
+
+        // TESTING MODE: 1 play = Tier 1 (+10%)
+        hand_state.card_play_counts.insert("Test Product".to_string(), 1);
+
+        // With Tier 1, profit = 110 (100 * 1.1)
+        let totals_tier1 = hand_state.calculate_totals(true);
+        assert_eq!(totals_tier1.profit, 110);
+    }
+
+    #[test]
+    fn test_upgrade_tier_bonus_on_cover() {
+        let mut hand_state = HandState::default();
+
+        // Cover card with base 30 cover
+        hand_state.cards_played.push(create_location("Location", 10, 10, 0));
+        hand_state.cards_played.push(create_cover("Test Cover", 30, 0));
+
+        // Without upgrades, total cover = 10 (location) + 30 (cover) = 40
+        let totals_base = hand_state.calculate_totals(true);
+        assert_eq!(totals_base.cover, 40);
+
+        // TESTING MODE: 1 play = Tier 1 (+10%)
+        hand_state.card_play_counts.insert("Test Cover".to_string(), 1);
+
+        // With Tier 1, cover = 10 + 33 (30 * 1.1) = 43
+        let totals_tier1 = hand_state.calculate_totals(true);
+        assert_eq!(totals_tier1.cover, 43);
+    }
+
+    #[test]
+    fn test_upgrade_tier_bonus_on_location() {
+        let mut hand_state = HandState::default();
+
+        // Location with base evidence 20, cover 20
+        hand_state.cards_played.push(create_location("Test Location", 20, 20, 0));
+
+        // Without upgrades, evidence = 20, cover = 20
+        let totals_base = hand_state.calculate_totals(true);
+        assert_eq!(totals_base.evidence, 20);
+        assert_eq!(totals_base.cover, 20);
+
+        // TESTING MODE: 1 play = Tier 1 (+10% cover, -10% evidence)
+        hand_state.card_play_counts.insert("Test Location".to_string(), 1);
+
+        // With Tier 1: evidence = 18 (20 * 0.9), cover = 22 (20 * 1.1)
+        let totals_tier1 = hand_state.calculate_totals(true);
+        assert_eq!(totals_tier1.evidence, 18);
+        assert_eq!(totals_tier1.cover, 22);
+    }
+
+    #[test]
+    fn test_upgrade_tier5_max_bonus() {
+        let mut hand_state = HandState::default();
+
+        // Product with base price 100
+        hand_state.cards_played.push(create_product("Test Product", 100, 0));
+        hand_state.cards_played.push(create_location("Location", 10, 10, 0));
+
+        // TESTING MODE: 5 plays = Tier 5 (+50%)
+        hand_state.card_play_counts.insert("Test Product".to_string(), 5);
+
+        // With Tier 5, profit = 150 (100 * 1.5)
+        let totals_tier5 = hand_state.calculate_totals(true);
+        assert_eq!(totals_tier5.profit, 150);
+    }
+
+    #[test]
+    fn test_upgrade_no_bonus_for_narc_cards() {
+        let mut hand_state = HandState::default();
+
+        // Evidence is a Narc card type
+        hand_state.cards_played.push(create_location("Location", 10, 10, 0));
+        hand_state.cards_played.push(create_evidence("Narc Evidence", 20, 0));
+
+        // Even with play counts, Narc cards (Evidence type) get no bonus
+        hand_state.card_play_counts.insert("Narc Evidence".to_string(), 10);
+
+        // Evidence should still be 10 + 20 = 30 (no bonus applied)
+        let totals = hand_state.calculate_totals(true);
+        assert_eq!(totals.evidence, 30);
     }
 }

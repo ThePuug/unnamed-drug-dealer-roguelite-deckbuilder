@@ -2,6 +2,7 @@
 
 use bevy::prelude::Resource;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Current save file format version
@@ -141,6 +142,88 @@ impl HeatTier {
     }
 }
 
+/// RFC-017: Card upgrade tier based on play count
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum UpgradeTier {
+    Base,   // 0-4 plays: No bonus
+    Tier1,  // 5+ plays: +10% primary stat
+    Tier2,  // Bronze: 12+ plays (TESTING: 2+)
+    Tier3,  // Silver: 25+ plays (TESTING: 3+)
+    Tier4,  // Gold: 50+ plays (TESTING: 4+)
+    Tier5,  // Foil: 100+ plays (TESTING: 5+)
+}
+
+impl UpgradeTier {
+    /// Calculate tier from play count
+    /// TESTING: Using 1/2/3/4/5 thresholds (production: 5/12/25/50/100)
+    pub fn from_play_count(count: u32) -> Self {
+        match count {
+            0 => UpgradeTier::Base,
+            1 => UpgradeTier::Tier1,   // TESTING (production: 5..=11)
+            2 => UpgradeTier::Tier2,   // TESTING (production: 12..=24)
+            3 => UpgradeTier::Tier3,   // TESTING (production: 25..=49)
+            4 => UpgradeTier::Tier4,   // TESTING (production: 50..=99)
+            _ => UpgradeTier::Tier5,   // TESTING: 5+ (production: 100+)
+        }
+    }
+
+    /// Get the stat multiplier for this tier
+    pub fn multiplier(&self) -> f32 {
+        match self {
+            UpgradeTier::Base => 1.0,
+            UpgradeTier::Tier1 => 1.1,  // +10%
+            UpgradeTier::Tier2 => 1.2,  // +20%
+            UpgradeTier::Tier3 => 1.3,  // +30%
+            UpgradeTier::Tier4 => 1.4,  // +40%
+            UpgradeTier::Tier5 => 1.5,  // +50%
+        }
+    }
+
+    /// Get plays needed for next tier (None if max tier)
+    pub fn plays_to_next(&self) -> Option<u32> {
+        match self {
+            UpgradeTier::Base => Some(1),   // TESTING (production: 5)
+            UpgradeTier::Tier1 => Some(2),  // TESTING (production: 12)
+            UpgradeTier::Tier2 => Some(3),  // TESTING (production: 25)
+            UpgradeTier::Tier3 => Some(4),  // TESTING (production: 50)
+            UpgradeTier::Tier4 => Some(5),  // TESTING (production: 100)
+            UpgradeTier::Tier5 => None,     // Max tier
+        }
+    }
+
+    /// Display name for UI (star emoji for all upgraded tiers)
+    pub fn name(&self) -> &'static str {
+        match self {
+            UpgradeTier::Base => "Base",
+            _ => "★",  // Filled star (U+2605)
+        }
+    }
+
+    /// Get star color as RGB tuple
+    /// Grey -> Bronze -> Silver -> Gold -> Gold (foil uses gold star)
+    pub fn star_color(&self) -> (f32, f32, f32) {
+        match self {
+            UpgradeTier::Base => (0.5, 0.5, 0.5),   // Grey (shouldn't show)
+            UpgradeTier::Tier1 => (0.6, 0.6, 0.6),  // Dull grey
+            UpgradeTier::Tier2 => (0.8, 0.5, 0.2),  // Bronze
+            UpgradeTier::Tier3 => (0.75, 0.75, 0.8), // Silver
+            UpgradeTier::Tier4 => (1.0, 0.84, 0.0), // Gold
+            UpgradeTier::Tier5 => (1.0, 0.84, 0.0), // Gold (card gets foil)
+        }
+    }
+
+    /// Whether this tier has the foil effect on the whole card
+    pub fn is_foil(&self) -> bool {
+        matches!(self, UpgradeTier::Tier5)
+    }
+}
+
+impl Default for UpgradeTier {
+    fn default() -> Self {
+        UpgradeTier::Base
+    }
+}
+
 /// Character state that persists across sessions until permadeath
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct CharacterState {
@@ -154,7 +237,10 @@ pub struct CharacterState {
     pub decks_played: u32,
     /// Unix timestamp when character was created
     pub created_at: u64,
-    // Future: card_play_counts for per-card upgrade tracking
+    /// RFC-017: Per-card play counts for upgrade tracking
+    /// Key is card name, value is times played
+    #[serde(default)]
+    pub card_play_counts: HashMap<String, u32>,
 }
 
 impl CharacterState {
@@ -166,6 +252,7 @@ impl CharacterState {
             last_played: now,
             decks_played: 0,
             created_at: now,
+            card_play_counts: HashMap::new(),
         }
     }
 
@@ -199,6 +286,22 @@ impl CharacterState {
         } else {
             self.heat = self.heat.saturating_sub((-amount) as u32);
         }
+    }
+
+    /// RFC-017: Increment play count for a card
+    pub fn increment_play_count(&mut self, card_name: &str) {
+        let count = self.card_play_counts.entry(card_name.to_string()).or_insert(0);
+        *count = count.saturating_add(1);
+    }
+
+    /// RFC-017: Get play count for a card
+    pub fn get_play_count(&self, card_name: &str) -> u32 {
+        *self.card_play_counts.get(card_name).unwrap_or(&0)
+    }
+
+    /// RFC-017: Get upgrade tier for a card based on play count
+    pub fn get_card_tier(&self, card_name: &str) -> UpgradeTier {
+        UpgradeTier::from_play_count(self.get_play_count(card_name))
     }
 
     /// Validate character state sanity
@@ -494,5 +597,151 @@ mod tests {
 
         assert!(data.validate().is_ok());
         assert_eq!(data.account.cash_on_hand, 500);
+    }
+
+    // ========================================================================
+    // UpgradeTier Tests (RFC-017)
+    // ========================================================================
+
+    #[test]
+    fn test_upgrade_tier_from_play_count() {
+        // TESTING MODE: Tiers at 0/1/2/3/4/5 plays (production: 0/5/12/25/50/100)
+        assert_eq!(UpgradeTier::from_play_count(0), UpgradeTier::Base);
+        assert_eq!(UpgradeTier::from_play_count(1), UpgradeTier::Tier1);
+        assert_eq!(UpgradeTier::from_play_count(2), UpgradeTier::Tier2);
+        assert_eq!(UpgradeTier::from_play_count(3), UpgradeTier::Tier3);
+        assert_eq!(UpgradeTier::from_play_count(4), UpgradeTier::Tier4);
+        assert_eq!(UpgradeTier::from_play_count(5), UpgradeTier::Tier5);
+        assert_eq!(UpgradeTier::from_play_count(100), UpgradeTier::Tier5);
+    }
+
+    #[test]
+    fn test_upgrade_tier_multiplier() {
+        assert!((UpgradeTier::Base.multiplier() - 1.0).abs() < f32::EPSILON);
+        assert!((UpgradeTier::Tier1.multiplier() - 1.1).abs() < f32::EPSILON);
+        assert!((UpgradeTier::Tier2.multiplier() - 1.2).abs() < f32::EPSILON);
+        assert!((UpgradeTier::Tier3.multiplier() - 1.3).abs() < f32::EPSILON);
+        assert!((UpgradeTier::Tier4.multiplier() - 1.4).abs() < f32::EPSILON);
+        assert!((UpgradeTier::Tier5.multiplier() - 1.5).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_upgrade_tier_plays_to_next() {
+        // TESTING MODE thresholds for next tier
+        assert_eq!(UpgradeTier::Base.plays_to_next(), Some(1));
+        assert_eq!(UpgradeTier::Tier1.plays_to_next(), Some(2));
+        assert_eq!(UpgradeTier::Tier2.plays_to_next(), Some(3));
+        assert_eq!(UpgradeTier::Tier3.plays_to_next(), Some(4));
+        assert_eq!(UpgradeTier::Tier4.plays_to_next(), Some(5));
+        assert_eq!(UpgradeTier::Tier5.plays_to_next(), None); // Max tier
+    }
+
+    #[test]
+    fn test_upgrade_tier_name() {
+        assert_eq!(UpgradeTier::Base.name(), "Base");
+        // All upgraded tiers show star (color varies but name is same)
+        assert_eq!(UpgradeTier::Tier1.name(), "★");
+        assert_eq!(UpgradeTier::Tier5.name(), "★");
+    }
+
+    #[test]
+    fn test_upgrade_tier_star_color() {
+        // Grey for base/tier1
+        assert_eq!(UpgradeTier::Base.star_color(), (0.5, 0.5, 0.5));
+        assert_eq!(UpgradeTier::Tier1.star_color(), (0.6, 0.6, 0.6));
+        // Bronze for tier2
+        assert_eq!(UpgradeTier::Tier2.star_color(), (0.8, 0.5, 0.2));
+        // Silver for tier3
+        assert_eq!(UpgradeTier::Tier3.star_color(), (0.75, 0.75, 0.8));
+        // Gold for tier4 and tier5
+        assert_eq!(UpgradeTier::Tier4.star_color(), (1.0, 0.84, 0.0));
+        assert_eq!(UpgradeTier::Tier5.star_color(), (1.0, 0.84, 0.0));
+    }
+
+    #[test]
+    fn test_upgrade_tier_is_foil() {
+        assert!(!UpgradeTier::Base.is_foil());
+        assert!(!UpgradeTier::Tier1.is_foil());
+        assert!(!UpgradeTier::Tier4.is_foil());
+        assert!(UpgradeTier::Tier5.is_foil());
+    }
+
+    // ========================================================================
+    // Play Count Tracking Tests (RFC-017)
+    // ========================================================================
+
+    #[test]
+    fn test_character_increment_play_count() {
+        let mut state = CharacterState::new();
+
+        state.increment_play_count("Test Card");
+        assert_eq!(state.get_play_count("Test Card"), 1);
+
+        state.increment_play_count("Test Card");
+        assert_eq!(state.get_play_count("Test Card"), 2);
+
+        // Different card starts at 0
+        assert_eq!(state.get_play_count("Other Card"), 0);
+    }
+
+    #[test]
+    fn test_character_play_count_multiple_cards() {
+        let mut state = CharacterState::new();
+
+        state.increment_play_count("Card A");
+        state.increment_play_count("Card A");
+        state.increment_play_count("Card B");
+        state.increment_play_count("Card A");
+
+        assert_eq!(state.get_play_count("Card A"), 3);
+        assert_eq!(state.get_play_count("Card B"), 1);
+        assert_eq!(state.get_play_count("Card C"), 0);
+    }
+
+    #[test]
+    fn test_character_get_card_tier() {
+        let mut state = CharacterState::new();
+
+        // No plays = Base tier
+        assert_eq!(state.get_card_tier("Test Card"), UpgradeTier::Base);
+
+        // TESTING MODE: 1st play = Tier 1
+        state.increment_play_count("Test Card");
+        assert_eq!(state.get_card_tier("Test Card"), UpgradeTier::Tier1);
+
+        // 2nd play = Tier 2 (TESTING MODE)
+        state.increment_play_count("Test Card");
+        assert_eq!(state.get_card_tier("Test Card"), UpgradeTier::Tier2);
+
+        // Continue to max tier
+        state.increment_play_count("Test Card"); // 3 plays = Tier3
+        state.increment_play_count("Test Card"); // 4 plays = Tier4
+        state.increment_play_count("Test Card"); // 5 plays = Tier5 (max)
+        assert_eq!(state.get_card_tier("Test Card"), UpgradeTier::Tier5);
+
+        // More plays stay at Tier5 (max)
+        state.increment_play_count("Test Card");
+        assert_eq!(state.get_card_tier("Test Card"), UpgradeTier::Tier5);
+    }
+
+    #[test]
+    fn test_character_play_count_saturating() {
+        let mut state = CharacterState::new();
+        // Directly set to near-max to test saturating behavior
+        state.card_play_counts.insert("Test".to_string(), u32::MAX - 1);
+
+        state.increment_play_count("Test");
+        assert_eq!(state.get_play_count("Test"), u32::MAX);
+
+        // Should not overflow
+        state.increment_play_count("Test");
+        assert_eq!(state.get_play_count("Test"), u32::MAX);
+    }
+
+    #[test]
+    fn test_character_play_counts_default() {
+        // Test that default HashMap initializes correctly (backward compatibility)
+        let state = CharacterState::new();
+        assert!(state.card_play_counts.is_empty());
     }
 }

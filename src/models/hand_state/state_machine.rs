@@ -28,6 +28,7 @@ impl HandState {
             buyer_persona: None,
             hand_story: None, // SOW-012: No story initially
             last_profit: 0,
+            card_play_counts: std::collections::HashMap::new(), // RFC-017: Initialize empty, set from SaveData
         }
     }
 
@@ -69,13 +70,15 @@ impl HandState {
         }
 
         let preserved_buyer_persona = self.buyer_persona.clone();
+        let preserved_play_counts = self.card_play_counts.clone(); // RFC-017: Preserve play counts
 
-        // Reset state but preserve cash/heat/cards/buyer
+        // Reset state but preserve cash/heat/cards/buyer/play_counts
         *self = Self::default();
         self.cash = preserved_cash;
         self.current_heat = preserved_heat;
         self.owner_cards = preserved_owner_cards;
         self.buyer_persona = preserved_buyer_persona;
+        self.card_play_counts = preserved_play_counts; // RFC-017: Restore play counts
 
         true
     }

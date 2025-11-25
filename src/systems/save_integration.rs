@@ -106,6 +106,33 @@ pub fn save_after_resolution_system(
                 hand_state.last_profit,
                 save_data.account.cash_on_hand
             );
+
+            // RFC-017: Increment play counts for player cards on successful deal
+            // Only player card types get upgrades (not Narc Evidence/Conviction)
+            if let Some(ref mut character) = save_data.character {
+                for card in &hand_state.cards_played {
+                    // Player card types: Product, Location, Cover, DealModifier, Insurance
+                    let is_player_card = matches!(
+                        card.card_type,
+                        crate::CardType::Product { .. }
+                            | crate::CardType::Location { .. }
+                            | crate::CardType::Cover { .. }
+                            | crate::CardType::DealModifier { .. }
+                            | crate::CardType::Insurance { .. }
+                    );
+
+                    if is_player_card {
+                        character.increment_play_count(&card.name);
+                        let tier = character.get_card_tier(&card.name);
+                        info!(
+                            "Card '{}' play count: {} (Tier: {})",
+                            card.name,
+                            character.get_play_count(&card.name),
+                            tier.name()
+                        );
+                    }
+                }
+            }
         }
 
         // Update character state from HandState

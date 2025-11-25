@@ -10,7 +10,7 @@ Implementation tracking for Progression & Meta-Game specification.
 
 ## Summary
 
-**Overall Completion:** 4/38 features (11%)
+**Overall Completion:** 9/38 features (24%)
 
 | Category | Complete | Partial | Not Started | Deferred |
 |----------|----------|---------|-------------|----------|
@@ -18,11 +18,11 @@ Implementation tracking for Progression & Meta-Game specification.
 | Location System | 0 | 0 | 6 | 0 |
 | Narc Variety | 0 | 0 | 0 | 1 |
 | Card Unlock System | 0 | 0 | 6 | 0 |
-| Per-Run Card Upgrades | 0 | 0 | 7 | 0 |
+| Per-Run Card Upgrades | 5 | 0 | 2 | 0 |
 | Character System | 0 | 0 | 7 | 0 |
 | Achievements | 0 | 0 | 4 | 0 |
 | Leaderboards | 0 | 0 | 0 | 2 |
-| **Total** | **4** | **0** | **31** | **3** |
+| **Total** | **9** | **0** | **26** | **3** |
 
 ---
 
@@ -74,17 +74,17 @@ Implementation tracking for Progression & Meta-Game specification.
 
 ---
 
-## Per-Run Card Upgrades: 0/7 complete (0%)
+## Per-Run Card Upgrades: 5/7 complete (71%)
 
 | Feature | Status | RFC/ADR | Notes |
 |---------|:------:|---------|-------|
-| Card play tracking (per character) | ❌ | - | Count times each card played |
-| Upgrade thresholds | ❌ | - | Tier 1: 5 plays, Tier 2: 12, Tier 3: 25, Tier 4: 50 |
-| Upgrade application | ❌ | - | Apply stat bonuses when threshold reached |
-| Upgrade display on cards | ❌ | - | Show current tier and progress |
-| Upgrade reset on permadeath | ❌ | - | All upgrades lost when character dies |
-| Upgrade notification | ❌ | - | "Burner Phone upgraded to Tier 2!" |
-| Upgrade feedback in UI | ❌ | - | Show upgraded stats vs base stats |
+| Card play tracking (per character) | ✅ | RFC-017 | Counts stored in CharacterState.card_play_counts |
+| Upgrade thresholds | ✅ | RFC-017 | MVP: Tier 1 at 5 plays (+10% primary stat) |
+| Upgrade application | ✅ | RFC-017 | Applied in calculate_totals() during play |
+| Upgrade display on cards | ✅ | RFC-017 | Infrastructure added (UpgradeInfo passed to card render) |
+| Upgrade reset on permadeath | ✅ | RFC-017 | Play counts in CharacterState, lost when character dies |
+| Upgrade notification | ❌ | - | Deferred - "Burner Phone upgraded to Tier 2!" |
+| Upgrade feedback in UI | ❌ | - | Deferred - Show upgraded stats vs base stats |
 
 ---
 

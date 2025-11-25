@@ -55,6 +55,7 @@ pub struct HandState {
     pub buyer_persona: Option<BuyerPersona>,
     pub hand_story: Option<String>, // SOW-012: Generated narrative for this hand
     pub last_profit: u32, // RFC-016: Profit from most recent hand resolution
+    pub card_play_counts: HashMap<String, u32>, // RFC-017: Play counts for upgrade tiers
 }
 
 impl HandState {
@@ -80,6 +81,7 @@ impl HandState {
             buyer_persona: None,
             hand_story: None,
             last_profit: 0,
+            card_play_counts: HashMap::new(), // RFC-017: Initialize empty
         }
     }
 }
@@ -119,6 +121,7 @@ impl Default for HandState {
             buyer_persona: None,
             hand_story: None,
             last_profit: 0,
+            card_play_counts: HashMap::new(), // RFC-017: Initialize empty
         }
     }
 }
@@ -132,5 +135,16 @@ impl HandState {
     /// Get mutable cards for an owner
     pub fn cards_mut(&mut self, owner: Owner) -> &mut Cards {
         self.owner_cards.get_mut(&owner).unwrap()
+    }
+
+    /// RFC-017: Get upgrade tier for a card based on play counts
+    pub fn get_card_tier(&self, card_name: &str) -> crate::save::UpgradeTier {
+        let count = self.card_play_counts.get(card_name).copied().unwrap_or(0);
+        crate::save::UpgradeTier::from_play_count(count)
+    }
+
+    /// RFC-017: Get play count for a card
+    pub fn get_play_count(&self, card_name: &str) -> u32 {
+        self.card_play_counts.get(card_name).copied().unwrap_or(0)
     }
 }

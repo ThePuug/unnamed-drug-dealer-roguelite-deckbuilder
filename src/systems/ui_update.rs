@@ -129,8 +129,20 @@ pub fn recreate_hand_display_system(
         commands.entity(hand_entity).with_children(|parent| {
             for (slot_index, slot) in hand_state.cards(Owner::Player).hand.iter().enumerate() {
                 if let Some(card) = slot {
-                    // Show actual card (Medium size, no margin)
-                    ui::spawn_card_button(
+                    // RFC-017: Get upgrade info from hand state play counts
+                    let tier = hand_state.get_card_tier(&card.name);
+                    let play_count = hand_state.card_play_counts.get(&card.name).copied().unwrap_or(0);
+                    let upgrade_info = ui::UpgradeInfo {
+                        tier_name: tier.name().to_string(),
+                        plays: play_count,
+                        plays_to_next: tier.plays_to_next(),
+                        multiplier: tier.multiplier(),
+                        star_color: tier.star_color(),
+                        is_foil: tier.is_foil(),
+                    };
+
+                    // Show actual card with upgrade info (Medium size, no margin)
+                    ui::spawn_card_button_with_upgrade(
                         parent,
                         &card.name,
                         &card.card_type,
@@ -139,6 +151,7 @@ pub fn recreate_hand_display_system(
                         CardButton { card_index: slot_index },
                         game_assets.card_template.clone(),
                         &emoji_font,
+                        Some(upgrade_info),
                     );
                 } else {
                     // Show placeholder for empty slot (Medium size, no margin)
@@ -188,6 +201,7 @@ pub fn populate_deck_builder_cards_system(
     card_button_query: Query<Entity, With<DeckBuilderCardButton>>,
     game_assets: Res<crate::assets::GameAssets>,
     emoji_font: Res<crate::EmojiFont>,
+    save_data: Option<Res<crate::save::SaveData>>, // RFC-017: For card upgrade tiers
 ) {
     if !deck_builder.is_changed() {
         return;
@@ -236,8 +250,24 @@ pub fn populate_deck_builder_cards_system(
                     ui::CardDisplayState::Inactive
                 };
 
+                // RFC-017: Get upgrade info from character state if available
+                let upgrade_info = save_data.as_ref().and_then(|save| {
+                    save.character.as_ref().map(|character| {
+                        let play_count = character.get_play_count(&card.name);
+                        let tier = character.get_card_tier(&card.name);
+                        ui::UpgradeInfo {
+                            tier_name: tier.name().to_string(),
+                            plays: play_count,
+                            plays_to_next: tier.plays_to_next(),
+                            multiplier: tier.multiplier(),
+                            star_color: tier.star_color(),
+                            is_foil: tier.is_foil(),
+                        }
+                    })
+                });
+
                 // Use template-based rendering for deck builder cards
-                ui::spawn_card_button(
+                ui::spawn_card_button_with_upgrade(
                     parent,
                     &card.name,
                     &card.card_type,
@@ -248,6 +278,7 @@ pub fn populate_deck_builder_cards_system(
                     },
                     game_assets.card_template.clone(),
                     &emoji_font,
+                    upgrade_info,
                 );
             }
         });
@@ -327,16 +358,33 @@ pub fn update_played_cards_display_system(
                 // Only show Evidence, Cover, DealModifier in played pool
                 match card.card_type {
                     CardType::Evidence { .. } | CardType::Cover { .. } | CardType::DealModifier { .. } => {
-                        ui::spawn_card_display_with_marker(
+                        // RFC-017: Get upgrade info for player cards (Evidence doesn't upgrade)
+                        let upgrade_info = match card.card_type {
+                            CardType::Cover { .. } | CardType::DealModifier { .. } => {
+                                let tier = hand_state.get_card_tier(&card.name);
+                                let play_count = hand_state.card_play_counts.get(&card.name).copied().unwrap_or(0);
+                                Some(ui::UpgradeInfo {
+                                    tier_name: tier.name().to_string(),
+                                    plays: play_count,
+                                    plays_to_next: tier.plays_to_next(),
+                                    multiplier: tier.multiplier(),
+                                    star_color: tier.star_color(),
+                                    is_foil: tier.is_foil(),
+                                })
+                            }
+                            _ => None, // Evidence cards don't upgrade
+                        };
+
+                        ui::spawn_card_display_with_upgrade(
                             parent,
                             &card.name,
                             &card.card_type,
                             ui::CardSize::Small,
                             ui::CardDisplayState::Active,
-                            true, // compact text
                             PlayedCardDisplay,
                             game_assets.card_template.clone(),
                             &emoji_font,
+                            upgrade_info,
                         );
                     }
                     // Product, Location, Conviction, Insurance go to active slots (Phase 4)

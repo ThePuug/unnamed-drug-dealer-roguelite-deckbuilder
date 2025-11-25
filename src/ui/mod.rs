@@ -9,7 +9,9 @@ pub mod components;
 pub mod helpers;
 pub mod systems;
 pub mod setup;
+pub mod foil_material;
 
 // Re-exports for convenience
 pub use helpers::*;
 pub use systems::*;
+pub use foil_material::{FoilMaterial, FoilMaterialPlugin, FoilCard};

@@ -279,6 +279,7 @@ pub fn start_run_button_system(
     mut next_state: ResMut<NextState<GameState>>,
     hand_state_query: Query<Entity, With<HandState>>,
     game_assets: Res<crate::assets::GameAssets>, // SOW-013-B: Need loaded assets for buyer/narc deck
+    save_data: Option<Res<crate::save::SaveData>>, // RFC-017: Need play counts for upgrades
 ) {
     for interaction in interaction_query.iter() {
         if *interaction == Interaction::Pressed && deck_builder.is_valid() {
@@ -300,6 +301,14 @@ pub fn start_run_button_system(
             // Create new HandState with selected deck
             let mut hand_state = HandState::with_custom_deck(deck_builder.selected_cards.clone(), &game_assets);
             hand_state.buyer_persona = Some(random_buyer);
+
+            // RFC-017: Copy play counts from CharacterState for upgrade tier calculation
+            if let Some(ref save) = save_data {
+                if let Some(ref character) = save.character {
+                    hand_state.card_play_counts = character.card_play_counts.clone();
+                }
+            }
+
             hand_state.draw_cards(); // This will also initialize buyer hand
             commands.spawn(hand_state);
 
@@ -334,6 +343,7 @@ pub fn card_click_system(
                         println!("Player playing card {}", card_button.card_index);
 
                         // Play the card face-up immediately
+                        // RFC-017: Play count is incremented on successful deal resolution, not here
                         let _ = hand_state.play_card(Owner::Player, card_button.card_index);
                     }
                 }

@@ -2,7 +2,7 @@
 
 ## Status
 
-**Draft** - 2025-11-25
+**Approved** - 2025-11-25
 
 ## Feature Request
 
@@ -254,20 +254,22 @@ Success criteria from spec:
 
 ## Approval
 
-**Status:** Draft
+**Status:** Approved
 
 **Approvers:**
-- ARCHITECT: [ ] Pending review
-- PLAYER: [ ] Pending review
+- ARCHITECT: [✅] Feasible - extends CharacterState, integrates with existing stat calculation
+- PLAYER: [✅] Solves player need for in-run progression and meaningful permadeath
 
 **Scope Constraint:** ~6-10 hours (fits in one SOW)
 
+**MVP Scope Decision:** Start with 2 tiers only (Base + Tier 1) for initial implementation. Add higher tiers after playtesting confirms run lengths support them.
+
 **Dependencies:**
-- RFC-015: Heat & Character Persistence (character state)
-- Card system (stats calculation)
+- RFC-015: Heat & Character Persistence (character state) ✅ Implemented
+- Card system (stats calculation) ✅ Available
 
 **Next Steps:**
-1. Review and approve RFC
+1. ~~Review and approve RFC~~ ✅
 2. Create SOW-017
 3. Add play_counts to CharacterState
 4. Implement play tracking hook

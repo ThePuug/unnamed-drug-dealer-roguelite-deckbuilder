@@ -7,6 +7,7 @@ mod game_state;
 mod save;
 
 use bevy::prelude::*;
+use bevy::asset::load_internal_binary_asset;
 use ui::setup::*;
 use models::card::*;
 use models::deck_builder::*;
@@ -26,9 +27,20 @@ fn main() {
             ..default()
         }),
         ..default()
-    }))
+    }));
+
+    // Set DejaVuSans as default font (has filled star U+2605 and good Unicode coverage)
+    load_internal_binary_asset!(
+        app,
+        bevy::text::TextFont::default().font,
+        "../assets/fonts/DejaVuSans.ttf",
+        |bytes: &[u8], _path: String| { Font::try_from_bytes(bytes.to_vec()).unwrap() }
+    );
+
+    app
         .add_plugins(assets::AssetLoaderPlugin)
         .add_plugins(SavePlugin)
+        .add_plugins(ui::FoilMaterialPlugin)
         .init_state::<GameState>()
         .insert_resource(AiActionTimer::default())
         .init_resource::<CharacterLoaded>()
