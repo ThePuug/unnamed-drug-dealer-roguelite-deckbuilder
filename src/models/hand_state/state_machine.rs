@@ -1,13 +1,12 @@
 // State machine implementation for HandState
 
 use super::*;
-use rand::Rng;
-use rand::seq::SliceRandom;
+use rand::prelude::*;
 
 impl HandState {
     /// Create HandState with a custom player deck
     pub fn with_custom_deck(mut player_deck: Vec<Card>, assets: &crate::assets::GameAssets) -> Self {
-        player_deck.shuffle(&mut rand::thread_rng());
+        player_deck.shuffle(&mut rand::rng());
 
         let mut owner_cards = std::collections::HashMap::new();
         owner_cards.insert(Owner::Narc, Cards::new(create_narc_deck(assets)));
@@ -279,7 +278,7 @@ impl HandState {
             return None;
         }
 
-        let random_idx = filled_indices[rand::thread_rng().gen_range(0..filled_indices.len())];
+        let random_idx = filled_indices[rand::rng().random_range(0..filled_indices.len())];
         let card = buyer_cards.hand[random_idx].take().unwrap();
 
         buyer_cards.played.push(card.clone());

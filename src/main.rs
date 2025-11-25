@@ -1,18 +1,20 @@
 mod ui;
-mod assets; // SOW-013-A: Asset loading system
+mod assets;
 mod data;
 mod models;
 mod systems;
 mod game_state;
+mod save;
 
 use bevy::prelude::*;
 use ui::setup::*;
 use models::card::*;
 use models::deck_builder::*;
-use models::hand_state::*; // SOW-AAA Phase 5
+use models::hand_state::*;
 use models::fonts::EmojiFont;
 use systems::*;
-use game_state::{GameState, AiActionTimer}; // SOW-AAA Phase 8
+use game_state::{GameState, AiActionTimer};
+use save::SavePlugin;
 
 fn main() {
     let mut app = App::new();
@@ -25,13 +27,23 @@ fn main() {
         }),
         ..default()
     }))
-        .add_plugins(assets::AssetLoaderPlugin) // SOW-013-A: Load game assets
-        .init_state::<GameState>()  // SOW-006: Add state management (starts in AssetLoading)
-        .insert_resource(AiActionTimer::default())  // SOW-008: AI pacing timer
+        .add_plugins(assets::AssetLoaderPlugin)
+        .add_plugins(SavePlugin)
+        .init_state::<GameState>()
+        .insert_resource(AiActionTimer::default())
+        .init_resource::<CharacterLoaded>()
+        .init_resource::<DecayInfo>()
         .add_systems(Startup, setup)
-        .add_systems(OnEnter(GameState::DeckBuilding), initialize_deck_builder_from_assets) // SOW-013-B: Init when entering DeckBuilding
-        .add_systems(OnEnter(GameState::DeckBuilding), setup_deck_builder)  // SOW-006: Setup deck builder UI
-        .add_systems(OnExit(GameState::DeckBuilding), cleanup_deck_builder_ui);  // SOW-013-B: Cleanup UI when leaving
+        // Character persistence systems
+        .add_systems(OnEnter(GameState::DeckBuilding), (
+            load_character_system,
+            apply_decay_system,
+            initialize_deck_builder_from_assets,
+            setup_deck_builder,
+        ).chain())
+        .add_systems(OnEnter(GameState::InRun), ensure_character_on_run_start)
+        .add_systems(OnExit(GameState::DeckBuilding), cleanup_deck_builder_ui)
+        .add_systems(OnExit(GameState::InRun), mark_deck_completed_system);
 
     app
         .add_systems(Startup, ui::scale_ui_to_fit_system)  // Initial UI scaling
@@ -53,13 +65,17 @@ fn main() {
             update_actor_portraits_system,
             recreate_hand_display_system,
             ui_update_system,
-            ui::update_active_slots_system,  // SOW-011-A Phase 4
-            ui::update_heat_bar_system,      // SOW-011-A Phase 4
-            ui::update_resolution_overlay_system, // SOW-011-B Phase 1
-            ui::update_background_system,    // POC: Location backgrounds
+            ui::update_active_slots_system,
+            ui::update_heat_bar_system,
+            ui::update_resolution_overlay_system,
+            ui::update_background_system,
+            update_character_heat_display_system,
+            update_decay_display_system,
+            clear_decay_display_system,
         ).chain())
         .add_systems(Update, (
             card_click_system,
+            save_after_resolution_system,
         ).run_if(in_state(GameState::InRun)))
         .add_systems(Update, (
             deck_builder_card_click_system,

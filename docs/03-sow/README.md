@@ -21,6 +21,7 @@ SOWs are work orders for developers. Each SOW defines what needs to be built, wh
 | 012 | Narrative Generation System | 🎨 UI | ✅ Merged | 2025-11-16 | 14-18 hours | ~10 hours |
 | 013 | Asset Externalization | 🛠️ Dev Tools | ✅ Merged | 2025-11-18 | 8-12 hours | ~6 hours |
 | 014 | Dynamic Narrative Construction | 🎨 UI | ✅ Merged | 2025-11-19 | 8-10 hours | ~8 hours |
+| 015 | Heat & Character Persistence | 🎲 Roguelite | 🔄 In Progress | 2025-11-25 | 14-18 hours | TBD |
 | AAA | Code Organization - main.rs Modularization | 🛠️ Dev Tools | 🔄 In Progress | 2025-11-15 | 16-24 hours | ~3 hours (Phases 1-4) |
 
 **Legend:**

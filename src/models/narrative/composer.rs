@@ -6,7 +6,7 @@ use super::patterns::{DynamicPattern, NarrativeRole};
 use crate::models::card::{Card, CardType};
 use crate::models::buyer::BuyerScenario;
 use crate::models::hand_state::HandOutcome;
-use rand::seq::SliceRandom;
+use rand::prelude::*;
 use bevy::prelude::Resource;
 
 /// Main story composer - generates stories from hand state
@@ -246,7 +246,7 @@ impl StoryComposer {
             },
             NarrativeRole::Evidence => {
                 // Try evidence card fragments first, then defaults
-                context.evidence_cards.choose(&mut rand::thread_rng())
+                context.evidence_cards.choose(&mut rand::rng())
                     .and_then(|c| c.narrative_fragments.as_ref())
                     .and_then(|f| Self::random_from_tagged_list(&f.evidence_clauses, relation_filter, structure_filter))
                     .or_else(|| Self::random_from_tagged_list(&context.defaults.evidence_clauses, relation_filter, structure_filter))
@@ -276,7 +276,7 @@ impl StoryComposer {
             .collect();
 
         if !candidates.is_empty() {
-            return candidates.choose(&mut rand::thread_rng()).map(|f| f.text.clone());
+            return candidates.choose(&mut rand::rng()).map(|f| f.text.clone());
         }
 
         // Fallback: ignore structure filter, keep relation filter
@@ -285,12 +285,12 @@ impl StoryComposer {
                 .filter(|f| relation_filter.is_none() || f.relation.is_none() || f.relation == relation_filter)
                 .collect();
             if !candidates.is_empty() {
-                return candidates.choose(&mut rand::thread_rng()).map(|f| f.text.clone());
+                return candidates.choose(&mut rand::rng()).map(|f| f.text.clone());
             }
         }
 
         // Final fallback: any fragment from list
-        list.choose(&mut rand::thread_rng()).map(|f| f.text.clone())
+        list.choose(&mut rand::rng()).map(|f| f.text.clone())
     }
 
     fn finalize_sentence(mut sentence: String) -> String {

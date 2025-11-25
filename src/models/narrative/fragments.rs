@@ -1,6 +1,6 @@
 // SOW-012 Phase 1: Narrative Generation - Core Data Structures
 
-use rand::{seq::SliceRandom, thread_rng};
+use rand::prelude::*;
 use serde::{Deserialize, Serialize}; // SOW-013-A: Asset externalization
 use crate::models::hand_state::HandOutcome;
 
@@ -40,7 +40,7 @@ impl ClauseRelation {
             Self::But => "but",
             Self::So => "so",
             Self::Still => "still",
-            Self::Although => ["although", "even though"].choose(&mut thread_rng()).unwrap(),
+            Self::Although => ["although", "even though"].choose(&mut rand::rng()).unwrap(),
             Self::Because => "because",
             Self::When => "when",
             Self::While => "while",
@@ -129,7 +129,7 @@ impl ResolutionClauses {
             HandOutcome::InvalidDeal => &self.invalid_deal,
         };
 
-        list.choose(&mut thread_rng())
+        list.choose(&mut rand::rng())
             .map(|s| s.clone())
             .unwrap_or_else(|| "something happened".to_string())
     }

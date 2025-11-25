@@ -3,9 +3,7 @@
 // Updated for Bevy 0.17
 
 use bevy::prelude::*;
-use rand::seq::SliceRandom;
-use rand::Rng;
-use rand::thread_rng;
+use rand::prelude::*;
 use crate::{Owner, HandState, HandPhase, HandOutcome, DeckBuilder};
 use crate::game_state::GameState;
 use crate::ui::components::*;
@@ -291,11 +289,11 @@ pub fn start_run_button_system(
 
             // SOW-013-B: Select random Buyer persona from loaded assets
             let buyer_personas = create_buyer_personas(&game_assets);
-            let mut random_buyer = buyer_personas.choose(&mut thread_rng()).unwrap().clone();
+            let mut random_buyer = buyer_personas.choose(&mut rand::rng()).unwrap().clone();
 
             // SOW-010: Randomly select one of the Buyer's 2 scenarios
             if !random_buyer.scenarios.is_empty() {
-                let scenario_index = thread_rng().gen_range(0..random_buyer.scenarios.len());
+                let scenario_index = rand::rng().random_range(0..random_buyer.scenarios.len());
                 random_buyer.active_scenario_index = Some(scenario_index);
             }
 

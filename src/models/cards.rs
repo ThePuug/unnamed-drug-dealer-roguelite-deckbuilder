@@ -1,7 +1,7 @@
 // Cards module - Manages deck, hand, and played cards for each Owner
 
 use super::card::Card;
-use rand::seq::SliceRandom;
+use rand::prelude::*;
 
 /// Card collections for a single Owner (Narc, Player, or Buyer)
 #[derive(Clone)]
@@ -47,7 +47,7 @@ impl Cards {
 
     /// Shuffle the deck
     pub fn shuffle_deck(&mut self) {
-        self.deck.shuffle(&mut rand::thread_rng());
+        self.deck.shuffle(&mut rand::rng());
     }
 
     /// Collect unplayed cards from hand into deck (doesn't shuffle)

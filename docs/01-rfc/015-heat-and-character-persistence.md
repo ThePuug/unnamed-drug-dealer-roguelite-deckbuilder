@@ -43,8 +43,10 @@ Players should experience:
 
 **Heat Decay:**
 - Decay rate: -1 Heat per real-world hour
-- Calculate elapsed time since last deck played
+- Calculate elapsed time since last deck completed
 - Apply decay before next deck starts
+- Maximum decay per calculation: 168 hours (1 week cap)
+- `last_played` timestamp updates at deck END (not start)
 - Display: Current Heat, time until next decay, projected Heat
 
 **Heat Tiers:**
@@ -104,33 +106,47 @@ Players should experience:
 
 ### Technical Assessment
 
-**Proposed Solution: Character State Component + Real-Time Decay**
+**Proposed Solution: Character State Component + Real-Time Decay + Save System**
 
 #### Core Mechanism
 
+**Character Profile (MVP placeholder):**
+```rust
+#[derive(Serialize, Deserialize, Clone, Default)]
+enum CharacterProfile {
+    #[default]
+    Default,
+    // Future: Named profiles with narrative flavor
+}
+```
+
 **Character State (persisted):**
 ```rust
+#[derive(Serialize, Deserialize, Clone)]
 struct CharacterState {
     profile: CharacterProfile,
     heat: u32,
-    last_played: DateTime<Utc>,
+    last_played: u64,    // Unix timestamp (seconds)
     decks_played: u32,
-    card_play_counts: HashMap<CardId, u32>,  // For RFC-017
-    created_at: DateTime<Utc>,
+    created_at: u64,     // Unix timestamp (seconds)
 }
 ```
 
 **Heat Calculation:**
-```
+```rust
 // During hand
 heat_delta = sum(card.heat_modifier for card in played_cards)
 
 // At hand end (if not busted)
 character.heat += heat_delta
 
-// Before next deck
-elapsed_hours = (now - character.last_played).hours()
-character.heat = max(0, character.heat - elapsed_hours)
+// At deck END, update timestamp
+character.last_played = current_unix_timestamp()
+
+// Before NEXT deck starts, apply decay
+let elapsed_secs = now - character.last_played;
+let elapsed_hours = (elapsed_secs / 3600).min(168);  // Cap at 1 week
+character.heat = character.heat.saturating_sub(elapsed_hours as u32);
 ```
 
 **Heat Tier Lookup:**
@@ -146,11 +162,72 @@ fn get_heat_tier(heat: u32) -> HeatTier {
 }
 ```
 
+#### Save System (Foundation)
+
+This RFC establishes the save system that RFC-016, 017, 018 will extend.
+
+**Save File Structure:**
+```rust
+#[derive(Serialize, Deserialize)]
+struct SaveFile {
+    version: u32,
+    data: Vec<u8>,       // bincode-serialized SaveData
+    signature: [u8; 32], // HMAC-SHA256 signature
+}
+
+#[derive(Serialize, Deserialize)]
+struct SaveData {
+    character: Option<CharacterState>,  // None if permadeath occurred
+    // Future (RFC-016): account: AccountState,
+}
+```
+
+**Anti-Tampering (HMAC Signature):**
+- Binary format (bincode) - not human-readable
+- HMAC-SHA256 signature over serialized data
+- Signature verified on load; tampering → save rejected
+- Note: Determined hackers can still reverse-engineer; goal is preventing casual edits
+
+**Save Operations:**
+```rust
+fn save(data: &SaveData) -> Result<(), SaveError> {
+    let payload = bincode::serialize(data)?;
+    let signature = hmac_sha256(SAVE_KEY, &payload);
+
+    // Atomic write: temp file → rename (prevents corruption)
+    write_temp_then_rename(&SaveFile { version: 1, data: payload, signature })
+}
+
+fn load() -> Result<SaveData, SaveError> {
+    let file: SaveFile = read_file()?;
+
+    // Verify signature
+    if !verify_hmac(SAVE_KEY, &file.data, &file.signature) {
+        return Err(SaveError::TamperedOrCorrupted);
+    }
+
+    // Validate sanity (defense in depth)
+    let data: SaveData = bincode::deserialize(&file.data)?;
+    data.validate()?;  // e.g., heat < 10000, reasonable values
+
+    Ok(data)
+}
+```
+
+**Backup System:**
+- Before overwriting, rename existing save to `.bak`
+- On load failure, attempt recovery from `.bak`
+- Single backup slot (not versioned history)
+
+**Dependencies:**
+- `serde` + `bincode` for serialization
+- `hmac` + `sha2` for signature
+
 #### Performance Projections
 
-- **Storage:** ~100 bytes per character (minimal)
+- **Storage:** ~100 bytes per character + ~64 bytes overhead (minimal)
 - **Computation:** O(1) for decay calculation, O(n) for Heat delta (n = cards played)
-- **Development time:** ~8-12 hours
+- **Development time:** ~14-18 hours (includes save system foundation)
 
 #### Technical Risks
 
@@ -180,7 +257,7 @@ fn get_heat_tier(heat: u32) -> HeatTier {
 **Compatibility:**
 - ✅ Hand resolution already calculates card stats
 - ✅ Bust mechanics already detect Evidence > Cover
-- ✅ Save system exists (needs character state extension)
+- 🆕 Save system created by this RFC (foundation for RFC-016, 017, 018)
 - ✅ UI can display Heat (new HUD element)
 
 ### Alternatives Considered
@@ -209,10 +286,14 @@ Heat decays by fixed amount per deck played, not real-time.
 
 ### ARCHITECT Notes
 
+- This RFC establishes the save system foundation that RFC-016, 017, 018 extend
 - Heat tier affects Narc card upgrade level (see RFC-018)
-- Character state is foundation for card upgrades (RFC-017)
-- Cash persistence handled separately (RFC-016) but uses same save system
+- Character state is foundation for card upgrades (RFC-017 adds `card_play_counts`)
+- Account state for cash persistence added by RFC-016 (extends SaveData)
 - Consider event system for Heat threshold crossings (UI feedback)
+- Unix timestamps (u64) used instead of DateTime to avoid chrono dependency
+- Decay capped at 168 hours to prevent edge cases from extended absence
+- HMAC signature prevents casual save tampering; accept that determined hackers can bypass
 
 ### PLAYER Validation
 
@@ -229,22 +310,24 @@ Success criteria from spec:
 **Status:** Draft
 
 **Approvers:**
-- ARCHITECT: [ ] Pending review
+- ARCHITECT: [x] Approved (2025-11-25)
 - PLAYER: [ ] Pending review
 
-**Scope Constraint:** ~8-12 hours (fits in one SOW)
+**Scope Constraint:** ~14-18 hours (fits in one SOW, includes save system foundation)
 
 **Dependencies:**
 - Hand resolution (exists)
 - Bust mechanics (exists)
-- Save system (exists, needs extension)
+- `serde`, `bincode`, `hmac`, `sha2` crates (new)
 
 **Next Steps:**
-1. Review and approve RFC
+1. PLAYER approval
 2. Create SOW-015
-3. Implement character state persistence
-4. Add Heat accumulation to hand resolution
-5. Add decay calculation at deck start
-6. Add permadeath trigger to bust flow
+3. Implement save system foundation (SaveFile, SaveData, HMAC, atomic writes)
+4. Implement CharacterState persistence
+5. Add Heat accumulation to hand resolution
+6. Add decay calculation at deck start (with 168-hour cap)
+7. Add permadeath trigger to bust flow
+8. Add Heat display to UI
 
 **Date:** 2025-11-25

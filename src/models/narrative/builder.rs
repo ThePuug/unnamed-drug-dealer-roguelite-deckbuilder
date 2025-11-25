@@ -43,7 +43,7 @@ impl SentenceBuilder {
     }
 
     pub fn build(self) -> SentenceStructure {
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
 
         // Base Core: Subject + Need + Product + Resolution
         let subject_need = SentenceStructure::SubjectPredicate {
@@ -66,7 +66,7 @@ impl SentenceBuilder {
         };
 
         // Choose narrative template with weighted randomness for variety
-        let roll: f32 = rng.gen();
+        let roll: f32 = rng.random();
 
         let (mut sentence1, mut sentence2) = if roll < 0.70 {
             // Template A (70%): Subject need. Product resolution.
@@ -88,7 +88,7 @@ impl SentenceBuilder {
         satellites.shuffle(&mut rng);
 
         for sat in satellites {
-            if rng.gen::<f32>() > sat.inclusion_chance {
+            if rng.random::<f32>() > sat.inclusion_chance {
                 continue;
             }
 
@@ -200,7 +200,7 @@ impl Satellite {
         }
         
         let total: f32 = self.placements.iter().map(|(_, w)| w).sum();
-        let mut r = rng.gen::<f32>() * total;
+        let mut r = rng.random::<f32>() * total;
         
         for (p, w) in &self.placements {
             r -= w;

@@ -8,6 +8,14 @@ bevy = "0.17"
 serde = { version = "1", features = ["derive"] }
 ron = "0"
 rand = "0"
+# Save system
+bincode = "1"
+hmac = "0"
+sha2 = "0"
+dirs = "5"
+
+[dev-dependencies]
+tempfile = "3"
 
 [profile.dev]
 opt-level = 1

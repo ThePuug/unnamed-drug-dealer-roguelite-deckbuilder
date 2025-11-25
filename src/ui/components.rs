@@ -177,3 +177,19 @@ pub struct ResolutionStory; // SOW-012: Narrative story text
 
 #[derive(Component)]
 pub struct ResolutionResults;
+
+// ============================================================================
+// Character Heat Display (Persistent Heat from Save System)
+// ============================================================================
+
+#[derive(Component)]
+pub struct CharacterHeatDisplay;
+
+#[derive(Component)]
+pub struct CharacterHeatText;
+
+#[derive(Component)]
+pub struct CharacterTierText;
+
+#[derive(Component)]
+pub struct DecayInfoDisplay;

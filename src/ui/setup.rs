@@ -53,7 +53,7 @@ pub fn setup_deck_builder(mut commands: Commands) {
             });
         });
 
-        // Bottom: Stats and START RUN button
+        // Bottom: Stats, Heat display, and START RUN button
         parent.spawn(Node {
             width: Val::Percent(100.0),
             flex_direction: FlexDirection::Row,
@@ -63,13 +63,51 @@ pub fn setup_deck_builder(mut commands: Commands) {
             ..default()
         })
         .with_children(|parent| {
-            // Deck stats
-            parent.spawn((
-                Text::new("Deck: 20/20 cards"),
-                TextFont::from_font_size(24.0),
-                TextColor(Color::WHITE),
-                DeckStatsDisplay,
-            ));
+            // Left side: Deck stats and character heat
+            parent.spawn(Node {
+                flex_direction: FlexDirection::Column,
+                row_gap: Val::Px(5.0),
+                ..default()
+            })
+            .with_children(|parent| {
+                // Deck stats
+                parent.spawn((
+                    Text::new("Deck: 20/20 cards"),
+                    TextFont::from_font_size(24.0),
+                    TextColor(Color::WHITE),
+                    DeckStatsDisplay,
+                ));
+
+                // Character heat display
+                parent.spawn(Node {
+                    flex_direction: FlexDirection::Row,
+                    column_gap: Val::Px(8.0),
+                    ..default()
+                })
+                .with_children(|parent| {
+                    parent.spawn((
+                        Text::new("Heat: 0"),
+                        TextFont::from_font_size(20.0),
+                        TextColor(Color::WHITE),
+                        CharacterHeatText,
+                    ));
+                    parent.spawn((
+                        Text::new("[Cold]"),
+                        TextFont::from_font_size(20.0),
+                        TextColor(Color::srgb(0.3, 0.7, 0.3)),
+                        CharacterTierText,
+                    ));
+                });
+
+                // Decay info (hidden by default)
+                parent.spawn((
+                    Text::new(""),
+                    TextFont::from_font_size(18.0),
+                    TextColor(Color::srgb(0.5, 0.8, 1.0)),
+                    Visibility::Hidden,
+                    DecayInfoDisplay,
+                ));
+            });
 
             // START RUN button
             parent.spawn((
