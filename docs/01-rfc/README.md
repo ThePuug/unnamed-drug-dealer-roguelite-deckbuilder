@@ -21,6 +21,10 @@ RFCs bridge player needs and technical reality. Each RFC starts with a player-fa
 | 012 | Narrative Generation System | 🎨 UI | ✅ Implemented (SOW-012 merged) | 2025-11-16 | N/A |
 | 013 | Asset Externalization | 🛠️ Dev Tools | ✅ Implemented (SOW-013 merged) | 2025-11-18 | N/A |
 | 014 | Dynamic Narrative Construction | 🎨 UI | ✅ Implemented (SOW-014 merged) | 2025-11-19 | N/A |
+| 015 | Heat & Character Persistence | 🎲 Roguelite | 📝 Draft | 2025-11-25 | - |
+| 016 | Account Cash System | 💰 Economy | 📝 Draft | 2025-11-25 | - |
+| 017 | Player Card Upgrades (Per-Run) | 🃏 Cards | 📝 Draft | 2025-11-25 | - |
+| 018 | Narc Difficulty Scaling | 🎲 Roguelite | 📝 Draft | 2025-11-25 | - |
 
 **Legend:**
 - **Status:** ✅ Implemented (merged to main) | ✅ Approved (ready for implementation) | 🔄 Under Review | 📝 Draft/Proposed | ❌ Rejected
