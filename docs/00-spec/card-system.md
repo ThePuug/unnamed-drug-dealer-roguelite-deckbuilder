@@ -2,7 +2,7 @@
 
 ## Overview
 
-The game uses **7+ distinct card types** that interact to create drug deals. Cards affect four key values: **Evidence** (risk of arrest), **Cover** (defense against arrest), **Heat** (persistent difficulty), and **Profit** (money earned). Players, AI opponents (Narc, Customer), and the **Dealer** (community cards) all contribute cards, creating dynamic situations where everyone's cards matter.
+The game uses **7+ distinct card types** that interact to create drug deals. Cards affect four key values: **Evidence** (risk of arrest), **Cover** (defense against arrest), **Heat** (persistent difficulty), and **Profit** (money earned). Players, AI opponents (Narc, Buyer), and the **Dealer** (community cards) all contribute cards, creating dynamic situations where everyone's cards matter.
 
 **Core Mechanic:** Override system for Products and Locations (last played wins) + additive/multiplicative modifiers for everything else.
 
@@ -791,8 +791,7 @@ Total: +65 Heat this hand
 
 **Feeds Into:**
 - Heat System (Heat modifiers on cards)
-- Trust System (Customer card quality)
-- Progression System (card unlocks)
+- Progression System (location-based card unlocks, per-run card upgrades)
 
 ---
 
@@ -851,7 +850,7 @@ Total: +65 Heat this hand
 
 ### Card Balance
 - How to balance new cards without power creep?
-- Should cards have unlock conditions beyond profit? (e.g., "Survive 10 decks to unlock Heroin")
+- How should per-run card upgrades affect balance? (see Progression spec)
 
 ---
 

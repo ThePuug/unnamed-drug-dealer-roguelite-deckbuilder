@@ -39,7 +39,7 @@ This is NOT about twitch reflexes or hidden information - it's about **knowing t
 - ✅ Total profit accumulated
 - ✅ Number of decks played
 - ✅ Heat level (with real-time decay)
-- ✅ Customer Trust level
+- ✅ Card upgrade progress (per-run)
 - ❌ Current deck (resets after each session)
 
 **Emotional Arc:**
@@ -64,7 +64,7 @@ This is NOT about twitch reflexes or hidden information - it's about **knowing t
 
 **Strategic Depth:**
 - Higher Heat = need more defensive cards
-- Low Trust = might want to fold more (bad customer deals)
+- Card upgrades reward committing to specific cards
 - Late in run = need insurance cards (Get Out of Jail)
 
 ---
@@ -256,7 +256,7 @@ Every round, player evaluates:
 
 **4. Strategic Position**
 - What's my current Heat level?
-- What's my Trust with Customer?
+- Which cards have upgrades I want to preserve?
 - How many decks survived this run?
 
 ---
@@ -411,7 +411,6 @@ Every round, player evaluates:
 **Requires:**
 - Card System (all 7 card types)
 - Heat System (accumulation and decay)
-- Trust System (Customer deck generation)
 - Bust Mechanics (Evidence > Cover resolution)
 
 **Feeds Into:**

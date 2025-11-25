@@ -647,7 +647,6 @@ ELSE:
 
 ### Conviction Mechanics
 - Should Make It Stick have additional requirements? (e.g., "needs 2 Evidence cards played this hand")
-- Should conviction threshold scale with Trust? (high Trust = higher threshold)
 - Should Caught Red-Handed be removable? (currently no counterplay)
 
 ### Balance
