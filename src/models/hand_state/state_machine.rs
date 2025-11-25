@@ -27,6 +27,7 @@ impl HandState {
             checks_this_hand: Vec::new(),
             buyer_persona: None,
             hand_story: None, // SOW-012: No story initially
+            last_profit: 0,
         }
     }
 

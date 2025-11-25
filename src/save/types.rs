@@ -10,6 +10,7 @@ pub const SAVE_VERSION: u32 = 1;
 /// Maximum sanity values for validation
 const MAX_HEAT: u32 = 10_000;
 const MAX_DECKS_PLAYED: u32 = 100_000;
+const MAX_CASH: u64 = 999_999_999_999; // ~1 trillion cap
 
 /// Errors that can occur during save/load operations
 #[derive(Debug, Clone, PartialEq)]
@@ -55,17 +56,21 @@ pub struct SaveFile {
 }
 
 /// The game's persistent state
-#[derive(Resource, Serialize, Deserialize, Clone, Debug, Default)]
+#[derive(Resource, Serialize, Deserialize, Clone, Debug)]
 pub struct SaveData {
     /// Current character (None if permadeath occurred or new game)
     pub character: Option<CharacterState>,
-    // Future: account: AccountState (account-wide cash, unlocks)
+    /// Account-wide state (persists forever, survives permadeath)
+    /// RFC-016: Account Cash System
+    #[serde(default)]
+    pub account: AccountState,
 }
 
 impl SaveData {
     pub fn new() -> Self {
         Self {
             character: None,
+            account: AccountState::new(),
         }
     }
 
@@ -74,7 +79,14 @@ impl SaveData {
         if let Some(ref character) = self.character {
             character.validate()?;
         }
+        self.account.validate()?;
         Ok(())
+    }
+}
+
+impl Default for SaveData {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -213,6 +225,75 @@ impl Default for CharacterState {
     }
 }
 
+/// Account-wide state that persists forever (survives permadeath)
+///
+/// RFC-016: Account Cash System
+/// - cash_on_hand: Spendable currency for unlocks
+/// - lifetime_revenue: Total ever earned (for achievements/leaderboards)
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct AccountState {
+    /// Spendable cash (reduced by purchases)
+    pub cash_on_hand: u64,
+    /// Total cash ever earned (never reduced)
+    pub lifetime_revenue: u64,
+    /// Total hands completed successfully
+    pub hands_completed: u32,
+    // Future: unlocked_cards, unlocked_locations, achievements
+}
+
+impl AccountState {
+    pub fn new() -> Self {
+        Self {
+            cash_on_hand: 0,
+            lifetime_revenue: 0,
+            hands_completed: 0,
+        }
+    }
+
+    /// Add profit from a successful hand
+    pub fn add_profit(&mut self, profit: u32) {
+        let profit = profit as u64;
+        self.cash_on_hand = self.cash_on_hand.saturating_add(profit).min(MAX_CASH);
+        self.lifetime_revenue = self.lifetime_revenue.saturating_add(profit).min(MAX_CASH);
+        self.hands_completed = self.hands_completed.saturating_add(1);
+    }
+
+    /// Spend cash on an unlock (returns false if insufficient funds)
+    pub fn spend(&mut self, amount: u64) -> bool {
+        if self.cash_on_hand >= amount {
+            self.cash_on_hand -= amount;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Validate account state sanity
+    pub fn validate(&self) -> Result<(), SaveError> {
+        if self.cash_on_hand > MAX_CASH {
+            return Err(SaveError::ValidationError(format!(
+                "Cash on hand {} exceeds maximum {}",
+                self.cash_on_hand, MAX_CASH
+            )));
+        }
+        if self.lifetime_revenue > MAX_CASH {
+            return Err(SaveError::ValidationError(format!(
+                "Lifetime revenue {} exceeds maximum {}",
+                self.lifetime_revenue, MAX_CASH
+            )));
+        }
+        // Lifetime revenue should always be >= cash on hand
+        // (but allow some slack for edge cases during migration)
+        Ok(())
+    }
+}
+
+impl Default for AccountState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Get current Unix timestamp in seconds
 pub fn current_timestamp() -> u64 {
     SystemTime::now()
@@ -337,5 +418,81 @@ mod tests {
         data.character = Some(CharacterState::new());
 
         assert!(data.validate().is_ok());
+    }
+
+    // ========================================================================
+    // AccountState Tests (RFC-016)
+    // ========================================================================
+
+    #[test]
+    fn test_account_state_new() {
+        let account = AccountState::new();
+        assert_eq!(account.cash_on_hand, 0);
+        assert_eq!(account.lifetime_revenue, 0);
+        assert_eq!(account.hands_completed, 0);
+    }
+
+    #[test]
+    fn test_account_add_profit() {
+        let mut account = AccountState::new();
+        account.add_profit(100);
+
+        assert_eq!(account.cash_on_hand, 100);
+        assert_eq!(account.lifetime_revenue, 100);
+        assert_eq!(account.hands_completed, 1);
+
+        account.add_profit(50);
+        assert_eq!(account.cash_on_hand, 150);
+        assert_eq!(account.lifetime_revenue, 150);
+        assert_eq!(account.hands_completed, 2);
+    }
+
+    #[test]
+    fn test_account_spend_success() {
+        let mut account = AccountState::new();
+        account.add_profit(1000);
+
+        let spent = account.spend(400);
+        assert!(spent);
+        assert_eq!(account.cash_on_hand, 600);
+        // Lifetime revenue unchanged by spending
+        assert_eq!(account.lifetime_revenue, 1000);
+    }
+
+    #[test]
+    fn test_account_spend_insufficient_funds() {
+        let mut account = AccountState::new();
+        account.add_profit(100);
+
+        let spent = account.spend(500);
+        assert!(!spent);
+        // Cash unchanged when spend fails
+        assert_eq!(account.cash_on_hand, 100);
+        assert_eq!(account.lifetime_revenue, 100);
+    }
+
+    #[test]
+    fn test_account_validation() {
+        let account = AccountState::new();
+        assert!(account.validate().is_ok());
+    }
+
+    #[test]
+    fn test_account_validation_rejects_excessive_cash() {
+        let mut account = AccountState::new();
+        account.cash_on_hand = MAX_CASH + 1;
+
+        let result = account.validate();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_save_data_with_account() {
+        let mut data = SaveData::new();
+        data.account.add_profit(500);
+        data.character = Some(CharacterState::new());
+
+        assert!(data.validate().is_ok());
+        assert_eq!(data.account.cash_on_hand, 500);
     }
 }

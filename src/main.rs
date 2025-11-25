@@ -72,6 +72,7 @@ fn main() {
             update_character_heat_display_system,
             update_decay_display_system,
             clear_decay_display_system,
+            update_account_cash_display_system,
         ).chain())
         .add_systems(Update, (
             card_click_system,

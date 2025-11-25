@@ -10,11 +10,11 @@ Implementation tracking for Progression & Meta-Game specification.
 
 ## Summary
 
-**Overall Completion:** 0/38 features (0%)
+**Overall Completion:** 4/38 features (11%)
 
 | Category | Complete | Partial | Not Started | Deferred |
 |----------|----------|---------|-------------|----------|
-| Cash System | 0 | 0 | 5 | 0 |
+| Cash System | 4 | 0 | 1 | 0 |
 | Location System | 0 | 0 | 6 | 0 |
 | Narc Variety | 0 | 0 | 0 | 1 |
 | Card Unlock System | 0 | 0 | 6 | 0 |
@@ -22,19 +22,19 @@ Implementation tracking for Progression & Meta-Game specification.
 | Character System | 0 | 0 | 7 | 0 |
 | Achievements | 0 | 0 | 4 | 0 |
 | Leaderboards | 0 | 0 | 0 | 2 |
-| **Total** | **0** | **0** | **35** | **3** |
+| **Total** | **4** | **0** | **31** | **3** |
 
 ---
 
-## Cash System: 0/5 complete (0%)
+## Cash System: 4/5 complete (80%)
 
 | Feature | Status | RFC/ADR | Notes |
 |---------|:------:|---------|-------|
-| Cash on hand tracking | ❌ | - | Single account-wide pool |
-| Cash persistence (account-wide) | ❌ | - | Survives permadeath, shared across characters |
-| Cash earning (from deals) | ❌ | - | Add to pool when completing hands |
-| Cash spending (at locations) | ❌ | - | Deduct when purchasing card unlocks |
-| Revenue metric (separate) | ❌ | - | Tracks lifetime earned (for leaderboards), unaffected by spending |
+| Cash on hand tracking | ✅ | RFC-016 | AccountState.cash_on_hand in save system |
+| Cash persistence (account-wide) | ✅ | RFC-016 | Survives permadeath via account state (separate from character) |
+| Cash earning (from deals) | ✅ | RFC-016 | Add profit to account on Safe outcome |
+| Cash spending (at locations) | ❌ | - | Deferred to location unlock RFC |
+| Revenue metric (separate) | ✅ | RFC-016 | AccountState.lifetime_revenue (never decreases) |
 
 ---
 
@@ -124,7 +124,10 @@ Implementation tracking for Progression & Meta-Game specification.
 
 ## Implementation Deviations
 
-_No implementations yet._
+**RFC-016 (Account Cash System):**
+- Cash display added to deck builder UI (shows cash on hand and lifetime revenue)
+- No separate UI for cash earned "this hand" - only account totals displayed
+- Profit earned in final hand before permadeath still added to account (cash survives death)
 
 ---
 

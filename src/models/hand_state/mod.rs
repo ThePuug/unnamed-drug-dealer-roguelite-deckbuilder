@@ -54,6 +54,7 @@ pub struct HandState {
     pub checks_this_hand: Vec<(Owner, u8)>,
     pub buyer_persona: Option<BuyerPersona>,
     pub hand_story: Option<String>, // SOW-012: Generated narrative for this hand
+    pub last_profit: u32, // RFC-016: Profit from most recent hand resolution
 }
 
 impl HandState {
@@ -78,6 +79,7 @@ impl HandState {
             checks_this_hand: Vec::new(),
             buyer_persona: None,
             hand_story: None,
+            last_profit: 0,
         }
     }
 }
@@ -116,6 +118,7 @@ impl Default for HandState {
             checks_this_hand: Vec::new(),
             buyer_persona: None,
             hand_story: None,
+            last_profit: 0,
         }
     }
 }

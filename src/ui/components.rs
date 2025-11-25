@@ -193,3 +193,16 @@ pub struct CharacterTierText;
 
 #[derive(Component)]
 pub struct DecayInfoDisplay;
+
+// ============================================================================
+// Account Cash Display (RFC-016: Account Cash System)
+// ============================================================================
+
+#[derive(Component)]
+pub struct AccountCashDisplay;
+
+#[derive(Component)]
+pub struct AccountCashText;
+
+#[derive(Component)]
+pub struct LifetimeRevenueText;

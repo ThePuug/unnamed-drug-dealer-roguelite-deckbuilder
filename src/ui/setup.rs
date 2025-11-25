@@ -107,6 +107,29 @@ pub fn setup_deck_builder(mut commands: Commands) {
                     Visibility::Hidden,
                     DecayInfoDisplay,
                 ));
+
+                // RFC-016: Account cash display
+                parent.spawn(Node {
+                    flex_direction: FlexDirection::Row,
+                    column_gap: Val::Px(8.0),
+                    margin: UiRect::top(Val::Px(5.0)),
+                    ..default()
+                })
+                .with_children(|parent| {
+                    parent.spawn((
+                        Text::new("Cash: $0"),
+                        TextFont::from_font_size(20.0),
+                        TextColor(Color::srgb(0.3, 0.9, 0.3)), // Green for cash
+                        AccountCashText,
+                    ));
+                });
+
+                parent.spawn((
+                    Text::new("Lifetime: $0"),
+                    TextFont::from_font_size(16.0),
+                    TextColor(Color::srgb(0.6, 0.6, 0.6)), // Grey for lifetime
+                    LifetimeRevenueText,
+                ));
             });
 
             // START RUN button

@@ -2,7 +2,7 @@
 
 ## Status
 
-**Draft** - 2025-11-25
+**Approved** - 2025-11-25
 
 ## Feature Request
 
@@ -217,21 +217,21 @@ Success criteria from spec:
 
 ## Approval
 
-**Status:** Draft
+**Status:** Approved
 
 **Approvers:**
-- ARCHITECT: [ ] Pending review
-- PLAYER: [ ] Pending review
+- ARCHITECT: [✅] Extends existing save system, clean integration
+- PLAYER: [✅] Solves player need for persistent progression
 
 **Scope Constraint:** ~4-6 hours (fits in one SOW)
 
 **Dependencies:**
-- RFC-015: Heat & Character Persistence (permadeath context)
-- Hand resolution (profit calculation exists)
-- Save system (exists)
+- RFC-015: Heat & Character Persistence (permadeath context) ✅ Implemented
+- Hand resolution (profit calculation exists) ✅ Available
+- Save system (exists) ✅ Available
 
 **Next Steps:**
-1. Review and approve RFC
+1. ~~Review and approve RFC~~ ✅
 2. Create SOW-016
 3. Add AccountState to save system
 4. Hook cash earning into hand resolution

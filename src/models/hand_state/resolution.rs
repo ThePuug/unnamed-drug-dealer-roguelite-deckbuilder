@@ -72,13 +72,19 @@ impl HandState {
             HandOutcome::Safe => {
                 // Bank profit to cash (for future insurance purchases)
                 self.cash += totals.profit;
+                // RFC-016: Track profit for account-wide cash accumulation
+                self.last_profit = totals.profit;
             }
             HandOutcome::Busted => {
                 // No cash gained on bust
+                self.last_profit = 0;
             }
-            HandOutcome::Folded => {}
+            HandOutcome::Folded => {
+                self.last_profit = 0;
+            }
             HandOutcome::InvalidDeal | HandOutcome::BuyerBailed => {
                 // No cash gained on invalid deal or buyer bail (deal didn't complete)
+                self.last_profit = 0;
             }
         }
 

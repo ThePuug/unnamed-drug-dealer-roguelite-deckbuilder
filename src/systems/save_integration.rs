@@ -3,7 +3,7 @@
 use bevy::prelude::*;
 use crate::save::{SaveManager, SaveData, CharacterState, HeatTier};
 use crate::models::hand_state::{HandState, HandPhase, HandOutcome};
-use crate::ui::components::{CharacterHeatText, CharacterTierText, DecayInfoDisplay};
+use crate::ui::components::{CharacterHeatText, CharacterTierText, DecayInfoDisplay, AccountCashText, LifetimeRevenueText};
 
 /// Resource tracking if character data has been loaded this session
 #[derive(Resource, Default)]
@@ -76,7 +76,7 @@ pub fn ensure_character_on_run_start(
     }
 }
 
-/// System to save character heat after hand resolution
+/// System to save character heat and account cash after hand resolution
 pub fn save_after_resolution_system(
     hand_state_query: Query<&HandState, Changed<HandState>>,
     mut save_data: ResMut<SaveData>,
@@ -92,6 +92,22 @@ pub fn save_after_resolution_system(
             continue;
         };
 
+        // Check if we have a character to update
+        if save_data.character.is_none() {
+            continue;
+        }
+
+        // RFC-016: Add profit to account-wide cash on Safe outcome
+        // Do this first before potentially deleting character
+        if *outcome == HandOutcome::Safe && hand_state.last_profit > 0 {
+            save_data.account.add_profit(hand_state.last_profit);
+            info!(
+                "Profit earned: ${} (Account total: ${})",
+                hand_state.last_profit,
+                save_data.account.cash_on_hand
+            );
+        }
+
         // Update character state from HandState
         if let Some(ref mut character) = save_data.character {
             // Transfer heat from hand to character
@@ -99,24 +115,31 @@ pub fn save_after_resolution_system(
 
             match outcome {
                 HandOutcome::Busted => {
-                    // Permadeath - delete character
-                    info!("Character busted! Permadeath triggered.");
-                    save_data.character = None;
+                    // Permadeath - delete character (account cash survives!)
+                    info!("Character busted! Permadeath triggered. Account cash preserved: ${}",
+                          save_data.account.cash_on_hand);
+                    // Note: character deletion happens after this block
                 }
-                HandOutcome::Safe | HandOutcome::Folded => {
-                    // Character survives, update last_played
-                    info!("Hand resolved as {:?}, Heat: {}", outcome, character.heat);
+                HandOutcome::Safe => {
+                    info!("Hand resolved Safe, Heat: {}", character.heat);
+                }
+                HandOutcome::Folded => {
+                    info!("Hand resolved as Folded, Heat: {}", character.heat);
                 }
                 HandOutcome::InvalidDeal | HandOutcome::BuyerBailed => {
-                    // Deal didn't complete, no major state change
                     info!("Deal incomplete: {:?}", outcome);
                 }
             }
+        }
 
-            // Save updated state
-            if let Err(e) = save_manager.save(&save_data) {
-                warn!("Failed to save after resolution: {:?}", e);
-            }
+        // Handle permadeath after character borrow is released
+        if *outcome == HandOutcome::Busted {
+            save_data.character = None;
+        }
+
+        // Save updated state
+        if let Err(e) = save_manager.save(&save_data) {
+            warn!("Failed to save after resolution: {:?}", e);
         }
     }
 }
@@ -205,4 +228,41 @@ pub fn clear_decay_display_system(
             }
         }
     }
+}
+
+/// RFC-016: System to update account cash display UI
+pub fn update_account_cash_display_system(
+    save_data: Option<Res<SaveData>>,
+    mut cash_text_query: Query<&mut Text, (With<AccountCashText>, Without<LifetimeRevenueText>)>,
+    mut revenue_text_query: Query<&mut Text, (With<LifetimeRevenueText>, Without<AccountCashText>)>,
+) {
+    let Some(save_data) = save_data else {
+        return;
+    };
+
+    let cash = save_data.account.cash_on_hand;
+    let revenue = save_data.account.lifetime_revenue;
+
+    // Update cash on hand text
+    for mut text in cash_text_query.iter_mut() {
+        **text = format!("Cash: ${}", format_number(cash));
+    }
+
+    // Update lifetime revenue text
+    for mut text in revenue_text_query.iter_mut() {
+        **text = format!("Lifetime: ${}", format_number(revenue));
+    }
+}
+
+/// Format a number with comma separators
+fn format_number(n: u64) -> String {
+    let s = n.to_string();
+    let mut result = String::new();
+    for (i, c) in s.chars().rev().enumerate() {
+        if i > 0 && i % 3 == 0 {
+            result.push(',');
+        }
+        result.push(c);
+    }
+    result.chars().rev().collect()
 }
