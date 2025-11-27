@@ -1,10 +1,51 @@
-# Narrative System Feature Matrix
+# Narrative System - Feature Matrix
 
-| Feature | Status | RFC | SOW | Notes |
-|---------|--------|-----|-----|-------|
-| **Core Narrative Engine** | In Progress | [RFC-012](../01-rfc/012-narrative-generation-system.md) | [SOW-012](../03-sow/012-narrative-generation-system.md) | Basic pattern matching and composition |
-| **Fragment System** | In Progress | [RFC-012](../01-rfc/012-narrative-generation-system.md) | [SOW-012](../03-sow/012-narrative-generation-system.md) | Phrasal fragments implemented |
-| **Dynamic Sentence Construction** | Implemented | [RFC-014](../01-rfc/014-dynamic-narrative-construction.md) | [SOW-014](../03-sow/014-dynamic-narrative-construction.md) | Dynamic structure generation (no hardcoded variants), implemented in `builder.rs`, `patterns.rs` |
-| **Resolution Overlay Integration** | Planned | [RFC-011](../01-rfc/011-ui-refactor.md) | - | Display story in UI |
-| **History Log** | Future | - | - | View past stories |
-| **Atomic Fragments** | Future | - | - | Word-level composition |
+**Spec:** [narrative-system.md](narrative-system.md)
+**Last Updated:** 2025-11-27
+**Overall Status:** 4/5 features complete (80%)
+
+---
+
+## Summary
+
+| Category | Complete | Total | % |
+|----------|:--------:|:-----:|:-:|
+| Core System | 4 | 4 | 100% |
+| Not Implemented | 0 | 1 | 0% |
+| **Total** | **4** | **5** | **80%** |
+
+---
+
+## Core System - 4/4 (100%)
+
+| Feature | Status | Notes |
+|---------|:------:|-------|
+| Narrative Engine | ✅ | StoryComposer with pattern matching |
+| Fragment System | ✅ | TaggedFragment with ClauseRelation, GrammaticalStructure |
+| Dynamic Sentence Construction | ✅ | SentenceStructure enum, DynamicPattern builder |
+| Resolution Overlay Integration | ✅ | hand_story displayed via ResolutionStory component |
+
+---
+
+## Not Implemented - 0/1 (0%)
+
+| Feature | Status | Notes |
+|---------|:------:|-------|
+| History Log | ❌ | View past stories from run |
+
+---
+
+## Scrapped Features
+
+| Feature | Reason |
+|---------|--------|
+| Atomic Fragments | Word-level composition unnecessary; phrase-level sufficient |
+
+---
+
+## Implementation Notes
+
+- Stories generated at hand resolution (`game_loop.rs`, `input.rs`)
+- Fragments sourced from: Buyer scenario → Card data → Default fallbacks
+- 6 sentence structure types support varied output
+- Comprehensive test coverage in `story_test.rs`

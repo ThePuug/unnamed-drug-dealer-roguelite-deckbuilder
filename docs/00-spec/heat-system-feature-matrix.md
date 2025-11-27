@@ -1,99 +1,79 @@
 # Heat System - Feature Matrix
 
-Implementation tracking for Heat System specification.
-
 **Spec:** [heat-system.md](heat-system.md)
-
 **Last Updated:** 2025-11-27
+**Overall Status:** 14/14 features complete (100%)
 
 ---
 
 ## Summary
 
-**Overall Completion:** 16/20 features (80%)
-
-| Category | Complete | Partial | Not Started | Deferred |
-|----------|----------|---------|-------------|----------|
-| Heat Accumulation | 4 | 0 | 0 | 0 |
-| Heat Decay | 2 | 2 | 1 | 0 |
-| Heat Tiers | 6 | 0 | 1 | 0 |
-| Narc Card Upgrades | 4 | 0 | 0 | 0 |
-| **Total** | **16** | **2** | **2** | **0** |
+| Category | Complete | Total | % |
+|----------|:--------:|:-----:|:-:|
+| Heat Accumulation | 4 | 4 | 100% |
+| Heat Decay | 2 | 2 | 100% |
+| Heat Tiers | 4 | 4 | 100% |
+| Narc Scaling | 4 | 4 | 100% |
+| **Total** | **14** | **14** | **100%** |
 
 ---
 
-## Heat Accumulation: 4/4 complete (100%)
+## Heat Accumulation - 4/4 (100%)
 
-| Feature | Status | RFC/ADR | Notes |
-|---------|:------:|---------|-------|
-| Heat delta calculation | ✅ | RFC-015 | Sum all Heat modifiers on cards played |
-| Heat application when cards played | ✅ | RFC-015/018 | Heat added immediately when cards played (not at resolution) |
-| Heat on fold | ✅ | RFC-015 | Heat accumulated from rounds played |
-| Heat persistence | ✅ | RFC-015 | Heat persists in SaveData across sessions |
-
----
-
-## Heat Decay: 2/5 complete (40%)
-
-| Feature | Status | RFC/ADR | Notes |
-|---------|:------:|---------|-------|
-| Real-time decay (-1 Heat/hour) | ✅ | RFC-015 | Calculated at deck start |
-| Decay calculation | ✅ | RFC-015 | Capped at 168 hours (7 days) |
-| Decay display | 🚧 | RFC-015 | Shows "Heat decayed by X while away" |
-| Decay projection | ❌ | - | "In 24 hours: Heat will be X" |
-| Decay feedback | 🚧 | RFC-015 | Shows decay amount, not rate |
+| Feature | Status | Notes |
+|---------|:------:|-------|
+| Heat delta calculation | ✅ | Sum all Heat modifiers in calculate_totals() |
+| Immediate application | ✅ | Heat added when cards played, not at resolution |
+| Heat on fold | ✅ | Keeps heat from played cards |
+| Heat persistence | ✅ | CharacterState.heat in SaveData |
 
 ---
 
-## Heat Tiers: 6/7 complete (86%)
+## Heat Decay - 2/2 (100%)
 
-| Feature | Status | RFC/ADR | Notes |
-|---------|:------:|---------|-------|
-| Cold tier (0-29) | ✅ | RFC-015 | Implemented with green color |
-| Warm tier (30-59) | ✅ | RFC-015 | Implemented with yellow color |
-| Hot tier (60-89) | ✅ | RFC-015 | Implemented with orange color |
-| Blazing tier (90-119) | ✅ | RFC-019 | Implemented with deep orange color |
-| Scorching tier (120-149) | ✅ | RFC-015 | Implemented with red color |
-| Inferno tier (150+) | ✅ | RFC-015 | Implemented with purple color + foil effect |
-| Tier transition feedback | ❌ | - | No warning messages on tier change |
+| Feature | Status | Notes |
+|---------|:------:|-------|
+| Real-time decay | ✅ | -1 Heat/hour, apply_decay() |
+| Decay cap | ✅ | Max 168 hours (7 days) |
 
 ---
 
-## Narc Card Upgrades: 4/4 complete (100%)
+## Heat Tiers - 4/4 (100%)
 
-| Feature | Status | RFC/ADR | Notes |
-|---------|:------:|---------|-------|
-| Heat-based Narc card upgrades | ✅ | RFC-018 | Evidence cards scaled by heat tier |
-| Upgrade tier display | ✅ | RFC-018 | Shows "Narc: Alert/Dangerous/etc" during play |
-| Heat affects NEXT deck (not current) | ✅ | RFC-018 | Tier locked at deck start from character heat |
-| Upgrade preview | ✅ | RFC-018 | Danger indicator visible in totals display |
-
----
-
-## Implementation Deviations
-
-**RFC-015 Implementation:**
-- Save system uses HMAC-SHA256 anti-tampering (not documented in spec)
-- Permadeath implemented: character deleted on bust
-- Decay shown at deck builder entry, not as persistent countdown
-- No tier transition warnings (UI polish deferred)
-
-**RFC-018 Implementation:**
-- Heat simplified to single cumulative model: accumulated when cards played, not at resolution
-- Conviction check uses current deck heat directly (not projected hand-end heat)
-- Evidence cards display ⚖ tier badges (scales of justice symbol for Narc cards)
+| Feature | Status | Notes |
+|---------|:------:|-------|
+| Six tiers | ✅ | Cold/Warm/Hot/Blazing/Scorching/Inferno |
+| Tier boundaries | ✅ | 30 points each (0-29, 30-59, etc.) |
+| Tier colors | ✅ | Green→Yellow→Orange→DeepOrange→Red→Purple |
+| Tier display | ✅ | "[Tier]" text with tier color in deck builder |
 
 ---
 
-## Notes
+## Narc Scaling - 4/4 (100%)
 
-- Heat decay is TIME-based (real-world hours), not play-based
-- This creates anti-binge mechanic (rewards daily play)
-- Heat persists on character until permadeath
-- Heat affects NEXT deck difficulty (not current) for predictability - implemented in RFC-018
-- All 6 Heat tiers implemented (30 points each: Cold/Warm/Hot/Blazing/Scorching/Inferno)
-- **Trust system removed** - See progression-meta.md for per-run card upgrades as replacement progression mechanic
-- **RFC-018/019 Complete** - Narc Evidence cards scale with Heat tier:
-  - Cold→Base, Warm→+10%, Hot→+20%, Blazing→+30%, Scorching→+40%, Inferno→+50% with foil effect
-- **Conviction thresholds aligned** - Warrant (30), Caught Red-Handed (60), Random Search (90)
-- **Buyer thresholds scaled** - Range from 60 (Hot) to 150 (Inferno) based on buyer risk tolerance
+| Feature | Status | Notes |
+|---------|:------:|-------|
+| Heat→Narc tier mapping | ✅ | HeatTier::narc_upgrade_tier() |
+| Evidence multiplier | ✅ | 1.0×→1.1×→1.2×→1.3×→1.4×→1.5× |
+| Tier locked at deck start | ✅ | Uses character heat at session start |
+| Danger indicator | ✅ | ⚖ badge with tier name (Relaxed/Alert/etc.) |
+
+---
+
+## Scrapped Features
+
+| Feature | Reason |
+|---------|--------|
+| Decay projection | Unnecessary ("In 24 hours: X") |
+| Decay feedback UI | Not implemented, not needed |
+| Tier transition warnings | Unnecessary polish |
+
+---
+
+## Implementation Notes
+
+- HeatTier enum: `src/save/types.rs:104`
+- apply_decay(): `src/save/types.rs:446`
+- Narc scaling: `src/save/types.rs:150` (narc_upgrade_tier)
+- Heat bar UI: `src/ui/theme.rs` (percentage-based colors, not tier colors)
+- Tier display: `src/systems/save_integration.rs:214` (tier.color())
