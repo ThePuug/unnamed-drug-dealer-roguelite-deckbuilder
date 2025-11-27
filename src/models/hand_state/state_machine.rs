@@ -34,6 +34,7 @@ impl HandState {
             hand_story: None, // SOW-012: No story initially
             last_profit: 0,
             card_play_counts: std::collections::HashMap::new(), // RFC-017: Initialize empty, set from SaveData
+            card_upgrades: std::collections::HashMap::new(), // RFC-019: Initialize empty, set from SaveData
             narc_upgrade_tier: heat_tier.narc_upgrade_tier(), // RFC-018: Set from heat tier
         }
     }
@@ -84,15 +85,17 @@ impl HandState {
 
         let preserved_buyer_persona = self.buyer_persona.clone();
         let preserved_play_counts = self.card_play_counts.clone(); // RFC-017: Preserve play counts
+        let preserved_upgrades = self.card_upgrades.clone(); // RFC-019: Preserve card upgrades
         let preserved_narc_tier = self.narc_upgrade_tier; // RFC-018: Preserve Narc tier for entire deck
 
-        // Reset state but preserve cash/heat/cards/buyer/play_counts/narc_tier
+        // Reset state but preserve cash/heat/cards/buyer/play_counts/upgrades/narc_tier
         *self = Self::default();
         self.cash = preserved_cash;
         self.current_heat = preserved_heat;
         self.owner_cards = preserved_owner_cards;
         self.buyer_persona = preserved_buyer_persona;
         self.card_play_counts = preserved_play_counts; // RFC-017: Restore play counts
+        self.card_upgrades = preserved_upgrades; // RFC-019: Restore card upgrades
         self.narc_upgrade_tier = preserved_narc_tier; // RFC-018: Restore Narc tier
 
         bevy::log::info!(
@@ -248,11 +251,9 @@ impl HandState {
     pub fn should_buyer_bail(&self) -> bool {
         if let Some(persona) = &self.buyer_persona {
             let totals = self.calculate_totals(true);
-            let heat_threshold = if let Some(scenario_idx) = persona.active_scenario_index {
-                persona.scenarios.get(scenario_idx).and_then(|s| s.heat_threshold)
-            } else {
-                persona.heat_threshold // Fallback to persona threshold
-            };
+            let heat_threshold = persona.active_scenario_index
+                .and_then(|idx| persona.scenarios.get(idx))
+                .and_then(|s| s.heat_threshold);
 
             // Check cumulative deck heat (already accumulated as cards were played)
             if let Some(threshold) = heat_threshold {

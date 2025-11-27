@@ -274,8 +274,11 @@ pub fn go_home_button_system(
 // ============================================================================
 pub fn deck_builder_card_click_system(
     interaction_query: Query<(&Interaction, &DeckBuilderCardButton), Changed<Interaction>>,
-    mut deck_builder: ResMut<DeckBuilder>,
+    deck_builder: Option<ResMut<DeckBuilder>>,
 ) {
+    let Some(mut deck_builder) = deck_builder else {
+        return;
+    };
     for (interaction, button) in interaction_query.iter() {
         if *interaction == Interaction::Pressed {
             // Find the card in available cards
@@ -306,12 +309,15 @@ pub fn deck_builder_card_click_system(
 pub fn start_run_button_system(
     mut commands: Commands,
     interaction_query: Query<&Interaction, (Changed<Interaction>, With<StartRunButton>)>,
-    deck_builder: Res<DeckBuilder>,
+    deck_builder: Option<Res<DeckBuilder>>,
     mut next_state: ResMut<NextState<GameState>>,
     hand_state_query: Query<Entity, With<HandState>>,
     game_assets: Res<crate::assets::GameAssets>, // SOW-013-B: Need loaded assets for buyer/narc deck
     save_data: Option<Res<crate::save::SaveData>>, // RFC-017: Need play counts for upgrades
 ) {
+    let Some(deck_builder) = deck_builder else {
+        return;
+    };
     for interaction in interaction_query.iter() {
         if *interaction == Interaction::Pressed && deck_builder.is_valid() {
             // Despawn any existing HandState
@@ -345,9 +351,11 @@ pub fn start_run_button_system(
             hand_state.buyer_persona = Some(random_buyer);
 
             // RFC-017: Copy play counts from CharacterState for upgrade tier calculation
+            // RFC-019: Copy card upgrades from CharacterState for stat multipliers
             if let Some(ref save) = save_data {
                 if let Some(ref character) = save.character {
                     hand_state.card_play_counts = character.card_play_counts.clone();
+                    hand_state.card_upgrades = character.card_upgrades.clone();
                 }
             }
 

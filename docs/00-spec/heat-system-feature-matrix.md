@@ -10,15 +10,15 @@ Implementation tracking for Heat System specification.
 
 ## Summary
 
-**Overall Completion:** 15/19 features (79%)
+**Overall Completion:** 16/20 features (80%)
 
 | Category | Complete | Partial | Not Started | Deferred |
 |----------|----------|---------|-------------|----------|
 | Heat Accumulation | 4 | 0 | 0 | 0 |
 | Heat Decay | 2 | 2 | 1 | 0 |
-| Heat Tiers | 5 | 0 | 1 | 0 |
+| Heat Tiers | 6 | 0 | 1 | 0 |
 | Narc Card Upgrades | 4 | 0 | 0 | 0 |
-| **Total** | **15** | **2** | **2** | **0** |
+| **Total** | **16** | **2** | **2** | **0** |
 
 ---
 
@@ -45,15 +45,16 @@ Implementation tracking for Heat System specification.
 
 ---
 
-## Heat Tiers: 5/6 complete (83%)
+## Heat Tiers: 6/7 complete (86%)
 
 | Feature | Status | RFC/ADR | Notes |
 |---------|:------:|---------|-------|
-| Cold tier (0-25) | ✅ | RFC-015 | Implemented with green color |
-| Warm tier (26-50) | ✅ | RFC-015 | Implemented with yellow color |
-| Hot tier (51-75) | ✅ | RFC-015 | Implemented with orange color |
-| Scorching tier (76-100) | ✅ | RFC-015 | Implemented with red color |
-| Inferno tier (101+) | ✅ | RFC-015 | Implemented with purple color |
+| Cold tier (0-29) | ✅ | RFC-015 | Implemented with green color |
+| Warm tier (30-59) | ✅ | RFC-015 | Implemented with yellow color |
+| Hot tier (60-89) | ✅ | RFC-015 | Implemented with orange color |
+| Blazing tier (90-119) | ✅ | RFC-019 | Implemented with deep orange color |
+| Scorching tier (120-149) | ✅ | RFC-015 | Implemented with red color |
+| Inferno tier (150+) | ✅ | RFC-015 | Implemented with purple color + foil effect |
 | Tier transition feedback | ❌ | - | No warning messages on tier change |
 
 ---
@@ -90,6 +91,9 @@ Implementation tracking for Heat System specification.
 - This creates anti-binge mechanic (rewards daily play)
 - Heat persists on character until permadeath
 - Heat affects NEXT deck difficulty (not current) for predictability - implemented in RFC-018
-- All 5 Heat tiers implemented
+- All 6 Heat tiers implemented (30 points each: Cold/Warm/Hot/Blazing/Scorching/Inferno)
 - **Trust system removed** - See progression-meta.md for per-run card upgrades as replacement progression mechanic
-- **RFC-018 Complete** - Narc Evidence cards now scale with Heat tier (Cold→Base, Warm→+10%, Hot→+20%, Scorching→+30%, Inferno→+40%)
+- **RFC-018/019 Complete** - Narc Evidence cards scale with Heat tier:
+  - Cold→Base, Warm→+10%, Hot→+20%, Blazing→+30%, Scorching→+40%, Inferno→+50% with foil effect
+- **Conviction thresholds aligned** - Warrant (30), Caught Red-Handed (60), Random Search (90)
+- **Buyer thresholds scaled** - Range from 60 (Hot) to 150 (Inferno) based on buyer risk tolerance

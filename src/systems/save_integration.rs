@@ -130,6 +130,14 @@ pub fn save_after_resolution_system(
                             character.get_play_count(&card.name),
                             tier.name()
                         );
+
+                        // RFC-019: Check if this card has earned a new upgrade
+                        if character.queue_pending_upgrade(&card.name, &card.card_type) {
+                            info!(
+                                "Card '{}' earned an upgrade! Queued for player choice.",
+                                card.name
+                            );
+                        }
                     }
                 }
             }

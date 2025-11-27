@@ -66,11 +66,14 @@ impl HandState {
     /// - Insurance acts as Cover card during totals calculation
     /// - Conviction has no effect on totals (only affects bust resolution)
     ///
-    /// RFC-017 Upgrade Tiers:
-    /// - Cards with 5+ plays get +10% bonus to primary stat
-    /// - Product: +10% price, Location: +10% cover/-10% evidence
-    /// - Cover: +10% cover, Insurance: +10% cover
+    /// RFC-019 Upgrade Stat Choice:
+    /// - Players choose which stat to upgrade at each tier
+    /// - Each upgrade adds +10% to the chosen stat (additive stacking)
+    /// - "Good" stats increase (Price, Cover, PriceMultiplier)
+    /// - "Bad" stats decrease (Evidence, Heat, HeatPenalty)
     pub fn calculate_totals(&self, include_current_round: bool) -> Totals {
+        use crate::save::UpgradeableStat;
+
         let mut totals = Totals::default();
         let mut price_multiplier: f32 = 1.0;
 
@@ -78,25 +81,24 @@ impl HandState {
         if let Some(location) = self.active_location(include_current_round) {
             match location.card_type {
                 CardType::Location { evidence, cover, heat } => {
-                    // RFC-017: Apply upgrade tier to Location stats
-                    let tier_mult = self.get_card_tier(&location.name).multiplier();
-                    let evidence_mult = if tier_mult > 1.0 { 2.0 - tier_mult } else { 1.0 }; // -10% evidence at Tier1
+                    // RFC-019: Apply per-stat upgrade multipliers
+                    let evidence_mult = 2.0 - self.get_stat_multiplier(&location.name, UpgradeableStat::Evidence); // Decrease
+                    let cover_mult = self.get_stat_multiplier(&location.name, UpgradeableStat::Cover);
+                    let heat_mult = 2.0 - self.get_stat_multiplier(&location.name, UpgradeableStat::Heat); // Decrease
 
-                    totals.evidence = (evidence as f32 * evidence_mult) as u32;
-                    totals.cover = (cover as f32 * tier_mult) as u32;
-                    totals.heat += heat;
+                    totals.evidence = (evidence as f32 * evidence_mult).max(0.0) as u32;
+                    totals.cover = (cover as f32 * cover_mult) as u32;
+                    totals.heat += (heat as f32 * heat_mult) as i32;
                 }
                 _ => {} // Shouldn't happen
             }
         }
 
         for card in self.get_cards_for_calculation(include_current_round) {
-            // RFC-017: Get tier multiplier for this card
-            let tier_mult = self.get_card_tier(&card.name).multiplier();
-
             match card.card_type {
                 CardType::Evidence { evidence, heat } => {
                     // RFC-018: Apply Narc upgrade tier to Evidence cards based on Heat
+                    // (Evidence cards are Narc cards, not player-upgradeable)
                     let narc_mult = self.narc_upgrade_tier.multiplier();
                     let upgraded_evidence = (evidence as f32 * narc_mult) as u32;
                     let upgraded_heat = (heat as f32 * narc_mult) as i32;
@@ -104,24 +106,33 @@ impl HandState {
                     totals.heat += upgraded_heat;
                 }
                 CardType::Cover { cover, heat } => {
-                    // RFC-017: Apply upgrade tier to Cover value
-                    let upgraded_cover = (cover as f32 * tier_mult) as u32;
+                    // RFC-019: Apply per-stat upgrade multipliers
+                    let cover_mult = self.get_stat_multiplier(&card.name, UpgradeableStat::Cover);
+                    let heat_mult = 2.0 - self.get_stat_multiplier(&card.name, UpgradeableStat::Heat); // Decrease
+
+                    let upgraded_cover = (cover as f32 * cover_mult) as u32;
                     totals.cover += upgraded_cover;
-                    totals.heat += heat;
+                    totals.heat += (heat as f32 * heat_mult) as i32;
                 }
                 CardType::DealModifier { price_multiplier: multiplier, evidence, cover, heat } => {
-                    // RFC-017: Apply upgrade tier to DealModifier multiplier bonus
-                    // Add extra 10% at Tier1: 1.2x becomes 1.32x (1.2 * 1.1)
-                    let upgraded_multiplier = multiplier * tier_mult;
+                    // RFC-019: Apply per-stat upgrade multipliers
+                    let price_mult = self.get_stat_multiplier(&card.name, UpgradeableStat::PriceMultiplier);
+                    let evidence_mult = 2.0 - self.get_stat_multiplier(&card.name, UpgradeableStat::Evidence); // Decrease
+                    let cover_mult = self.get_stat_multiplier(&card.name, UpgradeableStat::Cover);
+                    let heat_mult = 2.0 - self.get_stat_multiplier(&card.name, UpgradeableStat::Heat); // Decrease
+
+                    let upgraded_multiplier = multiplier * price_mult;
                     price_multiplier *= upgraded_multiplier;
-                    totals.evidence = totals.evidence.saturating_add_signed(evidence);
-                    totals.cover = totals.cover.saturating_add_signed(cover);
-                    totals.heat += heat;
+                    totals.evidence = totals.evidence.saturating_add_signed((evidence as f32 * evidence_mult) as i32);
+                    totals.cover = totals.cover.saturating_add_signed((cover as f32 * cover_mult) as i32);
+                    totals.heat += (heat as f32 * heat_mult) as i32;
                 }
                 CardType::Insurance { cover, .. } => {
-                    // RFC-017: Apply upgrade tier to Insurance cover value
-                    let upgraded_cover = (cover as f32 * tier_mult) as u32;
+                    // RFC-019: Apply per-stat upgrade multipliers
+                    let cover_mult = self.get_stat_multiplier(&card.name, UpgradeableStat::Cover);
+                    let upgraded_cover = (cover as f32 * cover_mult) as u32;
                     totals.cover += upgraded_cover;
+                    // Note: HeatPenalty is only applied when insurance activates, not in totals
                 }
                 CardType::Conviction { .. } => {}
                 _ => {}
@@ -131,13 +142,15 @@ impl HandState {
         // Get profit from active Product (apply multipliers)
         if let Some(product) = self.active_product(include_current_round) {
             if let CardType::Product { price, heat } = product.card_type {
-                // RFC-017: Apply upgrade tier to Product price
-                let tier_mult = self.get_card_tier(&product.name).multiplier();
-                let upgraded_price = (price as f32 * tier_mult) as u32;
+                // RFC-019: Apply per-stat upgrade multipliers
+                let price_mult = self.get_stat_multiplier(&product.name, UpgradeableStat::Price);
+                let heat_mult = 2.0 - self.get_stat_multiplier(&product.name, UpgradeableStat::Heat); // Decrease
+
+                let upgraded_price = (price as f32 * price_mult) as u32;
 
                 let buyer_multiplier = self.get_profit_multiplier();
                 totals.profit = (upgraded_price as f32 * price_multiplier * buyer_multiplier) as u32;
-                totals.heat += heat;
+                totals.heat += (heat as f32 * heat_mult) as i32;
             }
         }
 
@@ -311,11 +324,12 @@ mod tests {
     }
 
     // ========================================================================
-    // RFC-017: Upgrade Tier Tests
+    // RFC-019: Upgrade Stat Choice Tests
     // ========================================================================
 
     #[test]
-    fn test_upgrade_tier_bonus_on_product() {
+    fn test_upgrade_stat_choice_price_on_product() {
+        use crate::save::{CardUpgrades, UpgradeableStat};
         let mut hand_state = HandState::default();
 
         // Product with base price 100
@@ -326,16 +340,19 @@ mod tests {
         let totals_base = hand_state.calculate_totals(true);
         assert_eq!(totals_base.profit, 100);
 
-        // TESTING MODE: 1 play = Tier 1 (+10%)
-        hand_state.card_play_counts.insert("Test Product".to_string(), 1);
+        // RFC-019: Add one Price upgrade (+10%)
+        let mut upgrades = CardUpgrades::new();
+        upgrades.add_upgrade(UpgradeableStat::Price);
+        hand_state.card_upgrades.insert("Test Product".to_string(), upgrades);
 
-        // With Tier 1, profit = 110 (100 * 1.1)
-        let totals_tier1 = hand_state.calculate_totals(true);
-        assert_eq!(totals_tier1.profit, 110);
+        // With 1 Price upgrade, profit = 110 (100 * 1.1)
+        let totals_upgraded = hand_state.calculate_totals(true);
+        assert_eq!(totals_upgraded.profit, 110);
     }
 
     #[test]
-    fn test_upgrade_tier_bonus_on_cover() {
+    fn test_upgrade_stat_choice_cover_on_cover_card() {
+        use crate::save::{CardUpgrades, UpgradeableStat};
         let mut hand_state = HandState::default();
 
         // Cover card with base 30 cover
@@ -346,16 +363,19 @@ mod tests {
         let totals_base = hand_state.calculate_totals(true);
         assert_eq!(totals_base.cover, 40);
 
-        // TESTING MODE: 1 play = Tier 1 (+10%)
-        hand_state.card_play_counts.insert("Test Cover".to_string(), 1);
+        // RFC-019: Add one Cover upgrade (+10%)
+        let mut upgrades = CardUpgrades::new();
+        upgrades.add_upgrade(UpgradeableStat::Cover);
+        hand_state.card_upgrades.insert("Test Cover".to_string(), upgrades);
 
-        // With Tier 1, cover = 10 + 33 (30 * 1.1) = 43
-        let totals_tier1 = hand_state.calculate_totals(true);
-        assert_eq!(totals_tier1.cover, 43);
+        // With 1 Cover upgrade, cover = 10 + 33 (30 * 1.1) = 43
+        let totals_upgraded = hand_state.calculate_totals(true);
+        assert_eq!(totals_upgraded.cover, 43);
     }
 
     #[test]
-    fn test_upgrade_tier_bonus_on_location() {
+    fn test_upgrade_stat_choice_on_location() {
+        use crate::save::{CardUpgrades, UpgradeableStat};
         let mut hand_state = HandState::default();
 
         // Location with base evidence 20, cover 20
@@ -366,43 +386,86 @@ mod tests {
         assert_eq!(totals_base.evidence, 20);
         assert_eq!(totals_base.cover, 20);
 
-        // TESTING MODE: 1 play = Tier 1 (+10% cover, -10% evidence)
-        hand_state.card_play_counts.insert("Test Location".to_string(), 1);
+        // RFC-019: Player chooses to upgrade Cover (+10%)
+        let mut upgrades = CardUpgrades::new();
+        upgrades.add_upgrade(UpgradeableStat::Cover);
+        hand_state.card_upgrades.insert("Test Location".to_string(), upgrades);
 
-        // With Tier 1: evidence = 18 (20 * 0.9), cover = 22 (20 * 1.1)
-        let totals_tier1 = hand_state.calculate_totals(true);
-        assert_eq!(totals_tier1.evidence, 18);
-        assert_eq!(totals_tier1.cover, 22);
+        // With 1 Cover upgrade: evidence = 20 (unchanged), cover = 22 (20 * 1.1)
+        let totals_cover = hand_state.calculate_totals(true);
+        assert_eq!(totals_cover.evidence, 20);
+        assert_eq!(totals_cover.cover, 22);
+
+        // Now also upgrade Evidence (-10%)
+        hand_state.card_upgrades.get_mut("Test Location").unwrap()
+            .add_upgrade(UpgradeableStat::Evidence);
+
+        // With Cover+Evidence upgrades: evidence = 18 (20 * 0.9), cover = 22 (20 * 1.1)
+        let totals_both = hand_state.calculate_totals(true);
+        assert_eq!(totals_both.evidence, 18);
+        assert_eq!(totals_both.cover, 22);
     }
 
     #[test]
-    fn test_upgrade_tier5_max_bonus() {
+    fn test_upgrade_stat_stacking() {
+        use crate::save::{CardUpgrades, UpgradeableStat};
         let mut hand_state = HandState::default();
 
         // Product with base price 100
         hand_state.cards_played.push(create_product("Test Product", 100, 0));
         hand_state.cards_played.push(create_location("Location", 10, 10, 0));
 
-        // TESTING MODE: 5 plays = Tier 5 (+50%)
-        hand_state.card_play_counts.insert("Test Product".to_string(), 5);
+        // RFC-019: Add 5 Price upgrades (+50% total, additive stacking)
+        let mut upgrades = CardUpgrades::new();
+        for _ in 0..5 {
+            upgrades.add_upgrade(UpgradeableStat::Price);
+        }
+        hand_state.card_upgrades.insert("Test Product".to_string(), upgrades);
 
-        // With Tier 5, profit = 150 (100 * 1.5)
-        let totals_tier5 = hand_state.calculate_totals(true);
-        assert_eq!(totals_tier5.profit, 150);
+        // With 5 Price upgrades, profit = 150 (100 * 1.5)
+        let totals = hand_state.calculate_totals(true);
+        assert_eq!(totals.profit, 150);
     }
 
     #[test]
-    fn test_upgrade_no_player_bonus_for_narc_cards() {
+    fn test_upgrade_heat_reduction() {
+        use crate::save::{CardUpgrades, UpgradeableStat};
         let mut hand_state = HandState::default();
 
-        // Evidence is a Narc card type
+        // Product with base price 100 and heat 20
+        hand_state.cards_played.push(create_product("Test Product", 100, 20));
+        hand_state.cards_played.push(create_location("Location", 10, 10, 0));
+
+        // Without upgrades, heat = 20
+        let totals_base = hand_state.calculate_totals(true);
+        assert_eq!(totals_base.heat, 20);
+
+        // RFC-019: Add one Heat upgrade (-10%)
+        let mut upgrades = CardUpgrades::new();
+        upgrades.add_upgrade(UpgradeableStat::Heat);
+        hand_state.card_upgrades.insert("Test Product".to_string(), upgrades);
+
+        // With 1 Heat upgrade, heat = 18 (20 * 0.9)
+        let totals_upgraded = hand_state.calculate_totals(true);
+        assert_eq!(totals_upgraded.heat, 18);
+    }
+
+    #[test]
+    fn test_upgrade_no_effect_on_narc_cards() {
+        use crate::save::{CardUpgrades, UpgradeableStat};
+        let mut hand_state = HandState::default();
+
+        // Evidence is a Narc card type (not player-upgradeable)
         hand_state.cards_played.push(create_location("Location", 10, 10, 0));
         hand_state.cards_played.push(create_evidence("Narc Evidence", 20, 0));
 
-        // Player play counts don't affect Narc cards (they use narc_upgrade_tier instead)
-        hand_state.card_play_counts.insert("Narc Evidence".to_string(), 10);
+        // Player upgrades don't affect Narc cards (they use narc_upgrade_tier instead)
+        let mut upgrades = CardUpgrades::new();
+        upgrades.add_upgrade(UpgradeableStat::Evidence);
+        hand_state.card_upgrades.insert("Narc Evidence".to_string(), upgrades);
 
         // With Base narc_upgrade_tier (default), evidence = 10 + 20 = 30
+        // The player upgrade has no effect on Narc cards
         let totals = hand_state.calculate_totals(true);
         assert_eq!(totals.evidence, 30);
     }

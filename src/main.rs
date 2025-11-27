@@ -50,12 +50,17 @@ fn main() {
         .add_systems(OnEnter(GameState::DeckBuilding), (
             load_character_system,
             apply_decay_system,
+            check_pending_upgrades_system, // RFC-019: Redirect to UpgradeChoice if pending
             initialize_deck_builder_from_assets,
             setup_deck_builder,
         ).chain())
         .add_systems(OnEnter(GameState::InRun), ensure_character_on_run_start)
         .add_systems(OnExit(GameState::DeckBuilding), cleanup_deck_builder_ui)
-        .add_systems(OnExit(GameState::InRun), mark_deck_completed_system);
+        .add_systems(OnExit(GameState::InRun), mark_deck_completed_system)
+        // RFC-019: Upgrade Choice state
+        .add_systems(OnEnter(GameState::UpgradeChoice), setup_upgrade_choice_ui)
+        .add_systems(OnExit(GameState::UpgradeChoice), cleanup_upgrade_choice_ui)
+        .add_systems(Update, upgrade_option_click_system.run_if(in_state(GameState::UpgradeChoice)));
 
     app
         .add_systems(Startup, ui::scale_ui_to_fit_system)  // Initial UI scaling
@@ -106,7 +111,17 @@ fn initialize_deck_builder_from_assets(
     mut commands: Commands,
     game_assets: Res<assets::GameAssets>,
     existing_deck_builder: Option<Res<DeckBuilder>>,
+    save_data: Option<Res<save::SaveData>>,
 ) {
+    // RFC-019: Skip if pending upgrades (we're about to redirect to UpgradeChoice)
+    if let Some(ref data) = save_data {
+        if let Some(ref character) = data.character {
+            if character.has_pending_upgrades() {
+                return;
+            }
+        }
+    }
+
     // Only initialize if DeckBuilder doesn't exist yet
     if existing_deck_builder.is_none() {
         let deck_builder = DeckBuilder::from_assets(&game_assets);

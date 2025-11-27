@@ -6,7 +6,19 @@ use bevy::prelude::*;
 use super::theme;
 use super::components::*;
 
-pub fn setup_deck_builder(mut commands: Commands) {
+pub fn setup_deck_builder(
+    mut commands: Commands,
+    save_data: Option<Res<crate::save::SaveData>>,
+) {
+    // RFC-019: Don't spawn DeckBuilder UI if we're about to redirect to UpgradeChoice
+    if let Some(ref data) = save_data {
+        if let Some(ref character) = data.character {
+            if character.has_pending_upgrades() {
+                return;
+            }
+        }
+    }
+
     // Deck builder root container - 1920x1080 design, will be scaled/positioned by scale_ui_to_fit_system
     commands.spawn((
         Node {

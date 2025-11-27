@@ -181,20 +181,12 @@ pub fn update_heat_bar_system(
     // Heat is accumulated immediately when cards are played, use current_heat directly
     let current_heat = hand_state.current_heat;
 
-    // Get threshold from buyer scenario or default to 100
-    let heat_threshold = if let Some(persona) = &hand_state.buyer_persona {
-        if let Some(scenario_index) = persona.active_scenario_index {
-            if let Some(scenario) = persona.scenarios.get(scenario_index) {
-                scenario.heat_threshold.or(persona.heat_threshold).unwrap_or(100)
-            } else {
-                persona.heat_threshold.unwrap_or(100)
-            }
-        } else {
-            persona.heat_threshold.unwrap_or(100)
-        }
-    } else {
-        100
-    };
+    // Get threshold from buyer scenario (None = no limit, show as 999)
+    let heat_threshold = hand_state.buyer_persona.as_ref()
+        .and_then(|p| p.active_scenario_index)
+        .and_then(|idx| hand_state.buyer_persona.as_ref()?.scenarios.get(idx))
+        .and_then(|s| s.heat_threshold)
+        .unwrap_or(999);
 
     // Update heat bar fill percentage
     let fill_percentage = if heat_threshold > 0 {

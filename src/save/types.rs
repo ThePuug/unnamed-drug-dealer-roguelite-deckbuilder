@@ -102,20 +102,22 @@ pub enum CharacterProfile {
 /// Heat tier based on current heat value
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HeatTier {
-    Cold,      // 0-25
-    Warm,      // 26-50
-    Hot,       // 51-75
-    Scorching, // 76-100
-    Inferno,   // 101+
+    Cold,      // 0-29
+    Warm,      // 30-59
+    Hot,       // 60-89
+    Blazing,   // 90-119
+    Scorching, // 120-149
+    Inferno,   // 150+
 }
 
 impl HeatTier {
     pub fn from_heat(heat: u32) -> Self {
         match heat {
-            0..=25 => HeatTier::Cold,
-            26..=50 => HeatTier::Warm,
-            51..=75 => HeatTier::Hot,
-            76..=100 => HeatTier::Scorching,
+            0..=29 => HeatTier::Cold,
+            30..=59 => HeatTier::Warm,
+            60..=89 => HeatTier::Hot,
+            90..=119 => HeatTier::Blazing,
+            120..=149 => HeatTier::Scorching,
             _ => HeatTier::Inferno,
         }
     }
@@ -125,6 +127,7 @@ impl HeatTier {
             HeatTier::Cold => "Cold",
             HeatTier::Warm => "Warm",
             HeatTier::Hot => "Hot",
+            HeatTier::Blazing => "Blazing",
             HeatTier::Scorching => "Scorching",
             HeatTier::Inferno => "Inferno",
         }
@@ -136,6 +139,7 @@ impl HeatTier {
             HeatTier::Cold => (0.2, 0.8, 0.3),      // Green
             HeatTier::Warm => (0.9, 0.9, 0.2),      // Yellow
             HeatTier::Hot => (1.0, 0.6, 0.1),       // Orange
+            HeatTier::Blazing => (1.0, 0.4, 0.1),   // Deep Orange
             HeatTier::Scorching => (1.0, 0.2, 0.2), // Red
             HeatTier::Inferno => (0.8, 0.2, 0.8),   // Purple
         }
@@ -148,8 +152,9 @@ impl HeatTier {
             HeatTier::Cold => UpgradeTier::Base,      // No bonus
             HeatTier::Warm => UpgradeTier::Tier1,     // +10%
             HeatTier::Hot => UpgradeTier::Tier2,      // +20%
-            HeatTier::Scorching => UpgradeTier::Tier3, // +30%
-            HeatTier::Inferno => UpgradeTier::Tier4,  // +40% (capped, not Tier5)
+            HeatTier::Blazing => UpgradeTier::Tier3,  // +30%
+            HeatTier::Scorching => UpgradeTier::Tier4, // +40%
+            HeatTier::Inferno => UpgradeTier::Tier5,  // +50% with foil effect
         }
     }
 
@@ -159,6 +164,7 @@ impl HeatTier {
             HeatTier::Cold => "Relaxed",
             HeatTier::Warm => "Alert",
             HeatTier::Hot => "Dangerous",
+            HeatTier::Blazing => "Severe",
             HeatTier::Scorching => "Intense",
             HeatTier::Inferno => "Deadly",
         }
@@ -166,7 +172,7 @@ impl HeatTier {
 }
 
 /// RFC-017: Card upgrade tier based on play count
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum UpgradeTier {
     Base,   // 0-4 plays: No bonus
     Tier1,  // 5+ plays: +10% primary stat
@@ -247,6 +253,147 @@ impl Default for UpgradeTier {
     }
 }
 
+/// RFC-019: Which stat was upgraded on a card
+/// Used for player-chosen upgrade paths
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum UpgradeableStat {
+    /// Product: increase price
+    Price,
+    /// Location/Cover/Insurance: increase cover
+    Cover,
+    /// Location/DealModifier: decrease evidence
+    Evidence,
+    /// All types: decrease heat
+    Heat,
+    /// Insurance: decrease heat_penalty
+    HeatPenalty,
+    /// DealModifier: increase price_mult
+    PriceMultiplier,
+}
+
+impl UpgradeableStat {
+    /// Display name for UI
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::Price => "Price",
+            Self::Cover => "Cover",
+            Self::Evidence => "Evidence",
+            Self::Heat => "Heat",
+            Self::HeatPenalty => "Heat Penalty",
+            Self::PriceMultiplier => "Price Bonus",
+        }
+    }
+
+    /// Whether this stat improves by increasing (true) or decreasing (false)
+    pub fn improves_by_increase(&self) -> bool {
+        matches!(self, Self::Price | Self::Cover | Self::PriceMultiplier)
+    }
+
+    /// Get available upgrade stats for a card type
+    /// Returns the stats that can be upgraded for this card type
+    pub fn available_for(card_type: &crate::models::card::CardType) -> Vec<Self> {
+        use crate::models::card::CardType;
+        match card_type {
+            CardType::Product { .. } => vec![Self::Price, Self::Heat],
+            CardType::Location { .. } => vec![Self::Evidence, Self::Cover, Self::Heat],
+            CardType::Cover { .. } => vec![Self::Cover, Self::Heat],
+            CardType::Insurance { .. } => vec![Self::Cover, Self::HeatPenalty],
+            CardType::DealModifier { .. } => vec![Self::PriceMultiplier, Self::Evidence, Self::Cover, Self::Heat],
+            // Evidence and Conviction cards are not player-upgradeable
+            CardType::Evidence { .. } => vec![],
+            CardType::Conviction { .. } => vec![],
+        }
+    }
+
+    /// Select 2 random stats for upgrade choice
+    /// For cards with exactly 2 stats, returns both (no randomness needed)
+    /// For cards with 3+ stats, randomly selects 2
+    pub fn random_pair(card_type: &crate::models::card::CardType) -> Option<[Self; 2]> {
+        use rand::prelude::*;
+        let available = Self::available_for(card_type);
+
+        match available.len() {
+            0 | 1 => None, // Can't offer choice with less than 2 options
+            2 => Some([available[0], available[1]]),
+            _ => {
+                // Randomly select 2 from available
+                let mut shuffled = available;
+                shuffled.shuffle(&mut rand::rng());
+                Some([shuffled[0], shuffled[1]])
+            }
+        }
+    }
+}
+
+/// RFC-019: Upgrade choices for a single card
+/// Tracks which stat was chosen at each tier upgrade
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct CardUpgrades {
+    /// Stats chosen at each tier (index 0 = Tier1, index 1 = Tier2, etc.)
+    pub upgrades: Vec<UpgradeableStat>,
+}
+
+impl CardUpgrades {
+    /// Create new empty upgrade history
+    pub fn new() -> Self {
+        Self { upgrades: Vec::new() }
+    }
+
+    /// Add an upgrade choice
+    pub fn add_upgrade(&mut self, stat: UpgradeableStat) {
+        self.upgrades.push(stat);
+    }
+
+    /// Count how many times a specific stat was upgraded
+    pub fn count_stat(&self, stat: UpgradeableStat) -> usize {
+        self.upgrades.iter().filter(|&&s| s == stat).count()
+    }
+
+    /// Get the multiplier for a specific stat based on upgrade count
+    /// Each upgrade adds +10% (additive stacking)
+    pub fn stat_multiplier(&self, stat: UpgradeableStat) -> f32 {
+        1.0 + (self.count_stat(stat) as f32 * 0.1)
+    }
+
+    /// Current tier based on number of upgrades
+    pub fn current_tier(&self) -> UpgradeTier {
+        match self.upgrades.len() {
+            0 => UpgradeTier::Base,
+            1 => UpgradeTier::Tier1,
+            2 => UpgradeTier::Tier2,
+            3 => UpgradeTier::Tier3,
+            4 => UpgradeTier::Tier4,
+            _ => UpgradeTier::Tier5,
+        }
+    }
+}
+
+/// RFC-019: A pending upgrade choice waiting for player input
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PendingUpgrade {
+    /// Card name that earned the upgrade
+    pub card_name: String,
+    /// Card type (for determining available stats)
+    pub card_type: crate::models::card::CardType,
+    /// The tier being upgraded to
+    pub tier: UpgradeTier,
+    /// Two stat options randomly selected for player choice
+    pub options: [UpgradeableStat; 2],
+}
+
+impl PendingUpgrade {
+    /// Create a new pending upgrade with random stat options
+    pub fn new(card_name: String, card_type: crate::models::card::CardType, tier: UpgradeTier) -> Option<Self> {
+        let options = UpgradeableStat::random_pair(&card_type)?;
+        Some(Self {
+            card_name,
+            card_type,
+            tier,
+            options,
+        })
+    }
+}
+
 /// Character state that persists across sessions until permadeath
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct CharacterState {
@@ -264,6 +411,14 @@ pub struct CharacterState {
     /// Key is card name, value is times played
     #[serde(default)]
     pub card_play_counts: HashMap<String, u32>,
+    /// RFC-019: Per-card upgrade choices
+    /// Key is card name, value is upgrade history
+    #[serde(default)]
+    pub card_upgrades: HashMap<String, CardUpgrades>,
+    /// RFC-019: Pending upgrade choices waiting for player input
+    /// These persist across sessions so player can make choice on next load
+    #[serde(default)]
+    pub pending_upgrades: Vec<PendingUpgrade>,
 }
 
 impl CharacterState {
@@ -276,6 +431,8 @@ impl CharacterState {
             decks_played: 0,
             created_at: now,
             card_play_counts: HashMap::new(),
+            card_upgrades: HashMap::new(),
+            pending_upgrades: Vec::new(),
         }
     }
 
@@ -325,6 +482,109 @@ impl CharacterState {
     /// RFC-017: Get upgrade tier for a card based on play count
     pub fn get_card_tier(&self, card_name: &str) -> UpgradeTier {
         UpgradeTier::from_play_count(self.get_play_count(card_name))
+    }
+
+    /// RFC-019: Get upgrade history for a card
+    pub fn get_card_upgrades(&self, card_name: &str) -> Option<&CardUpgrades> {
+        self.card_upgrades.get(card_name)
+    }
+
+    /// RFC-019: Add an upgrade choice for a card
+    pub fn add_card_upgrade(&mut self, card_name: &str, stat: UpgradeableStat) {
+        let upgrades = self.card_upgrades
+            .entry(card_name.to_string())
+            .or_insert_with(CardUpgrades::new);
+        upgrades.add_upgrade(stat);
+    }
+
+    /// RFC-019: Get the stat multiplier for a specific stat on a card
+    pub fn get_stat_multiplier(&self, card_name: &str, stat: UpgradeableStat) -> f32 {
+        self.card_upgrades
+            .get(card_name)
+            .map(|u| u.stat_multiplier(stat))
+            .unwrap_or(1.0)
+    }
+
+    /// RFC-019: Check if a card has earned an upgrade that hasn't been applied yet
+    /// Returns the tier to upgrade to, if any
+    pub fn check_pending_upgrade(&self, card_name: &str) -> Option<UpgradeTier> {
+        let play_count = self.get_play_count(card_name);
+        let tier_from_plays = UpgradeTier::from_play_count(play_count);
+
+        let upgrade_count = self.card_upgrades
+            .get(card_name)
+            .map(|u| u.upgrades.len())
+            .unwrap_or(0);
+        let tier_from_upgrades = match upgrade_count {
+            0 => UpgradeTier::Base,
+            1 => UpgradeTier::Tier1,
+            2 => UpgradeTier::Tier2,
+            3 => UpgradeTier::Tier3,
+            4 => UpgradeTier::Tier4,
+            _ => UpgradeTier::Tier5,
+        };
+
+        // If play count tier is higher than upgrade tier, we have a pending upgrade
+        if tier_from_plays > tier_from_upgrades {
+            // Return the next tier to upgrade to
+            Some(match tier_from_upgrades {
+                UpgradeTier::Base => UpgradeTier::Tier1,
+                UpgradeTier::Tier1 => UpgradeTier::Tier2,
+                UpgradeTier::Tier2 => UpgradeTier::Tier3,
+                UpgradeTier::Tier3 => UpgradeTier::Tier4,
+                UpgradeTier::Tier4 | UpgradeTier::Tier5 => UpgradeTier::Tier5,
+            })
+        } else {
+            None
+        }
+    }
+
+    /// RFC-019: Queue a pending upgrade for a card
+    pub fn queue_pending_upgrade(&mut self, card_name: &str, card_type: &crate::models::card::CardType) -> bool {
+        // Check if this card already has a pending upgrade in the queue
+        if self.pending_upgrades.iter().any(|p| p.card_name == card_name) {
+            return false;
+        }
+
+        // Check if there's actually a pending upgrade
+        if let Some(tier) = self.check_pending_upgrade(card_name) {
+            if let Some(pending) = PendingUpgrade::new(card_name.to_string(), card_type.clone(), tier) {
+                self.pending_upgrades.push(pending);
+                return true;
+            }
+        }
+        false
+    }
+
+    /// RFC-019: Get the next pending upgrade (if any)
+    pub fn next_pending_upgrade(&self) -> Option<&PendingUpgrade> {
+        self.pending_upgrades.first()
+    }
+
+    /// RFC-019: Has pending upgrades
+    pub fn has_pending_upgrades(&self) -> bool {
+        !self.pending_upgrades.is_empty()
+    }
+
+    /// RFC-019: Apply an upgrade choice and remove from pending queue
+    /// Returns true if the upgrade was applied
+    pub fn apply_upgrade_choice(&mut self, stat: UpgradeableStat) -> bool {
+        if let Some(pending) = self.pending_upgrades.first() {
+            // Verify the stat is one of the options
+            if pending.options[0] != stat && pending.options[1] != stat {
+                return false;
+            }
+
+            // Apply the upgrade
+            let card_name = pending.card_name.clone();
+            self.add_card_upgrade(&card_name, stat);
+
+            // Remove from pending queue
+            self.pending_upgrades.remove(0);
+            true
+        } else {
+            false
+        }
     }
 
     /// Validate character state sanity
@@ -434,15 +694,23 @@ mod tests {
 
     #[test]
     fn test_heat_tier_boundaries() {
+        // Cold: 0-29
         assert_eq!(HeatTier::from_heat(0), HeatTier::Cold);
-        assert_eq!(HeatTier::from_heat(25), HeatTier::Cold);
-        assert_eq!(HeatTier::from_heat(26), HeatTier::Warm);
-        assert_eq!(HeatTier::from_heat(50), HeatTier::Warm);
-        assert_eq!(HeatTier::from_heat(51), HeatTier::Hot);
-        assert_eq!(HeatTier::from_heat(75), HeatTier::Hot);
-        assert_eq!(HeatTier::from_heat(76), HeatTier::Scorching);
-        assert_eq!(HeatTier::from_heat(100), HeatTier::Scorching);
-        assert_eq!(HeatTier::from_heat(101), HeatTier::Inferno);
+        assert_eq!(HeatTier::from_heat(29), HeatTier::Cold);
+        // Warm: 30-59
+        assert_eq!(HeatTier::from_heat(30), HeatTier::Warm);
+        assert_eq!(HeatTier::from_heat(59), HeatTier::Warm);
+        // Hot: 60-89
+        assert_eq!(HeatTier::from_heat(60), HeatTier::Hot);
+        assert_eq!(HeatTier::from_heat(89), HeatTier::Hot);
+        // Blazing: 90-119
+        assert_eq!(HeatTier::from_heat(90), HeatTier::Blazing);
+        assert_eq!(HeatTier::from_heat(119), HeatTier::Blazing);
+        // Scorching: 120-149
+        assert_eq!(HeatTier::from_heat(120), HeatTier::Scorching);
+        assert_eq!(HeatTier::from_heat(149), HeatTier::Scorching);
+        // Inferno: 150+
+        assert_eq!(HeatTier::from_heat(150), HeatTier::Inferno);
         assert_eq!(HeatTier::from_heat(1000), HeatTier::Inferno);
     }
 
@@ -783,11 +1051,14 @@ mod tests {
         // Hot → Tier2 (+20%)
         assert_eq!(HeatTier::Hot.narc_upgrade_tier(), UpgradeTier::Tier2);
 
-        // Scorching → Tier3 (+30%)
-        assert_eq!(HeatTier::Scorching.narc_upgrade_tier(), UpgradeTier::Tier3);
+        // Blazing → Tier3 (+30%)
+        assert_eq!(HeatTier::Blazing.narc_upgrade_tier(), UpgradeTier::Tier3);
 
-        // Inferno → Tier4 (+40%, capped)
-        assert_eq!(HeatTier::Inferno.narc_upgrade_tier(), UpgradeTier::Tier4);
+        // Scorching → Tier4 (+40%)
+        assert_eq!(HeatTier::Scorching.narc_upgrade_tier(), UpgradeTier::Tier4);
+
+        // Inferno → Tier5 (+50% with foil effect)
+        assert_eq!(HeatTier::Inferno.narc_upgrade_tier(), UpgradeTier::Tier5);
     }
 
     #[test]
@@ -795,6 +1066,7 @@ mod tests {
         assert_eq!(HeatTier::Cold.danger_name(), "Relaxed");
         assert_eq!(HeatTier::Warm.danger_name(), "Alert");
         assert_eq!(HeatTier::Hot.danger_name(), "Dangerous");
+        assert_eq!(HeatTier::Blazing.danger_name(), "Severe");
         assert_eq!(HeatTier::Scorching.danger_name(), "Intense");
         assert_eq!(HeatTier::Inferno.danger_name(), "Deadly");
     }
@@ -815,12 +1087,16 @@ mod tests {
         character.heat = 60;
         assert_eq!(character.heat_tier().narc_upgrade_tier(), UpgradeTier::Tier2);
 
-        // At 80 heat (Scorching), Narc should be Tier3
-        character.heat = 80;
+        // At 90 heat (Blazing), Narc should be Tier3
+        character.heat = 90;
         assert_eq!(character.heat_tier().narc_upgrade_tier(), UpgradeTier::Tier3);
 
-        // At 150 heat (Inferno), Narc should be Tier4
-        character.heat = 150;
+        // At 120 heat (Scorching), Narc should be Tier4
+        character.heat = 120;
         assert_eq!(character.heat_tier().narc_upgrade_tier(), UpgradeTier::Tier4);
+
+        // At 150 heat (Inferno), Narc should be Tier5 with foil
+        character.heat = 150;
+        assert_eq!(character.heat_tier().narc_upgrade_tier(), UpgradeTier::Tier5);
     }
 }

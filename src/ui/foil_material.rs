@@ -79,11 +79,9 @@ pub fn spawn_foil_overlays(
         // Spawn foil overlay as child - use queue with world access for safe entity check
         commands.queue(move |world: &mut World| {
             // Check if entity still exists
-            let Ok(entity_ref) = world.get_entity(entity) else {
+            if world.get_entity(entity).is_err() {
                 return;
-            };
-            // Entity exists, we can proceed
-            drop(entity_ref);
+            }
 
             // Spawn the child
             let child = world.spawn((

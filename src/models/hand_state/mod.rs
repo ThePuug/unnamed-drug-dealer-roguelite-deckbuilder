@@ -56,6 +56,7 @@ pub struct HandState {
     pub hand_story: Option<String>, // SOW-012: Generated narrative for this hand
     pub last_profit: u32, // RFC-016: Profit from most recent hand resolution
     pub card_play_counts: HashMap<String, u32>, // RFC-017: Play counts for upgrade tiers
+    pub card_upgrades: HashMap<String, crate::save::CardUpgrades>, // RFC-019: Per-card upgrade choices
     pub narc_upgrade_tier: crate::save::UpgradeTier, // RFC-018: Narc difficulty scaling
 }
 
@@ -84,6 +85,7 @@ impl HandState {
             hand_story: None,
             last_profit: 0,
             card_play_counts: HashMap::new(), // RFC-017: Initialize empty
+            card_upgrades: HashMap::new(), // RFC-019: Initialize empty
             narc_upgrade_tier: heat_tier.narc_upgrade_tier(), // RFC-018: Set from heat tier
         }
     }
@@ -125,6 +127,7 @@ impl Default for HandState {
             hand_story: None,
             last_profit: 0,
             card_play_counts: HashMap::new(), // RFC-017: Initialize empty
+            card_upgrades: HashMap::new(), // RFC-019: Initialize empty
             narc_upgrade_tier: crate::save::UpgradeTier::Base, // RFC-018: Default to base (tests)
         }
     }
@@ -150,5 +153,19 @@ impl HandState {
     /// RFC-017: Get play count for a card
     pub fn get_play_count(&self, card_name: &str) -> u32 {
         self.card_play_counts.get(card_name).copied().unwrap_or(0)
+    }
+
+    /// RFC-019: Get the stat multiplier for a specific stat on a card
+    /// Each upgrade to this stat adds +10% (additive stacking)
+    pub fn get_stat_multiplier(&self, card_name: &str, stat: crate::save::UpgradeableStat) -> f32 {
+        self.card_upgrades
+            .get(card_name)
+            .map(|u| u.stat_multiplier(stat))
+            .unwrap_or(1.0)
+    }
+
+    /// RFC-019: Get upgrade history for a card
+    pub fn get_card_upgrades(&self, card_name: &str) -> Option<&crate::save::CardUpgrades> {
+        self.card_upgrades.get(card_name)
     }
 }

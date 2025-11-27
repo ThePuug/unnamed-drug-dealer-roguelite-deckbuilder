@@ -10,6 +10,7 @@ pub enum GameState {
     AssetLoading,  // SOW-013-B: Loading game assets from RON files
     DeckBuilding,  // Pre-run deck selection
     InRun,         // Active gameplay
+    UpgradeChoice, // RFC-019: Player choosing upgrade stat
 }
 
 /// SOW-008 Phase 1: AI pacing timers

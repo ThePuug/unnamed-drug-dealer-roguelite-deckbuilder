@@ -25,6 +25,7 @@ SOWs are work orders for developers. Each SOW defines what needs to be built, wh
 | 016 | Account Cash System | 💰 Economy | ✅ Merged | 2025-11-25 | 8-10 hours | ~4 hours |
 | 017 | Player Card Upgrades | 🃏 Cards | ✅ Merged | 2025-11-25 | 10-14 hours | ~6 hours |
 | 018 | Narc Difficulty Scaling | 🎲 Roguelite | ✅ Merged | 2025-11-26 | 4-8 hours | ~4 hours |
+| 019 | Upgrade Stat Choice | 🃏 Cards | ✅ Merged | 2025-11-27 | 6-8 hours | ~4 hours |
 | AAA | Code Organization - main.rs Modularization | 🛠️ Dev Tools | 🔄 In Progress | 2025-11-15 | 16-24 hours | ~3 hours (Phases 1-4) |
 
 **Legend:**

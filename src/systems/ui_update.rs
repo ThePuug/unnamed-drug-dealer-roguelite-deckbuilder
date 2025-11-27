@@ -184,9 +184,12 @@ pub fn recreate_hand_display_system(
 }
 
 pub fn update_deck_builder_ui_system(
-    deck_builder: Res<DeckBuilder>,
+    deck_builder: Option<Res<DeckBuilder>>,
     mut stats_query: Query<(&mut Text, &mut TextColor), With<DeckStatsDisplay>>,
 ) {
+    let Some(deck_builder) = deck_builder else {
+        return;
+    };
     if !deck_builder.is_changed() {
         return;
     }
@@ -211,14 +214,21 @@ pub fn update_deck_builder_ui_system(
 
 pub fn populate_deck_builder_cards_system(
     mut commands: Commands,
-    deck_builder: Res<DeckBuilder>,
+    deck_builder: Option<Res<DeckBuilder>>,
     pool_container_query: Query<Entity, With<CardPoolContainer>>,
     card_button_query: Query<Entity, With<DeckBuilderCardButton>>,
     game_assets: Res<crate::assets::GameAssets>,
     emoji_font: Res<crate::EmojiFont>,
     save_data: Option<Res<crate::save::SaveData>>, // RFC-017: For card upgrade tiers
 ) {
-    if !deck_builder.is_changed() {
+    let Some(deck_builder) = deck_builder else {
+        return;
+    };
+
+    // Only repopulate if DeckBuilder changed OR if there are no card buttons yet
+    // (handles returning from UpgradeChoice where DeckBuilder exists but UI was just created)
+    let has_card_buttons = !card_button_query.is_empty();
+    if !deck_builder.is_changed() && has_card_buttons {
         return;
     }
 

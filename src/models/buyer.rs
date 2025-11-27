@@ -31,7 +31,6 @@ pub struct BuyerPersona {
     pub demand: BuyerDemand,                 // SOW-010: Deprecated - scenarios define demands now
     pub base_multiplier: f32,                // ×1.0 to ×3.0 range (when demand met)
     pub reduced_multiplier: f32,             // When demand not met (typically ×1.0)
-    pub heat_threshold: Option<u32>,         // SOW-010: Deprecated - scenarios have own thresholds
     pub evidence_threshold: Option<u32>,     // Buyer bails if Evidence exceeds (None = never bails)
     #[serde(default)]
     pub reaction_deck_ids: Vec<String>,      // Card IDs to build reaction deck from
