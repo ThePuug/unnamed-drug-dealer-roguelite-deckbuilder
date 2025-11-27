@@ -9,17 +9,11 @@ pub fn create_player_deck(assets: &GameAssets) -> Vec<Card> {
     let mut deck = Vec::new();
 
     // 9 Products
-    let weed = assets.products.get("Weed").expect("Weed not found").clone();
-    eprintln!("DEBUG create_player_deck: Weed frags = {:?}", weed.narrative_fragments.as_ref().map(|f| f.product_clauses.len()));
-    deck.push(weed);
-
+    deck.push(assets.products.get("Weed").expect("Weed not found").clone());
     deck.push(assets.products.get("Shrooms").expect("Shrooms not found").clone());
     deck.push(assets.products.get("Codeine").expect("Codeine not found").clone());
     deck.push(assets.products.get("Acid").expect("Acid not found").clone());
-
-    let ecstasy = assets.products.get("Ecstasy").expect("Ecstasy not found").clone();
-    eprintln!("DEBUG create_player_deck: Ecstasy frags = {:?}", ecstasy.narrative_fragments.as_ref().map(|f| f.product_clauses.len()));
-    deck.push(ecstasy);
+    deck.push(assets.products.get("Ecstasy").expect("Ecstasy not found").clone());
     deck.push(assets.products.get("Ice").expect("Ice not found").clone());
     deck.push(assets.products.get("Coke").expect("Coke not found").clone());
     deck.push(assets.products.get("Heroin").expect("Heroin not found").clone());

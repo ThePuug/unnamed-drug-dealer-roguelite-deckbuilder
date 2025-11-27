@@ -135,23 +135,20 @@ pub fn save_after_resolution_system(
             }
         }
 
-        // Update character state from HandState
-        if let Some(ref mut character) = save_data.character {
-            // Transfer heat from hand to character
-            character.heat = hand_state.current_heat;
-
+        // Log outcome (heat transfer happens in mark_deck_completed_system when deck ends)
+        if let Some(ref character) = save_data.character {
             match outcome {
                 HandOutcome::Busted => {
                     // Permadeath - delete character (account cash survives!)
                     info!("Character busted! Permadeath triggered. Account cash preserved: ${}",
                           save_data.account.cash_on_hand);
-                    // Note: character deletion happens after this block
                 }
                 HandOutcome::Safe => {
-                    info!("Hand resolved Safe, Heat: {}", character.heat);
+                    info!("Hand resolved Safe, Deck heat: {}, Character heat: {}",
+                          hand_state.current_heat, character.heat);
                 }
                 HandOutcome::Folded => {
-                    info!("Hand resolved as Folded, Heat: {}", character.heat);
+                    info!("Hand resolved as Folded, Deck heat: {}", hand_state.current_heat);
                 }
                 HandOutcome::InvalidDeal | HandOutcome::BuyerBailed => {
                     info!("Deal incomplete: {:?}", outcome);
@@ -171,31 +168,15 @@ pub fn save_after_resolution_system(
     }
 }
 
-/// System to mark deck as completed and update timestamp when returning home
+/// System that runs on OnExit(GameState::InRun)
+/// Note: Heat transfer now happens in go_home_button_system before HandState is despawned
 pub fn mark_deck_completed_system(
-    mut save_data: ResMut<SaveData>,
-    save_manager: Res<SaveManager>,
-    hand_state_query: Query<&HandState>,
+    _save_data: ResMut<SaveData>,
+    _save_manager: Res<SaveManager>,
+    _hand_state_query: Query<&HandState>,
 ) {
-    // This runs when transitioning back to DeckBuilding after a run
-    // Only count if we had a character and outcome was Safe (completed successfully)
-
-    for hand_state in hand_state_query.iter() {
-        if hand_state.current_state != HandPhase::Bust {
-            continue;
-        }
-
-        if matches!(hand_state.outcome, Some(HandOutcome::Safe)) {
-            if let Some(ref mut character) = save_data.character {
-                character.mark_deck_completed();
-                info!("Deck completed! Total decks: {}", character.decks_played);
-
-                if let Err(e) = save_manager.save(&save_data) {
-                    warn!("Failed to save deck completion: {:?}", e);
-                }
-            }
-        }
-    }
+    // Heat transfer and deck completion now handled in go_home_button_system
+    // This system kept for potential future cleanup needs on state exit
 }
 
 /// System to update character heat display UI

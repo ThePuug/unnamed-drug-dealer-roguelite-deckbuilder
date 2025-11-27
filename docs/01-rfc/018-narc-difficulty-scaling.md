@@ -2,7 +2,7 @@
 
 ## Status
 
-**Draft** - 2025-11-25
+**Approved** - 2025-11-26
 
 ## Feature Request
 
@@ -251,11 +251,11 @@ Success criteria from spec:
 
 ## Approval
 
-**Status:** Draft
+**Status:** Approved
 
 **Approvers:**
-- ARCHITECT: [ ] Pending review
-- PLAYER: [ ] Pending review
+- ARCHITECT: [x] Approved - Uses existing UpgradeTier enum for symmetry
+- PLAYER: [x] Approved - Heat becomes meaningful gameplay consequence
 
 **Scope Constraint:** ~4-8 hours (fits in one SOW)
 

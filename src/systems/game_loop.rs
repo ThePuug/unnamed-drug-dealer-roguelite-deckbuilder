@@ -5,18 +5,15 @@ use bevy::prelude::*;
 use crate::{Owner, HandState, HandPhase, Card};
 use crate::game_state::AiActionTimer;
 use crate::ui::setup::create_ui;
-use crate::models::fonts::{EmojiFont, UiFont};
+use crate::models::fonts::EmojiFont;
 
 pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands.spawn(Camera2d);
 
     // Load emoji font (for emoji icons on cards)
+    // DejaVuSans is used as the default font (set in main.rs) and supports ★ U+2605
     let emoji_font = asset_server.load("fonts/NotoEmoji-VariableFont_wght.ttf");
     commands.insert_resource(EmojiFont(emoji_font));
-
-    // Load NotoSans font (for UI text including filled star ★ U+2605)
-    let ui_font = asset_server.load("fonts/NotoSans-VariableFont_wdth,wght.ttf");
-    commands.insert_resource(UiFont(ui_font));
 
     // SOW-006: Don't spawn HandState at startup - only when START RUN is pressed
     // HandState will be created when transitioning from DeckBuilding to InRun

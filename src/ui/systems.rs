@@ -101,6 +101,7 @@ pub fn update_active_slots_system(
         commands.entity(slot_entity).with_children(|parent| {
             if let Some(card) = active_card {
                 // RFC-017: Get upgrade info for player cards
+                // RFC-018: Get upgrade info for Narc cards (Evidence/Conviction)
                 let upgrade_info = match card.card_type {
                     CardType::Product { .. } | CardType::Location { .. } | CardType::Insurance { .. } => {
                         let tier = hand_state.get_card_tier(&card.name);
@@ -114,7 +115,23 @@ pub fn update_active_slots_system(
                             is_foil: tier.is_foil(),
                         })
                     }
-                    _ => None, // Conviction doesn't upgrade
+                    CardType::Evidence { .. } | CardType::Conviction { .. } => {
+                        // RFC-018: Narc cards use ⚖ (scales) with same color tiers
+                        let tier = hand_state.narc_upgrade_tier;
+                        if tier != crate::save::UpgradeTier::Base {
+                            Some(helpers::UpgradeInfo {
+                                tier_name: "⚖".to_string(), // Scales of Justice
+                                plays: 0,
+                                plays_to_next: None, // No progress for Narc cards
+                                multiplier: tier.multiplier(),
+                                star_color: tier.star_color(),
+                                is_foil: tier.is_foil(),
+                            })
+                        } else {
+                            None // Base tier shows no badge
+                        }
+                    }
+                    _ => None, // Cover/DealModifier don't show tier badges
                 };
 
                 // Spawn actual card with Medium size, no margin - use template with upgrade
@@ -161,9 +178,8 @@ pub fn update_heat_bar_system(
         return;
     };
 
-    // Calculate current heat and threshold
-    let totals = hand_state.calculate_totals(true);
-    let current_heat = totals.heat.max(0) as u32;
+    // Heat is accumulated immediately when cards are played, use current_heat directly
+    let current_heat = hand_state.current_heat;
 
     // Get threshold from buyer scenario or default to 100
     let heat_threshold = if let Some(persona) = &hand_state.buyer_persona {
@@ -267,13 +283,15 @@ pub fn update_resolution_overlay_system(
             .expect("Expected exactly one ResolutionResults");
 
         let totals = hand_state.calculate_totals(true);
+        // Heat is already accumulated when cards are played, use current_heat directly
+        let cumulative_heat = hand_state.current_heat;
         let mut results = String::new();
 
         match hand_state.outcome {
             Some(HandOutcome::Safe) => {
                 results.push_str(&format!("Evidence: {} ≤ Cover: {} ✓\n\n", totals.evidence, totals.cover));
                 results.push_str(&format!("Profit: ${}\n", totals.profit));
-                results.push_str(&format!("Heat: {}\n", totals.heat));
+                results.push_str(&format!("Deck Heat: {}\n", cumulative_heat));
 
                 if hand_state.is_demand_satisfied() {
                     let multiplier = hand_state.get_profit_multiplier();
@@ -287,7 +305,7 @@ pub fn update_resolution_overlay_system(
                     results.push_str(&format!("Deck Exhausted: {} cards\n\nRun Ends", hand_state.cards(Owner::Player).deck.len()));
                 } else {
                     results.push_str(&format!("Evidence: {} > Cover: {} ✗\n\n", totals.evidence, totals.cover));
-                    results.push_str(&format!("You got caught!\nHeat: {}", totals.heat));
+                    results.push_str(&format!("You got caught!\nDeck Heat: {}", cumulative_heat));
                 }
             }
             Some(HandOutcome::Folded) => {

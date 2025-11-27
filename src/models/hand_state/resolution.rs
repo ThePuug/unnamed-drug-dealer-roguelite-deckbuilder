@@ -16,7 +16,7 @@ impl HandState {
     ///
     /// Post-resolution:
     /// - Safe outcome: Bank profit to cash (for future insurance affordability)
-    /// - All outcomes: Accumulate totals.heat to current_heat (for conviction thresholds)
+    /// Note: Heat is accumulated immediately when cards are played, not at resolution
     pub fn resolve_hand(&mut self) -> HandOutcome {
         // Check 1: Validity (must have Product AND Location)
         if !self.is_valid_deal() {
@@ -38,20 +38,16 @@ impl HandState {
 
         let totals = self.calculate_totals(true); // Always include all cards at resolution
 
-        // Calculate projected heat (current heat + this hand's heat)
-        // This is what heat will be AFTER this hand, used for conviction checks
-        let projected_heat = self.current_heat.saturating_add(totals.heat as u32);
-
         // Step 3: Evidence ≤ Cover → Safe (tie goes to player)
         let outcome = if totals.evidence <= totals.cover {
             HandOutcome::Safe
         } else {
             // Evidence > Cover → Potential bust, check insurance/conviction
 
-            // Step 2: Check Conviction override (using PROJECTED heat after this hand)
+            // Step 2: Check Conviction override (using current cumulative deck heat)
             if let Some(conviction) = self.active_conviction(true) {
                 if let CardType::Conviction { heat_threshold } = conviction.card_type {
-                    if projected_heat >= heat_threshold {
+                    if self.current_heat >= heat_threshold {
                         // Conviction overrides insurance - run ends
                         HandOutcome::Busted
                     } else {
@@ -88,12 +84,7 @@ impl HandState {
             }
         }
 
-        // Always accumulate heat (can't go below 0)
-        if totals.heat >= 0 {
-            self.current_heat = self.current_heat.saturating_add(totals.heat as u32);
-        } else {
-            self.current_heat = self.current_heat.saturating_sub((-totals.heat) as u32);
-        }
+        // Heat is already accumulated when cards are played - no need to add here
 
         self.outcome = Some(outcome);
         self.current_state = HandPhase::Bust; // Transition to terminal state
@@ -216,10 +207,10 @@ mod tests {
         let expected_cash = initial_cash - insurance_cost + product_price;
         assert_eq!(hand_state.cash, expected_cash);
 
-        let product_heat = if let CardType::Product { heat, .. } = product.card_type { heat } else { 0 };
-        let insurance_heat = if let CardType::Insurance { heat_penalty, .. } = insurance.card_type { heat_penalty as i32 } else { 0 };
-        let expected_heat = (product_heat + insurance_heat) as u32;
-        assert_eq!(hand_state.current_heat, expected_heat);
+        // Note: Heat is accumulated when cards are played via play_card(), not when pushed to cards_played
+        // In this test we push directly, so only insurance heat_penalty is added during activation
+        let insurance_heat = if let CardType::Insurance { heat_penalty, .. } = insurance.card_type { heat_penalty } else { 0 };
+        assert_eq!(hand_state.current_heat, insurance_heat as u32);
     }
 
     #[test]
@@ -254,44 +245,65 @@ mod tests {
     }
 
     #[test]
-    fn test_heat_accumulation_across_hands() {
+    fn test_heat_not_accumulated_at_resolution() {
+        // Heat is now accumulated when cards are played via play_card(), not at resolution
+        // This test verifies that resolve_hand does NOT add heat (it's already been added)
         let mut hand_state = HandState::default();
         hand_state.current_heat = 10;
 
+        // Push cards directly to cards_played (simulating already-played cards)
         hand_state.cards_played.push(create_location("Location", 20, 30, 15));
         hand_state.cards_played.push(create_product("Weed", 50, 5));
 
         hand_state.resolve_hand();
 
-        // Heat should accumulate: 10 + 15 + 5 = 30
-        assert_eq!(hand_state.current_heat, 30);
+        // Heat should NOT change at resolution - it stays at initial value
+        assert_eq!(hand_state.current_heat, 10);
     }
 
     #[test]
-    fn test_conviction_uses_projected_heat() {
+    fn test_conviction_uses_current_heat() {
+        // Conviction now uses current_heat directly (heat is accumulated when cards are played)
         let mut hand_state = HandState::default();
         let initial_cash = 2000;
-        let initial_heat = 40;
+        // Set current_heat to 75 which exceeds the conviction threshold of 60
+        let current_heat = 75;
         hand_state.cash = initial_cash;
-        hand_state.current_heat = initial_heat;
+        hand_state.current_heat = current_heat;
 
-        let product = create_product("Weed", 30, 5);
-        let location = create_location("Location", 30, 20, 30);
-
-        hand_state.cards_played.push(product.clone());
-        hand_state.cards_played.push(location.clone());
+        hand_state.cards_played.push(create_product("Weed", 30, 5));
+        hand_state.cards_played.push(create_location("Location", 30, 20, 30));
         hand_state.cards_played.push(create_insurance("Plea Bargain", 5, 1000, 20));
-        hand_state.cards_played.push(create_conviction("DA Approval", 60));
+        hand_state.cards_played.push(create_conviction("DA Approval", 60)); // Threshold 60
 
-        // Test that conviction uses projected heat to determine if it activates
+        // current_heat (75) >= threshold (60) → Conviction activates → Busted
         let outcome = hand_state.resolve_hand();
-        assert_eq!(outcome, HandOutcome::Busted); // Conviction blocks insurance
+        assert_eq!(outcome, HandOutcome::Busted);
         assert_eq!(hand_state.cash, initial_cash); // Cash unchanged (conviction blocked insurance)
+        // Heat unchanged at resolution
+        assert_eq!(hand_state.current_heat, current_heat);
+    }
 
-        // Calculate expected heat from card data
-        let product_heat = if let CardType::Product { heat, .. } = product.card_type { heat } else { 0 };
-        let location_heat = if let CardType::Location { heat, .. } = location.card_type { heat } else { 0 };
-        let expected_heat = ((initial_heat as i32) + product_heat + location_heat) as u32;
-        assert_eq!(hand_state.current_heat, expected_heat);
+    #[test]
+    fn test_conviction_below_threshold_allows_insurance() {
+        // If current_heat is below threshold, conviction doesn't activate
+        let mut hand_state = HandState::default();
+        let initial_cash = 2000;
+        let current_heat = 50; // Below conviction threshold of 60
+        hand_state.cash = initial_cash;
+        hand_state.current_heat = current_heat;
+
+        hand_state.cards_played.push(create_product("Weed", 30, 5));
+        hand_state.cards_played.push(create_location("Location", 30, 20, 30));
+        hand_state.cards_played.push(create_insurance("Plea Bargain", 5, 1000, 20));
+        hand_state.cards_played.push(create_conviction("DA Approval", 60)); // Threshold 60
+
+        // current_heat (50) < threshold (60) → Conviction doesn't activate → Insurance saves
+        let outcome = hand_state.resolve_hand();
+        assert_eq!(outcome, HandOutcome::Safe);
+        // Cash reduced by insurance cost, profit added
+        assert_eq!(hand_state.cash, initial_cash - 1000 + 30);
+        // Insurance heat_penalty added
+        assert_eq!(hand_state.current_heat, current_heat + 20);
     }
 }

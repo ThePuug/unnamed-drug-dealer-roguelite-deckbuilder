@@ -56,11 +56,13 @@ pub struct HandState {
     pub hand_story: Option<String>, // SOW-012: Generated narrative for this hand
     pub last_profit: u32, // RFC-016: Profit from most recent hand resolution
     pub card_play_counts: HashMap<String, u32>, // RFC-017: Play counts for upgrade tiers
+    pub narc_upgrade_tier: crate::save::UpgradeTier, // RFC-018: Narc difficulty scaling
 }
 
 impl HandState {
     /// SOW-013-B: Create HandState from loaded assets
-    pub fn from_assets(assets: &crate::assets::GameAssets) -> Self {
+    /// RFC-018: Now takes heat_tier to set Narc difficulty scaling
+    pub fn from_assets(assets: &crate::assets::GameAssets, heat_tier: crate::save::HeatTier) -> Self {
         let mut owner_cards = HashMap::new();
         owner_cards.insert(Owner::Narc, Cards::new(create_narc_deck(assets)));
         owner_cards.insert(Owner::Player, Cards::new(create_player_deck(assets)));
@@ -82,6 +84,7 @@ impl HandState {
             hand_story: None,
             last_profit: 0,
             card_play_counts: HashMap::new(), // RFC-017: Initialize empty
+            narc_upgrade_tier: heat_tier.narc_upgrade_tier(), // RFC-018: Set from heat tier
         }
     }
 }
@@ -122,6 +125,7 @@ impl Default for HandState {
             hand_story: None,
             last_profit: 0,
             card_play_counts: HashMap::new(), // RFC-017: Initialize empty
+            narc_upgrade_tier: crate::save::UpgradeTier::Base, // RFC-018: Default to base (tests)
         }
     }
 }

@@ -140,6 +140,29 @@ impl HeatTier {
             HeatTier::Inferno => (0.8, 0.2, 0.8),   // Purple
         }
     }
+
+    /// RFC-018: Get Narc upgrade tier for this Heat tier
+    /// Higher Heat = stronger Narc cards
+    pub fn narc_upgrade_tier(&self) -> UpgradeTier {
+        match self {
+            HeatTier::Cold => UpgradeTier::Base,      // No bonus
+            HeatTier::Warm => UpgradeTier::Tier1,     // +10%
+            HeatTier::Hot => UpgradeTier::Tier2,      // +20%
+            HeatTier::Scorching => UpgradeTier::Tier3, // +30%
+            HeatTier::Inferno => UpgradeTier::Tier4,  // +40% (capped, not Tier5)
+        }
+    }
+
+    /// RFC-018: Get danger level description for UI
+    pub fn danger_name(&self) -> &'static str {
+        match self {
+            HeatTier::Cold => "Relaxed",
+            HeatTier::Warm => "Alert",
+            HeatTier::Hot => "Dangerous",
+            HeatTier::Scorching => "Intense",
+            HeatTier::Inferno => "Deadly",
+        }
+    }
 }
 
 /// RFC-017: Card upgrade tier based on play count
@@ -743,5 +766,61 @@ mod tests {
         // Test that default HashMap initializes correctly (backward compatibility)
         let state = CharacterState::new();
         assert!(state.card_play_counts.is_empty());
+    }
+
+    // ========================================================================
+    // RFC-018: Heat Tier → Narc Upgrade Tier Tests
+    // ========================================================================
+
+    #[test]
+    fn test_heat_tier_narc_upgrade_mapping() {
+        // Cold → Base (no bonus)
+        assert_eq!(HeatTier::Cold.narc_upgrade_tier(), UpgradeTier::Base);
+
+        // Warm → Tier1 (+10%)
+        assert_eq!(HeatTier::Warm.narc_upgrade_tier(), UpgradeTier::Tier1);
+
+        // Hot → Tier2 (+20%)
+        assert_eq!(HeatTier::Hot.narc_upgrade_tier(), UpgradeTier::Tier2);
+
+        // Scorching → Tier3 (+30%)
+        assert_eq!(HeatTier::Scorching.narc_upgrade_tier(), UpgradeTier::Tier3);
+
+        // Inferno → Tier4 (+40%, capped)
+        assert_eq!(HeatTier::Inferno.narc_upgrade_tier(), UpgradeTier::Tier4);
+    }
+
+    #[test]
+    fn test_heat_tier_danger_names() {
+        assert_eq!(HeatTier::Cold.danger_name(), "Relaxed");
+        assert_eq!(HeatTier::Warm.danger_name(), "Alert");
+        assert_eq!(HeatTier::Hot.danger_name(), "Dangerous");
+        assert_eq!(HeatTier::Scorching.danger_name(), "Intense");
+        assert_eq!(HeatTier::Inferno.danger_name(), "Deadly");
+    }
+
+    #[test]
+    fn test_heat_to_narc_tier_via_character() {
+        let mut character = CharacterState::new();
+
+        // At 0 heat (Cold), Narc should be Base
+        character.heat = 0;
+        assert_eq!(character.heat_tier().narc_upgrade_tier(), UpgradeTier::Base);
+
+        // At 30 heat (Warm), Narc should be Tier1
+        character.heat = 30;
+        assert_eq!(character.heat_tier().narc_upgrade_tier(), UpgradeTier::Tier1);
+
+        // At 60 heat (Hot), Narc should be Tier2
+        character.heat = 60;
+        assert_eq!(character.heat_tier().narc_upgrade_tier(), UpgradeTier::Tier2);
+
+        // At 80 heat (Scorching), Narc should be Tier3
+        character.heat = 80;
+        assert_eq!(character.heat_tier().narc_upgrade_tier(), UpgradeTier::Tier3);
+
+        // At 150 heat (Inferno), Narc should be Tier4
+        character.heat = 150;
+        assert_eq!(character.heat_tier().narc_upgrade_tier(), UpgradeTier::Tier4);
     }
 }

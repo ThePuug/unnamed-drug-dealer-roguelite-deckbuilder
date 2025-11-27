@@ -5,7 +5,12 @@ use rand::prelude::*;
 
 impl HandState {
     /// Create HandState with a custom player deck
-    pub fn with_custom_deck(mut player_deck: Vec<Card>, assets: &crate::assets::GameAssets) -> Self {
+    /// RFC-018: Now takes heat_tier to set Narc difficulty scaling
+    pub fn with_custom_deck(
+        mut player_deck: Vec<Card>,
+        assets: &crate::assets::GameAssets,
+        heat_tier: crate::save::HeatTier,
+    ) -> Self {
         player_deck.shuffle(&mut rand::rng());
 
         let mut owner_cards = std::collections::HashMap::new();
@@ -29,15 +34,19 @@ impl HandState {
             hand_story: None, // SOW-012: No story initially
             last_profit: 0,
             card_play_counts: std::collections::HashMap::new(), // RFC-017: Initialize empty, set from SaveData
+            narc_upgrade_tier: heat_tier.narc_upgrade_tier(), // RFC-018: Set from heat tier
         }
     }
 
-    /// Shuffle all cards back into deck (called between hands in a run)
-    /// Collects both unplayed and played cards back to deck for reuse
+    /// Shuffle cards back into deck (called between hands in a run)
+    /// Player: only unplayed cards return (played stay discarded - deck depletes)
+    /// Narc: all cards return (adversary never runs out)
     pub fn shuffle_cards_back(&mut self) {
-        // Collect ALL cards (including played) back to deck for Player and Narc
-        self.cards_mut(Owner::Player).collect_all();
+        // Player: only UNPLAYED cards back to deck - played cards stay discarded
+        self.cards_mut(Owner::Player).collect_unplayed();
         self.cards_mut(Owner::Player).shuffle_deck();
+
+        // Narc: ALL cards back to deck - adversary system never depletes
         self.cards_mut(Owner::Narc).collect_all();
         self.cards_mut(Owner::Narc).shuffle_deck();
 
@@ -51,6 +60,10 @@ impl HandState {
     pub fn start_next_hand(&mut self) -> bool {
         let preserved_cash = self.cash;
         let preserved_heat = self.current_heat;
+        bevy::log::info!(
+            "start_next_hand: preserving heat={}, cash={}",
+            preserved_heat, preserved_cash
+        );
 
         self.shuffle_cards_back();
 
@@ -71,14 +84,21 @@ impl HandState {
 
         let preserved_buyer_persona = self.buyer_persona.clone();
         let preserved_play_counts = self.card_play_counts.clone(); // RFC-017: Preserve play counts
+        let preserved_narc_tier = self.narc_upgrade_tier; // RFC-018: Preserve Narc tier for entire deck
 
-        // Reset state but preserve cash/heat/cards/buyer/play_counts
+        // Reset state but preserve cash/heat/cards/buyer/play_counts/narc_tier
         *self = Self::default();
         self.cash = preserved_cash;
         self.current_heat = preserved_heat;
         self.owner_cards = preserved_owner_cards;
         self.buyer_persona = preserved_buyer_persona;
         self.card_play_counts = preserved_play_counts; // RFC-017: Restore play counts
+        self.narc_upgrade_tier = preserved_narc_tier; // RFC-018: Restore Narc tier
+
+        bevy::log::info!(
+            "start_next_hand: after restore heat={}, cash={}",
+            self.current_heat, self.cash
+        );
 
         true
     }
@@ -148,13 +168,25 @@ impl HandState {
             return Err(format!("Card index {card_index} out of bounds"));
         }
 
-        let cards = self.cards_mut(owner);
-        if let Some(card) = cards.hand[card_index].take() {
-            cards.played.push(card.clone());  // Also track in owner's Cards.played
-            self.cards_played.push(card);     // Track in HandState for this hand
+        // Phase 1: Take card from hand and push to owner's played pile (ends mutable borrow)
+        let card = {
+            let cards = self.cards_mut(owner);
+            if let Some(card) = cards.hand[card_index].take() {
+                cards.played.push(card.clone());
+                card
+            } else {
+                return Err(format!("No card in slot {card_index}"));
+            }
+        };
+
+        // Phase 2: Now we can access self again - add heat and track in cards_played
+        let card_heat = self.get_card_heat(&card, owner);
+        if card_heat >= 0 {
+            self.current_heat = self.current_heat.saturating_add(card_heat as u32);
         } else {
-            return Err(format!("No card in slot {card_index}"));
+            self.current_heat = self.current_heat.saturating_sub((-card_heat) as u32);
         }
+        self.cards_played.push(card);
 
         // Advance to next player's turn (increments index)
         self.current_player_index += 1;
@@ -189,7 +221,30 @@ impl HandState {
         self.active_product(true).is_some() && self.active_location(true).is_some()
     }
 
+    /// Get heat value from a card (applies Narc multiplier for Evidence cards)
+    fn get_card_heat(&self, card: &Card, owner: Owner) -> i32 {
+        use crate::CardType;
+        match &card.card_type {
+            CardType::Product { heat, .. } => *heat,
+            CardType::Location { heat, .. } => *heat,
+            CardType::Cover { heat, .. } => *heat,
+            CardType::DealModifier { heat, .. } => *heat,
+            CardType::Insurance { heat_penalty, .. } => *heat_penalty as i32,
+            CardType::Evidence { heat, .. } => {
+                // Apply Narc upgrade multiplier to Evidence heat
+                if owner == Owner::Narc {
+                    let mult = self.narc_upgrade_tier.multiplier();
+                    (*heat as f32 * mult).round() as i32
+                } else {
+                    *heat
+                }
+            }
+            CardType::Conviction { .. } => 0, // Conviction doesn't add heat directly
+        }
+    }
+
     /// Check if Buyer should bail based on thresholds
+    /// Uses cumulative deck heat (current_heat - already accumulated)
     pub fn should_buyer_bail(&self) -> bool {
         if let Some(persona) = &self.buyer_persona {
             let totals = self.calculate_totals(true);
@@ -199,9 +254,9 @@ impl HandState {
                 persona.heat_threshold // Fallback to persona threshold
             };
 
-            // Check Heat threshold (only bail if heat is positive and exceeds threshold)
+            // Check cumulative deck heat (already accumulated as cards were played)
             if let Some(threshold) = heat_threshold {
-                if totals.heat > 0 && (totals.heat as u32) > threshold {
+                if self.current_heat > threshold {
                     return true;
                 }
             }
@@ -287,6 +342,14 @@ impl HandState {
 
         buyer_cards.played.push(card.clone());
         self.cards_played.push(card.clone());
+
+        // Add card's heat to cumulative deck heat immediately
+        let card_heat = self.get_card_heat(&card, Owner::Buyer);
+        if card_heat >= 0 {
+            self.current_heat = self.current_heat.saturating_add(card_heat as u32);
+        } else {
+            self.current_heat = self.current_heat.saturating_sub((-card_heat) as u32);
+        }
 
         Some(card)
     }

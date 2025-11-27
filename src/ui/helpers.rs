@@ -109,15 +109,22 @@ fn get_card_stats_with_multiplier(card_type: &CardType, multiplier: f32) -> Vec<
                 StatInfo { emoji: "🔥", label: "Heat", value: format!("{:+}", heat) },
             ]
         },
-        CardType::Evidence { evidence, heat } => vec![
-            // Narc cards don't get upgrades
-            StatInfo { emoji: "🔍", label: "Evidence", value: format!("{:+}", evidence) },
-            StatInfo { emoji: "🔥", label: "Heat", value: format!("{:+}", heat) },
-        ],
-        CardType::Conviction { heat_threshold } => vec![
-            // Narc cards don't get upgrades
-            StatInfo { emoji: "⚠", label: "Threshold", value: format!("+{}", heat_threshold) },
-        ],
+        CardType::Evidence { evidence, heat } => {
+            // RFC-018: Narc cards get upgrades based on character heat tier
+            let upgraded_evidence = (*evidence as f32 * multiplier).round() as i32;
+            let upgraded_heat = (*heat as f32 * multiplier).round() as i32;
+            vec![
+                StatInfo { emoji: "🔍", label: "Evidence", value: format!("{:+}", upgraded_evidence) },
+                StatInfo { emoji: "🔥", label: "Heat", value: format!("{:+}", upgraded_heat) },
+            ]
+        },
+        CardType::Conviction { heat_threshold } => {
+            // RFC-018: Narc cards get upgrades based on character heat tier
+            let upgraded_threshold = (*heat_threshold as f32 * multiplier).round() as u32;
+            vec![
+                StatInfo { emoji: "⚠", label: "Threshold", value: format!("+{}", upgraded_threshold) },
+            ]
+        },
         CardType::Cover { cover, heat } => {
             // Cover: +10% cover value
             let upgraded_cover = (*cover as f32 * multiplier).round() as i32;
@@ -136,7 +143,7 @@ fn get_card_stats_with_multiplier(card_type: &CardType, multiplier: f32) -> Vec<
             ]
         },
         CardType::DealModifier { price_multiplier, evidence, cover, heat } => {
-            // DealModifier: +10% to price multiplier bonus
+            // DealModifier: +10% to beneficial stats (price bonus, cover), -10% to negative stats (evidence)
             let mut stats = vec![];
             if *price_multiplier != 1.0 {
                 let base_delta = (price_multiplier - 1.0) * 100.0;
@@ -144,11 +151,17 @@ fn get_card_stats_with_multiplier(card_type: &CardType, multiplier: f32) -> Vec<
                 stats.push(StatInfo { emoji: "💰", label: "Price", value: format!("{:+}%", upgraded_delta) });
             }
             if *evidence != 0 {
-                stats.push(StatInfo { emoji: "🔍", label: "Evidence", value: format!("{:+}", evidence) });
+                // Negative stat - reduce it (good for player)
+                let evidence_reduction = 2.0 - multiplier;
+                let upgraded_evidence = (*evidence as f32 * evidence_reduction).round() as i32;
+                stats.push(StatInfo { emoji: "🔍", label: "Evidence", value: format!("{:+}", upgraded_evidence) });
             }
             if *cover != 0 {
-                stats.push(StatInfo { emoji: "🛡", label: "Cover", value: format!("{:+}", cover) });
+                // Positive stat - increase it
+                let upgraded_cover = (*cover as f32 * multiplier).round() as i32;
+                stats.push(StatInfo { emoji: "🛡", label: "Cover", value: format!("{:+}", upgraded_cover) });
             }
+            // Heat stays as-is (not a primary stat for modifiers)
             stats.push(StatInfo { emoji: "🔥", label: "Heat", value: format!("{:+}", heat) });
             stats
         }

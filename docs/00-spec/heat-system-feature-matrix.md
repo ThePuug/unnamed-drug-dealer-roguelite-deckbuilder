@@ -4,21 +4,21 @@ Implementation tracking for Heat System specification.
 
 **Spec:** [heat-system.md](heat-system.md)
 
-**Last Updated:** 2025-11-25
+**Last Updated:** 2025-11-27
 
 ---
 
 ## Summary
 
-**Overall Completion:** 12/19 features (63%)
+**Overall Completion:** 15/19 features (79%)
 
 | Category | Complete | Partial | Not Started | Deferred |
 |----------|----------|---------|-------------|----------|
 | Heat Accumulation | 4 | 0 | 0 | 0 |
 | Heat Decay | 2 | 2 | 1 | 0 |
 | Heat Tiers | 5 | 0 | 1 | 0 |
-| Narc Card Upgrades | 0 | 0 | 4 | 0 |
-| **Total** | **11** | **2** | **6** | **0** |
+| Narc Card Upgrades | 4 | 0 | 0 | 0 |
+| **Total** | **15** | **2** | **2** | **0** |
 
 ---
 
@@ -27,7 +27,7 @@ Implementation tracking for Heat System specification.
 | Feature | Status | RFC/ADR | Notes |
 |---------|:------:|---------|-------|
 | Heat delta calculation | ✅ | RFC-015 | Sum all Heat modifiers on cards played |
-| Heat application at hand end | ✅ | RFC-015 | Add delta to character Heat via save system |
+| Heat application when cards played | ✅ | RFC-015/018 | Heat added immediately when cards played (not at resolution) |
 | Heat on fold | ✅ | RFC-015 | Heat accumulated from rounds played |
 | Heat persistence | ✅ | RFC-015 | Heat persists in SaveData across sessions |
 
@@ -58,14 +58,14 @@ Implementation tracking for Heat System specification.
 
 ---
 
-## Narc Card Upgrades: 0/4 complete (0%)
+## Narc Card Upgrades: 4/4 complete (100%)
 
 | Feature | Status | RFC/ADR | Notes |
 |---------|:------:|---------|-------|
-| Heat-based Narc card upgrades | ❌ | RFC-018 | Deferred to RFC-018 (Narc Difficulty Scaling) |
-| Upgrade tier display | ❌ | RFC-018 | Deferred to RFC-018 |
-| Heat affects NEXT deck (not current) | ❌ | RFC-018 | Deferred to RFC-018 |
-| Upgrade preview | ❌ | RFC-018 | Deferred to RFC-018 |
+| Heat-based Narc card upgrades | ✅ | RFC-018 | Evidence cards scaled by heat tier |
+| Upgrade tier display | ✅ | RFC-018 | Shows "Narc: Alert/Dangerous/etc" during play |
+| Heat affects NEXT deck (not current) | ✅ | RFC-018 | Tier locked at deck start from character heat |
+| Upgrade preview | ✅ | RFC-018 | Danger indicator visible in totals display |
 
 ---
 
@@ -77,6 +77,11 @@ Implementation tracking for Heat System specification.
 - Decay shown at deck builder entry, not as persistent countdown
 - No tier transition warnings (UI polish deferred)
 
+**RFC-018 Implementation:**
+- Heat simplified to single cumulative model: accumulated when cards played, not at resolution
+- Conviction check uses current deck heat directly (not projected hand-end heat)
+- Evidence cards display ⚖ tier badges (scales of justice symbol for Narc cards)
+
 ---
 
 ## Notes
@@ -84,6 +89,7 @@ Implementation tracking for Heat System specification.
 - Heat decay is TIME-based (real-world hours), not play-based
 - This creates anti-binge mechanic (rewards daily play)
 - Heat persists on character until permadeath
-- Heat affects NEXT deck difficulty (not current) for predictability - deferred to RFC-018
+- Heat affects NEXT deck difficulty (not current) for predictability - implemented in RFC-018
 - All 5 Heat tiers implemented
 - **Trust system removed** - See progression-meta.md for per-run card upgrades as replacement progression mechanic
+- **RFC-018 Complete** - Narc Evidence cards now scale with Heat tier (Cold→Base, Warm→+10%, Hot→+20%, Scorching→+30%, Inferno→+40%)

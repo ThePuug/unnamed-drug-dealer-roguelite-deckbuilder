@@ -96,9 +96,12 @@ impl HandState {
 
             match card.card_type {
                 CardType::Evidence { evidence, heat } => {
-                    // Evidence cards are from Narc, no upgrade bonus (only player cards get upgrades)
-                    totals.evidence += evidence;
-                    totals.heat += heat;
+                    // RFC-018: Apply Narc upgrade tier to Evidence cards based on Heat
+                    let narc_mult = self.narc_upgrade_tier.multiplier();
+                    let upgraded_evidence = (evidence as f32 * narc_mult) as u32;
+                    let upgraded_heat = (heat as f32 * narc_mult) as i32;
+                    totals.evidence += upgraded_evidence;
+                    totals.heat += upgraded_heat;
                 }
                 CardType::Cover { cover, heat } => {
                     // RFC-017: Apply upgrade tier to Cover value
@@ -389,18 +392,98 @@ mod tests {
     }
 
     #[test]
-    fn test_upgrade_no_bonus_for_narc_cards() {
+    fn test_upgrade_no_player_bonus_for_narc_cards() {
         let mut hand_state = HandState::default();
 
         // Evidence is a Narc card type
         hand_state.cards_played.push(create_location("Location", 10, 10, 0));
         hand_state.cards_played.push(create_evidence("Narc Evidence", 20, 0));
 
-        // Even with play counts, Narc cards (Evidence type) get no bonus
+        // Player play counts don't affect Narc cards (they use narc_upgrade_tier instead)
         hand_state.card_play_counts.insert("Narc Evidence".to_string(), 10);
 
-        // Evidence should still be 10 + 20 = 30 (no bonus applied)
+        // With Base narc_upgrade_tier (default), evidence = 10 + 20 = 30
         let totals = hand_state.calculate_totals(true);
         assert_eq!(totals.evidence, 30);
+    }
+
+    // ========================================================================
+    // RFC-018: Narc Difficulty Scaling Tests
+    // ========================================================================
+
+    #[test]
+    fn test_narc_tier_base_no_bonus() {
+        let mut hand_state = HandState::default();
+        hand_state.narc_upgrade_tier = crate::save::UpgradeTier::Base;
+
+        hand_state.cards_played.push(create_location("Location", 10, 10, 0));
+        hand_state.cards_played.push(create_evidence("Surveillance", 20, 5));
+
+        let totals = hand_state.calculate_totals(true);
+        // Evidence: 10 (location) + 20 (narc * 1.0) = 30
+        // Heat: 0 (location) + 5 (narc * 1.0) = 5
+        assert_eq!(totals.evidence, 30);
+        assert_eq!(totals.heat, 5);
+    }
+
+    #[test]
+    fn test_narc_tier1_bonus() {
+        let mut hand_state = HandState::default();
+        hand_state.narc_upgrade_tier = crate::save::UpgradeTier::Tier1; // +10%
+
+        hand_state.cards_played.push(create_location("Location", 10, 10, 0));
+        hand_state.cards_played.push(create_evidence("Surveillance", 20, 10));
+
+        let totals = hand_state.calculate_totals(true);
+        // Evidence: 10 (location) + 22 (20 * 1.1) = 32
+        // Heat: 0 (location) + 11 (10 * 1.1) = 11
+        assert_eq!(totals.evidence, 32);
+        assert_eq!(totals.heat, 11);
+    }
+
+    #[test]
+    fn test_narc_tier2_bonus() {
+        let mut hand_state = HandState::default();
+        hand_state.narc_upgrade_tier = crate::save::UpgradeTier::Tier2; // +20%
+
+        hand_state.cards_played.push(create_location("Location", 10, 10, 0));
+        hand_state.cards_played.push(create_evidence("Surveillance", 20, 10));
+
+        let totals = hand_state.calculate_totals(true);
+        // Evidence: 10 (location) + 24 (20 * 1.2) = 34
+        // Heat: 0 (location) + 12 (10 * 1.2) = 12
+        assert_eq!(totals.evidence, 34);
+        assert_eq!(totals.heat, 12);
+    }
+
+    #[test]
+    fn test_narc_tier4_max_bonus() {
+        let mut hand_state = HandState::default();
+        hand_state.narc_upgrade_tier = crate::save::UpgradeTier::Tier4; // +40%
+
+        hand_state.cards_played.push(create_location("Location", 10, 10, 0));
+        hand_state.cards_played.push(create_evidence("Surveillance", 20, 10));
+
+        let totals = hand_state.calculate_totals(true);
+        // Evidence: 10 (location) + 28 (20 * 1.4) = 38
+        // Heat: 0 (location) + 14 (10 * 1.4) = 14
+        assert_eq!(totals.evidence, 38);
+        assert_eq!(totals.heat, 14);
+    }
+
+    #[test]
+    fn test_narc_tier_multiple_evidence_cards() {
+        let mut hand_state = HandState::default();
+        hand_state.narc_upgrade_tier = crate::save::UpgradeTier::Tier2; // +20%
+
+        hand_state.cards_played.push(create_location("Location", 10, 10, 0));
+        hand_state.cards_played.push(create_evidence("Patrol", 10, 2));
+        hand_state.cards_played.push(create_evidence("Surveillance", 20, 5));
+
+        let totals = hand_state.calculate_totals(true);
+        // Evidence: 10 (location) + 12 (10 * 1.2) + 24 (20 * 1.2) = 46
+        // Heat: 0 (location) + 2 (2 * 1.2 = 2.4 -> 2) + 6 (5 * 1.2) = 8
+        assert_eq!(totals.evidence, 46);
+        assert_eq!(totals.heat, 8);
     }
 }

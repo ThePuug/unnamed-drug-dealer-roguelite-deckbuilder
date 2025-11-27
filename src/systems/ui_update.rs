@@ -24,9 +24,24 @@ pub fn ui_update_system(
     if let Ok(mut text) = totals_query.single_mut() {
         let include_current_round = true;
         let totals = hand_state.calculate_totals(include_current_round);
+        // RFC-018: Show Narc difficulty indicator based on heat tier
+        let narc_tier = hand_state.narc_upgrade_tier;
+        let danger_indicator = if narc_tier == crate::save::UpgradeTier::Base {
+            "".to_string()
+        } else {
+            // Get heat tier name for display (reverse lookup since we stored the upgrade tier)
+            let danger_name = match narc_tier {
+                crate::save::UpgradeTier::Base => "Relaxed",
+                crate::save::UpgradeTier::Tier1 => "Alert",
+                crate::save::UpgradeTier::Tier2 => "Dangerous",
+                crate::save::UpgradeTier::Tier3 => "Intense",
+                crate::save::UpgradeTier::Tier4 | crate::save::UpgradeTier::Tier5 => "Deadly",
+            };
+            format!(" | Narc: {}", danger_name)
+        };
         **text = format!(
-            "Evidence: {} | Cover: {} | Heat: {} | Profit: ${}\nCash: ${} | Total Heat: {} | Deck: {} cards",
-            totals.evidence, totals.cover, totals.heat, totals.profit,
+            "Evidence: {} | Cover: {} | Heat: {} | Profit: ${}{}\nCash: ${} | Total Heat: {} | Deck: {} cards",
+            totals.evidence, totals.cover, totals.heat, totals.profit, danger_indicator,
             hand_state.cash, hand_state.current_heat, hand_state.cards(Owner::Player).deck.len()
         );
     }
@@ -358,7 +373,8 @@ pub fn update_played_cards_display_system(
                 // Only show Evidence, Cover, DealModifier in played pool
                 match card.card_type {
                     CardType::Evidence { .. } | CardType::Cover { .. } | CardType::DealModifier { .. } => {
-                        // RFC-017: Get upgrade info for player cards (Evidence doesn't upgrade)
+                        // RFC-017: Get upgrade info for player cards
+                        // RFC-018: Evidence cards use narc_upgrade_tier with ⚖ symbol
                         let upgrade_info = match card.card_type {
                             CardType::Cover { .. } | CardType::DealModifier { .. } => {
                                 let tier = hand_state.get_card_tier(&card.name);
@@ -372,7 +388,23 @@ pub fn update_played_cards_display_system(
                                     is_foil: tier.is_foil(),
                                 })
                             }
-                            _ => None, // Evidence cards don't upgrade
+                            CardType::Evidence { .. } => {
+                                // RFC-018: Narc cards use ⚖ (scales) with same color tiers
+                                let tier = hand_state.narc_upgrade_tier;
+                                if tier != crate::save::UpgradeTier::Base {
+                                    Some(ui::UpgradeInfo {
+                                        tier_name: "⚖".to_string(), // Scales of Justice
+                                        plays: 0,
+                                        plays_to_next: None, // No progress for Narc cards
+                                        multiplier: tier.multiplier(),
+                                        star_color: tier.star_color(),
+                                        is_foil: tier.is_foil(),
+                                    })
+                                } else {
+                                    None // Base tier shows no badge
+                                }
+                            }
+                            _ => None,
                         };
 
                         ui::spawn_card_display_with_upgrade(

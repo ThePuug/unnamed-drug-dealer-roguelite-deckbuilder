@@ -133,8 +133,11 @@ pub fn restart_button_system(
                 return;
             }
 
-            // Start next hand (preserve cash/heat)
-            let _can_continue = hand_state.start_next_hand();
+            // Start next hand (preserve cash/heat) and draw cards
+            let can_continue = hand_state.start_next_hand();
+            if can_continue {
+                hand_state.draw_cards();
+            }
         }
     }
 }
@@ -203,6 +206,8 @@ pub fn go_home_button_system(
     hand_state_query: Query<(Entity, &HandState)>,
     mut next_state: ResMut<NextState<GameState>>,
     game_assets: Res<crate::assets::GameAssets>, // SOW-013-B: Need for DeckBuilder::from_assets
+    save_data: Option<ResMut<crate::save::SaveData>>,
+    save_manager: Option<Res<crate::save::SaveManager>>,
 ) {
     let Ok((entity, hand_state)) = hand_state_query.single() else {
         return;
@@ -214,27 +219,53 @@ pub fn go_home_button_system(
     }
 
     // Go Home button - return to deck builder
+    let mut should_go_home = false;
     for interaction in go_home_query.iter() {
         if *interaction == Interaction::Pressed {
-            // SOW-013-B: Collect all cards from HandState before despawning
-            let mut player_cards = hand_state.owner_cards.get(&Owner::Player)
-                .expect("Player cards not found")
-                .clone();
-
-            // Collect all cards (hand + deck + played) back into deck
-            player_cards.collect_all();
-
-            // Update DeckBuilder: available from assets, selected from your run
-            let mut deck_builder = DeckBuilder::from_assets(&game_assets);
-            deck_builder.selected_cards = player_cards.deck; // Cards you just played with
-            commands.insert_resource(deck_builder);
-
-            // Despawn HandState
-            commands.entity(entity).despawn();
-
-            // Transition back to DeckBuilding state
-            next_state.set(GameState::DeckBuilding);
+            should_go_home = true;
         }
+    }
+
+    if should_go_home {
+        // Transfer deck heat to character before despawning HandState
+        if let (Some(mut save_data), Some(save_manager)) = (save_data, save_manager) {
+            if let Some(ref mut character) = save_data.character {
+                let deck_heat = hand_state.current_heat;
+                character.heat = character.heat.saturating_add(deck_heat);
+                character.last_played = crate::save::current_timestamp();
+
+                // Count as completed deck if outcome was Safe
+                if matches!(hand_state.outcome, Some(HandOutcome::Safe)) {
+                    character.mark_deck_completed();
+                }
+
+                bevy::log::info!("Go Home - transferred {} deck heat to character (total: {})",
+                      deck_heat, character.heat);
+
+                if let Err(e) = save_manager.save(&save_data) {
+                    bevy::log::warn!("Failed to save on go home: {:?}", e);
+                }
+            }
+        }
+
+        // SOW-013-B: Collect all cards from HandState before despawning
+        let mut player_cards = hand_state.owner_cards.get(&Owner::Player)
+            .expect("Player cards not found")
+            .clone();
+
+        // Collect all cards (hand + deck + played) back into deck
+        player_cards.collect_all();
+
+        // Update DeckBuilder: available from assets, selected from your run
+        let mut deck_builder = DeckBuilder::from_assets(&game_assets);
+        deck_builder.selected_cards = player_cards.deck; // Cards you just played with
+        commands.insert_resource(deck_builder);
+
+        // Despawn HandState
+        commands.entity(entity).despawn();
+
+        // Transition back to DeckBuilding state
+        next_state.set(GameState::DeckBuilding);
     }
 }
 
@@ -298,8 +329,19 @@ pub fn start_run_button_system(
                 random_buyer.active_scenario_index = Some(scenario_index);
             }
 
-            // Create new HandState with selected deck
-            let mut hand_state = HandState::with_custom_deck(deck_builder.selected_cards.clone(), &game_assets);
+            // RFC-018: Get heat tier from character for Narc difficulty scaling
+            let heat_tier = save_data
+                .as_ref()
+                .and_then(|save| save.character.as_ref())
+                .map(|c| c.heat_tier())
+                .unwrap_or(crate::save::HeatTier::Cold);
+
+            // Create new HandState with selected deck and heat tier
+            let mut hand_state = HandState::with_custom_deck(
+                deck_builder.selected_cards.clone(),
+                &game_assets,
+                heat_tier,
+            );
             hand_state.buyer_persona = Some(random_buyer);
 
             // RFC-017: Copy play counts from CharacterState for upgrade tier calculation
