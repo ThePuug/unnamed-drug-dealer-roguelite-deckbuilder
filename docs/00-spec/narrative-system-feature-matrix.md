@@ -2,7 +2,7 @@
 
 **Spec:** [narrative-system.md](narrative-system.md)
 **Last Updated:** 2025-11-27
-**Overall Status:** 4/5 features complete (80%)
+**Overall Status:** 5/5 features complete (100%)
 
 ---
 
@@ -10,13 +10,12 @@
 
 | Category | Complete | Total | % |
 |----------|:--------:|:-----:|:-:|
-| Core System | 4 | 4 | 100% |
-| Not Implemented | 0 | 1 | 0% |
-| **Total** | **4** | **5** | **80%** |
+| Core System | 5 | 5 | 100% |
+| **Total** | **5** | **5** | **100%** |
 
 ---
 
-## Core System - 4/4 (100%)
+## Core System - 5/5 (100%)
 
 | Feature | Status | Notes |
 |---------|:------:|-------|
@@ -24,14 +23,7 @@
 | Fragment System | ✅ | TaggedFragment with ClauseRelation, GrammaticalStructure |
 | Dynamic Sentence Construction | ✅ | SentenceStructure enum, DynamicPattern builder |
 | Resolution Overlay Integration | ✅ | hand_story displayed via ResolutionStory component |
-
----
-
-## Not Implemented - 0/1 (0%)
-
-| Feature | Status | Notes |
-|---------|:------:|-------|
-| History Log | ❌ | View past stories from run |
+| History Log | ✅ | CharacterState.story_history, displayed in deck builder |
 
 ---
 
@@ -49,3 +41,4 @@
 - Fragments sourced from: Buyer scenario → Card data → Default fallbacks
 - 6 sentence structure types support varied output
 - Comprehensive test coverage in `story_test.rs`
+- History persisted in `CharacterState.story_history`, displayed via `update_story_history_display_system`

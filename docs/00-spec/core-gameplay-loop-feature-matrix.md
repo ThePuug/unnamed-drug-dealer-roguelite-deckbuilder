@@ -2,7 +2,7 @@
 
 **Spec:** [core-gameplay-loop.md](core-gameplay-loop.md)
 **Last Updated:** 2025-11-27
-**Overall Status:** 46/49 features complete (94%)
+**Overall Status:** 48/48 features complete (100%)
 
 ---
 
@@ -11,12 +11,12 @@
 | Category | Complete | Total | % |
 |----------|:--------:|:-----:|:-:|
 | Run (Character Lifecycle) | 6 | 6 | 100% |
-| Deck (Session) | 5 | 8 | 63% |
+| Deck (Session) | 7 | 7 | 100% |
 | Hand Flow | 12 | 12 | 100% |
 | Round Flow | 8 | 8 | 100% |
 | Visual Indicators | 10 | 10 | 100% |
 | Special Conditions | 5 | 5 | 100% |
-| **Total** | **46** | **49** | **94%** |
+| **Total** | **48** | **48** | **100%** |
 
 ---
 
@@ -33,7 +33,7 @@
 
 ---
 
-## Deck (Session) - 5/8 (63%)
+## Deck (Session) - 7/7 (100%)
 
 | Feature | Status | Notes |
 |---------|:------:|-------|
@@ -42,9 +42,8 @@
 | Session play (multiple hands) | ✅ | Card retention between hands |
 | "Go Home" early option | ✅ | GoHomeButton |
 | Deck exhaustion handling | ✅ | deck.len() < 3 triggers end |
-| Card counter display | ❌ | "X cards remaining" UI |
-| Post-session summary | ❌ | Profit banked, Heat delta |
-| Strategic deck building | ❌ | Heat-based recommendations |
+| Card counter display | ✅ | "Deck: X" above betting buttons |
+| Post-session summary | ✅ | Session totals in resolution overlay |
 
 ---
 
@@ -127,11 +126,10 @@
 | All players fold | N/A (2-player system) |
 | Decision Support (4 features) | Unnecessary complexity |
 | Balance Targets (4 features) | Not trackable metrics |
+| Strategic deck building | Unnecessary complexity |
 
 ---
 
 ## Remaining Work
 
-1. **Card counter display** - Show "X cards remaining" in UI
-2. **Post-session summary** - Show profit banked, Heat delta
-3. **Strategic deck building** - Heat-based recommendations
+None - all features complete!

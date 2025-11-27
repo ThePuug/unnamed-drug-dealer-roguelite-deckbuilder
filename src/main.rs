@@ -90,6 +90,7 @@ fn main() {
             update_decay_display_system,
             clear_decay_display_system,
             update_account_cash_display_system,
+            update_story_history_display_system,
         ).chain())
         .add_systems(Update, (
             card_click_system,
@@ -98,6 +99,7 @@ fn main() {
         .add_systems(Update, (
             deck_builder_card_click_system,
             start_run_button_system,
+            story_history_button_system,
             update_deck_builder_ui_system,
             populate_deck_builder_cards_system,
             ui::ui_scroll_system, // Bevy 0.17: Manual scroll handling
@@ -137,8 +139,12 @@ fn initialize_deck_builder_from_assets(
 fn cleanup_deck_builder_ui(
     mut commands: Commands,
     deck_builder_root_query: Query<Entity, With<ui::components::DeckBuilderRoot>>,
+    story_overlay_query: Query<Entity, With<ui::components::StoryHistoryOverlay>>,
 ) {
     for entity in deck_builder_root_query.iter() {
+        commands.entity(entity).despawn();
+    }
+    for entity in story_overlay_query.iter() {
         commands.entity(entity).despawn();
     }
 }

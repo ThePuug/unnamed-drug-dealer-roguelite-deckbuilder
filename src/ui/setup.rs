@@ -5,10 +5,12 @@
 use bevy::prelude::*;
 use super::theme;
 use super::components::*;
+use crate::models::fonts::EmojiFont;
 
 pub fn setup_deck_builder(
     mut commands: Commands,
     save_data: Option<Res<crate::save::SaveData>>,
+    emoji_font: Res<EmojiFont>,
 ) {
     // RFC-019: Don't spawn DeckBuilder UI if we're about to redirect to UpgradeChoice
     if let Some(ref data) = save_data {
@@ -144,24 +146,179 @@ pub fn setup_deck_builder(
                 ));
             });
 
-            // START RUN button
-            parent.spawn((
-                Button,
-                Node {
-                    width: Val::Px(200.0),
-                    height: Val::Px(60.0),
-                    justify_content: JustifyContent::Center,
+            // Right side: Story History button + START RUN button
+            parent.spawn(Node {
+                flex_direction: FlexDirection::Row,
+                column_gap: Val::Px(10.0),
+                align_items: AlignItems::Center,
+                ..default()
+            })
+            .with_children(|parent| {
+                // Story History button
+                parent.spawn((
+                    Button,
+                    Node {
+                        width: Val::Px(60.0),
+                        height: Val::Px(60.0),
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
+                        ..default()
+                    },
+                    BackgroundColor(Color::srgb(0.3, 0.3, 0.4)),
+                    StoryHistoryButton,
+                ))
+                .with_children(|parent| {
+                    parent.spawn((
+                        Text::new("📖"),
+                        TextFont {
+                            font: emoji_font.0.clone(),
+                            font_size: 32.0,
+                            ..default()
+                        },
+                        TextColor(Color::WHITE),
+                    ));
+                });
+
+                // START RUN button
+                parent.spawn((
+                    Button,
+                    Node {
+                        width: Val::Px(200.0),
+                        height: Val::Px(60.0),
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
+                        ..default()
+                    },
+                    BackgroundColor(theme::CONTINUE_BUTTON_BG),
+                    StartRunButton,
+                ))
+                .with_children(|parent| {
+                    parent.spawn((
+                        Text::new("START RUN"),
+                        TextFont::from_font_size(24.0),
+                        TextColor(Color::WHITE),
+                    ));
+                });
+            });
+        });
+    });
+
+    // Story History Overlay (initially hidden)
+    commands.spawn((
+        Node {
+            position_type: PositionType::Absolute,
+            width: Val::Percent(100.0),
+            height: Val::Percent(100.0),
+            justify_content: JustifyContent::Center,
+            align_items: AlignItems::Center,
+            display: Display::None,
+            ..default()
+        },
+        GlobalZIndex(100),
+        StoryHistoryOverlay,
+    ))
+    .with_children(|parent| {
+        // Semi-transparent backdrop
+        parent.spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
+                ..default()
+            },
+            BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.8)),
+        ));
+
+        // Story panel
+        parent.spawn((
+            Node {
+                width: Val::Px(700.0),
+                height: Val::Px(600.0),
+                flex_direction: FlexDirection::Column,
+                padding: UiRect::all(Val::Px(20.0)),
+                border: UiRect::all(Val::Px(2.0)),
+                ..default()
+            },
+            BackgroundColor(Color::srgb(0.15, 0.15, 0.2)),
+            BorderColor::all(Color::srgb(0.4, 0.4, 0.5)),
+            GlobalZIndex(101),
+        ))
+        .with_children(|parent| {
+            // Header row with title and close button
+            parent.spawn(Node {
+                width: Val::Percent(100.0),
+                flex_direction: FlexDirection::Row,
+                justify_content: JustifyContent::SpaceBetween,
+                align_items: AlignItems::Center,
+                margin: UiRect::bottom(Val::Px(15.0)),
+                ..default()
+            })
+            .with_children(|parent| {
+                // Title with emoji
+                parent.spawn(Node {
+                    flex_direction: FlexDirection::Row,
+                    column_gap: Val::Px(10.0),
                     align_items: AlignItems::Center,
                     ..default()
+                })
+                .with_children(|parent| {
+                    parent.spawn((
+                        Text::new("📖"),
+                        TextFont {
+                            font: emoji_font.0.clone(),
+                            font_size: 28.0,
+                            ..default()
+                        },
+                        TextColor(Color::WHITE),
+                    ));
+                    parent.spawn((
+                        Text::new("Story History"),
+                        TextFont::from_font_size(28.0),
+                        TextColor(Color::WHITE),
+                    ));
+                });
+
+                // Close button
+                parent.spawn((
+                    Button,
+                    Node {
+                        width: Val::Px(40.0),
+                        height: Val::Px(40.0),
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
+                        ..default()
+                    },
+                    BackgroundColor(Color::srgb(0.5, 0.2, 0.2)),
+                    StoryHistoryCloseButton,
+                ))
+                .with_children(|parent| {
+                    parent.spawn((
+                        Text::new("✕"),
+                        TextFont::from_font_size(24.0),
+                        TextColor(Color::WHITE),
+                    ));
+                });
+            });
+
+            // Scrollable story content
+            parent.spawn((
+                Node {
+                    width: Val::Percent(100.0),
+                    flex_grow: 1.0,
+                    flex_direction: FlexDirection::Column,
+                    padding: UiRect::all(Val::Px(10.0)),
+                    overflow: Overflow::scroll_y(),
+                    ..default()
                 },
-                BackgroundColor(theme::CONTINUE_BUTTON_BG),
-                StartRunButton,
+                BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.3)),
+                ScrollPosition::default(),
             ))
             .with_children(|parent| {
                 parent.spawn((
-                    Text::new("START RUN"),
-                    TextFont::from_font_size(24.0),
-                    TextColor(Color::WHITE),
+                    Text::new("No stories yet..."),
+                    TextFont::from_font_size(14.0),
+                    TextColor(Color::srgb(0.7, 0.7, 0.7)),
+                    StoryHistoryText,
                 ));
             });
         });
@@ -477,6 +634,7 @@ pub fn create_ui(commands: &mut Commands) {
                         Node {
                             flex_direction: FlexDirection::Column,
                             justify_content: JustifyContent::Center,
+                            align_items: AlignItems::Center,
                             row_gap: Val::Px(10.0),
                             display: Display::Flex,
                             ..default()
@@ -484,6 +642,14 @@ pub fn create_ui(commands: &mut Commands) {
                         BettingActionsContainer,
                     ))
                     .with_children(|parent| {
+                        // Deck counter above buttons
+                        parent.spawn((
+                            Text::new("Deck: 20"),
+                            TextFont::from_font_size(16.0),
+                            TextColor(theme::TEXT_SECONDARY),
+                            DeckCounter,
+                        ));
+
                         // Pass button - fixed pixels
                         parent.spawn((
                             Button,

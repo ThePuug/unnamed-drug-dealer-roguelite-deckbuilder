@@ -60,6 +60,7 @@ pub fn betting_button_system(
             // Generate story
             let story = story_composer.compose_story_from_hand(&hand_state);
             hand_state.hand_story = Some(story.clone());
+            hand_state.session_stories.push(story.clone()); // Add to session history
             println!("\n📖 Story: {}\n", story);
 
             // Discard played cards, keep unplayed
@@ -227,20 +228,23 @@ pub fn go_home_button_system(
     }
 
     if should_go_home {
-        // Transfer deck heat to character before despawning HandState
+        // Transfer deck heat and stories to character before despawning HandState
         if let (Some(mut save_data), Some(save_manager)) = (save_data, save_manager) {
             if let Some(ref mut character) = save_data.character {
                 let deck_heat = hand_state.current_heat;
                 character.heat = character.heat.saturating_add(deck_heat);
                 character.last_played = crate::save::current_timestamp();
 
+                // Add session stories to character history
+                character.story_history.extend(hand_state.session_stories.iter().cloned());
+
                 // Count as completed deck if outcome was Safe
                 if matches!(hand_state.outcome, Some(HandOutcome::Safe)) {
                     character.mark_deck_completed();
                 }
 
-                bevy::log::info!("Go Home - transferred {} deck heat to character (total: {})",
-                      deck_heat, character.heat);
+                bevy::log::info!("Go Home - transferred {} deck heat to character (total: {}), {} stories",
+                      deck_heat, character.heat, hand_state.session_stories.len());
 
                 if let Err(e) = save_manager.save(&save_data) {
                     bevy::log::warn!("Failed to save on go home: {:?}", e);

@@ -86,6 +86,7 @@ pub fn auto_flip_system(
         // Generate story after resolution
         let story = story_composer.compose_story_from_hand(&hand_state);
         hand_state.hand_story = Some(story.clone());
+        hand_state.session_stories.push(story.clone()); // Add to session history
         println!("\n📖 Story: {}\n", story);
     }
 }

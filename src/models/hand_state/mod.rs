@@ -54,6 +54,7 @@ pub struct HandState {
     pub checks_this_hand: Vec<(Owner, u8)>,
     pub buyer_persona: Option<BuyerPersona>,
     pub hand_story: Option<String>, // SOW-012: Generated narrative for this hand
+    pub session_stories: Vec<String>, // Story history for this session
     pub last_profit: u32, // RFC-016: Profit from most recent hand resolution
     pub card_play_counts: HashMap<String, u32>, // RFC-017: Play counts for upgrade tiers
     pub card_upgrades: HashMap<String, crate::save::CardUpgrades>, // RFC-019: Per-card upgrade choices
@@ -83,6 +84,7 @@ impl HandState {
             checks_this_hand: Vec::new(),
             buyer_persona: None,
             hand_story: None,
+            session_stories: Vec::new(),
             last_profit: 0,
             card_play_counts: HashMap::new(), // RFC-017: Initialize empty
             card_upgrades: HashMap::new(), // RFC-019: Initialize empty
@@ -125,6 +127,7 @@ impl Default for HandState {
             checks_this_hand: Vec::new(),
             buyer_persona: None,
             hand_story: None,
+            session_stories: Vec::new(),
             last_profit: 0,
             card_play_counts: HashMap::new(), // RFC-017: Initialize empty
             card_upgrades: HashMap::new(), // RFC-019: Initialize empty

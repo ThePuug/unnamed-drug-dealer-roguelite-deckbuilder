@@ -3,7 +3,7 @@
 use bevy::prelude::*;
 use crate::save::{SaveManager, SaveData, CharacterState, HeatTier};
 use crate::models::hand_state::{HandState, HandPhase, HandOutcome};
-use crate::ui::components::{CharacterHeatText, CharacterTierText, DecayInfoDisplay, AccountCashText, LifetimeRevenueText};
+use crate::ui::components::{CharacterHeatText, CharacterTierText, DecayInfoDisplay, AccountCashText, LifetimeRevenueText, StoryHistoryText, StoryHistoryButton, StoryHistoryOverlay, StoryHistoryCloseButton};
 
 /// Resource tracking if character data has been loaded this session
 #[derive(Resource, Default)]
@@ -281,4 +281,58 @@ fn format_number(n: u64) -> String {
         result.push(c);
     }
     result.chars().rev().collect()
+}
+
+/// System to update story history display in overlay
+pub fn update_story_history_display_system(
+    save_data: Option<Res<SaveData>>,
+    mut story_text_query: Query<&mut Text, With<StoryHistoryText>>,
+) {
+    let Some(save_data) = save_data else {
+        return;
+    };
+
+    let stories = save_data.character.as_ref()
+        .map(|c| &c.story_history)
+        .filter(|h| !h.is_empty());
+
+    for mut text in story_text_query.iter_mut() {
+        if let Some(history) = stories {
+            // Most recent first, subtle separator between stories
+            let story_text = history
+                .iter()
+                .rev()
+                .map(|s| s.as_str())
+                .collect::<Vec<_>>()
+                .join("\n───\n");
+            **text = story_text;
+        } else {
+            **text = "No stories yet...".to_string();
+        }
+    }
+}
+
+/// System to toggle story history overlay visibility
+pub fn story_history_button_system(
+    open_query: Query<&Interaction, (Changed<Interaction>, With<StoryHistoryButton>)>,
+    close_query: Query<&Interaction, (Changed<Interaction>, With<StoryHistoryCloseButton>)>,
+    mut overlay_query: Query<&mut Node, With<StoryHistoryOverlay>>,
+) {
+    // Open overlay when book button clicked
+    for interaction in open_query.iter() {
+        if *interaction == Interaction::Pressed {
+            if let Ok(mut node) = overlay_query.single_mut() {
+                node.display = Display::Flex;
+            }
+        }
+    }
+
+    // Close overlay when close button clicked
+    for interaction in close_query.iter() {
+        if *interaction == Interaction::Pressed {
+            if let Ok(mut node) = overlay_query.single_mut() {
+                node.display = Display::None;
+            }
+        }
+    }
 }

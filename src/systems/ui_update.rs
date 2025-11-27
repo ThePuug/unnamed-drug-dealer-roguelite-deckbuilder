@@ -12,55 +12,16 @@ use crate::data::validate_deck;
 
 pub fn ui_update_system(
     hand_state_query: Query<&HandState>,
-    mut totals_query: Query<&mut Text, (With<TotalsDisplay>, Without<StatusDisplay>, Without<BuyerScenarioCardText>)>,
-    mut status_query: Query<(&mut Text, &mut TextColor), (With<StatusDisplay>, Without<TotalsDisplay>, Without<BuyerScenarioCardText>)>,
-    mut scenario_query: Query<&mut Text, (With<BuyerScenarioCardText>, Without<StatusDisplay>, Without<TotalsDisplay>)>,
+    mut scenario_query: Query<&mut Text, With<BuyerScenarioCardText>>,
+    mut deck_counter_query: Query<&mut Text, (With<DeckCounter>, Without<BuyerScenarioCardText>)>,
 ) {
     let Ok(hand_state) = hand_state_query.single() else {
         return;
     };
 
-    // Update totals display (only exists during InRun state)
-    if let Ok(mut text) = totals_query.single_mut() {
-        let include_current_round = true;
-        let totals = hand_state.calculate_totals(include_current_round);
-        // RFC-018: Show Narc difficulty indicator based on heat tier
-        let narc_tier = hand_state.narc_upgrade_tier;
-        let danger_indicator = if narc_tier == crate::save::UpgradeTier::Base {
-            "".to_string()
-        } else {
-            // Get heat tier name for display (reverse lookup since we stored the upgrade tier)
-            let danger_name = match narc_tier {
-                crate::save::UpgradeTier::Base => "Relaxed",
-                crate::save::UpgradeTier::Tier1 => "Alert",
-                crate::save::UpgradeTier::Tier2 => "Dangerous",
-                crate::save::UpgradeTier::Tier3 => "Intense",
-                crate::save::UpgradeTier::Tier4 | crate::save::UpgradeTier::Tier5 => "Deadly",
-            };
-            format!(" | Narc: {}", danger_name)
-        };
-        **text = format!(
-            "Evidence: {} | Cover: {} | Heat: {} | Profit: ${}{}\nCash: ${} | Total Heat: {} | Deck: {} cards",
-            totals.evidence, totals.cover, totals.heat, totals.profit, danger_indicator,
-            hand_state.cash, hand_state.current_heat, hand_state.cards(Owner::Player).deck.len()
-        );
-    }
-
-    // Simplified status display - just Round and Cash (only exists during InRun state)
-    if let Ok((mut text, mut text_color)) = status_query.single_mut() {
-        let turn_info = if hand_state.current_state == HandPhase::PlayerPhase {
-            format!(" - Turn: {:?}", hand_state.current_player())
-        } else {
-            String::new()
-        };
-
-        **text = format!(
-            "Round {}/3{}\nCash: ${}",
-            hand_state.current_round,
-            turn_info,
-            hand_state.cash
-        );
-        text_color.0 = theme::TEXT_HEADER;
+    // Update deck counter
+    if let Ok(mut text) = deck_counter_query.single_mut() {
+        **text = format!("Deck: {}", hand_state.cards(Owner::Player).deck.len());
     }
 
     // Update scenario card (only exists during InRun state)

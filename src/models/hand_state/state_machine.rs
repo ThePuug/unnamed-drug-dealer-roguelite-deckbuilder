@@ -32,6 +32,7 @@ impl HandState {
             checks_this_hand: Vec::new(),
             buyer_persona: None,
             hand_story: None, // SOW-012: No story initially
+            session_stories: Vec::new(),
             last_profit: 0,
             card_play_counts: std::collections::HashMap::new(), // RFC-017: Initialize empty, set from SaveData
             card_upgrades: std::collections::HashMap::new(), // RFC-019: Initialize empty, set from SaveData

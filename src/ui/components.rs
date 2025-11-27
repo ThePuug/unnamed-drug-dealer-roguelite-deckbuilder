@@ -17,12 +17,6 @@ pub struct BackgroundImage; // POC: Location background image container (clips o
 pub struct BackgroundImageNode; // POC: Actual image node inside container
 
 #[derive(Component)]
-pub struct TotalsDisplay;
-
-#[derive(Component)]
-pub struct StatusDisplay;
-
-#[derive(Component)]
 pub struct BuyerScenarioCard;  // SOW-010: Oversized card displaying scenario info
 
 #[derive(Component)]
@@ -146,6 +140,9 @@ pub struct CoverPool;
 pub struct DealModPool;
 
 #[derive(Component)]
+pub struct DeckCounter; // Deck cards remaining counter
+
+#[derive(Component)]
 pub struct DiscardPile;
 
 #[derive(Component)]
@@ -206,3 +203,19 @@ pub struct AccountCashText;
 
 #[derive(Component)]
 pub struct LifetimeRevenueText;
+
+// ============================================================================
+// Story History Overlay (Narrative Log)
+// ============================================================================
+
+#[derive(Component)]
+pub struct StoryHistoryButton;
+
+#[derive(Component)]
+pub struct StoryHistoryOverlay;
+
+#[derive(Component)]
+pub struct StoryHistoryCloseButton;
+
+#[derive(Component)]
+pub struct StoryHistoryText;

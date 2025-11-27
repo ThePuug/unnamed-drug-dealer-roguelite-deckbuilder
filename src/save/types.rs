@@ -419,6 +419,9 @@ pub struct CharacterState {
     /// These persist across sessions so player can make choice on next load
     #[serde(default)]
     pub pending_upgrades: Vec<PendingUpgrade>,
+    /// Story history from completed deals (narrative log)
+    #[serde(default)]
+    pub story_history: Vec<String>,
 }
 
 impl CharacterState {
@@ -433,6 +436,7 @@ impl CharacterState {
             card_play_counts: HashMap::new(),
             card_upgrades: HashMap::new(),
             pending_upgrades: Vec::new(),
+            story_history: Vec::new(),
         }
     }
 

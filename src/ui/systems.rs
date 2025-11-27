@@ -282,14 +282,13 @@ pub fn update_resolution_overlay_system(
         match hand_state.outcome {
             Some(HandOutcome::Safe) => {
                 results.push_str(&format!("Evidence: {} ≤ Cover: {} ✓\n\n", totals.evidence, totals.cover));
-                results.push_str(&format!("Profit: ${}\n", totals.profit));
-                results.push_str(&format!("Deck Heat: {}\n", cumulative_heat));
+                results.push_str(&format!("This Deal: +${}\n", totals.profit));
 
                 if hand_state.is_demand_satisfied() {
                     let multiplier = hand_state.get_profit_multiplier();
-                    results.push_str(&format!("\nDemand Met! ×{multiplier:.1} multiplier"));
+                    results.push_str(&format!("Demand Met! ×{multiplier:.1} multiplier\n"));
                 } else {
-                    results.push_str("\nDemand Not Met (reduced multiplier)");
+                    results.push_str("Demand Not Met (reduced multiplier)\n");
                 }
             }
             Some(HandOutcome::Busted) => {
@@ -297,7 +296,7 @@ pub fn update_resolution_overlay_system(
                     results.push_str(&format!("Deck Exhausted: {} cards\n\nRun Ends", hand_state.cards(Owner::Player).deck.len()));
                 } else {
                     results.push_str(&format!("Evidence: {} > Cover: {} ✗\n\n", totals.evidence, totals.cover));
-                    results.push_str(&format!("You got caught!\nDeck Heat: {}", cumulative_heat));
+                    results.push_str("You got caught!");
                 }
             }
             Some(HandOutcome::Folded) => {
@@ -326,6 +325,10 @@ pub fn update_resolution_overlay_system(
                 results.push_str("Hand ended");
             }
         }
+
+        // Session totals (always show)
+        results.push_str(&format!("\n\n─────────────────\nSession: ${} banked • +{} Heat",
+            hand_state.cash, cumulative_heat));
 
         **results_text = results;
     } else {
