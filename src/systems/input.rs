@@ -228,6 +228,12 @@ pub fn go_home_button_system(
     }
 
     if should_go_home {
+        // SOW-020: Capture unlocked cards before save_data is consumed
+        let unlocked_cards = save_data
+            .as_ref()
+            .map(|data| data.account.unlocked_cards.clone())
+            .unwrap_or_else(|| crate::save::AccountState::starting_collection());
+
         // Transfer deck heat and stories to character before despawning HandState
         if let (Some(mut save_data), Some(save_manager)) = (save_data, save_manager) {
             if let Some(ref mut character) = save_data.character {
@@ -260,8 +266,8 @@ pub fn go_home_button_system(
         // Collect all cards (hand + deck + played) back into deck
         player_cards.collect_all();
 
-        // Update DeckBuilder: available from assets, selected from your run
-        let mut deck_builder = DeckBuilder::from_assets(&game_assets);
+        // SOW-020: Update DeckBuilder with unlocked cards filter
+        let mut deck_builder = DeckBuilder::from_assets_filtered(&game_assets, &unlocked_cards);
         deck_builder.selected_cards = player_cards.deck; // Cards you just played with
         commands.insert_resource(deck_builder);
 

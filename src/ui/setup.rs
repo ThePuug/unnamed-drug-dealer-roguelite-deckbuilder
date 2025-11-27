@@ -21,6 +21,9 @@ pub fn setup_deck_builder(
         }
     }
 
+    // SOW-020: Initialize shop state resource
+    commands.insert_resource(crate::systems::ShopState::new());
+
     // Deck builder root container - 1920x1080 design, will be scaled/positioned by scale_ui_to_fit_system
     commands.spawn((
         Node {
@@ -34,7 +37,122 @@ pub fn setup_deck_builder(
         DeckBuilderRoot,
     ))
     .with_children(|parent| {
-        // Card pool container - scrollable, fills available space
+        // SOW-020: Tab row (Your Cards / Shop)
+        parent.spawn((
+            Node {
+                width: Val::Percent(100.0),
+                flex_direction: FlexDirection::Row,
+                column_gap: Val::Px(10.0),
+                margin: UiRect::bottom(Val::Px(10.0)),
+                ..default()
+            },
+            ShopTabsContainer,
+        ))
+        .with_children(|tabs| {
+            // "Your Cards" tab (default active)
+            tabs.spawn((
+                Button,
+                Node {
+                    width: Val::Px(150.0),
+                    height: Val::Px(40.0),
+                    justify_content: JustifyContent::Center,
+                    align_items: AlignItems::Center,
+                    ..default()
+                },
+                BackgroundColor(theme::CONTINUE_BUTTON_BG), // Active by default
+                ShopTab { is_shop: false },
+            ))
+            .with_children(|btn| {
+                btn.spawn((
+                    Text::new("YOUR CARDS"),
+                    TextFont::from_font_size(16.0),
+                    TextColor(Color::WHITE),
+                ));
+            });
+
+            // "Shop" tab
+            tabs.spawn((
+                Button,
+                Node {
+                    width: Val::Px(150.0),
+                    height: Val::Px(40.0),
+                    justify_content: JustifyContent::Center,
+                    align_items: AlignItems::Center,
+                    ..default()
+                },
+                BackgroundColor(theme::BUTTON_NEUTRAL_BG), // Inactive by default
+                ShopTab { is_shop: true },
+            ))
+            .with_children(|btn| {
+                btn.spawn((
+                    Text::new("SHOP"),
+                    TextFont::from_font_size(16.0),
+                    TextColor(Color::WHITE),
+                ));
+            });
+
+            // SOW-020: Shop location selector (only visible when shop tab active)
+            // SOW-020: Get unlocked locations from save data
+            let unlocked_locations = save_data
+                .as_ref()
+                .map(|d| &d.account.unlocked_locations)
+                .cloned()
+                .unwrap_or_else(|| std::collections::HashSet::from(["the_corner".to_string()]));
+
+            tabs.spawn((
+                Node {
+                    flex_direction: FlexDirection::Row,
+                    column_gap: Val::Px(10.0),
+                    margin: UiRect::left(Val::Px(20.0)),
+                    display: Display::None, // Hidden initially
+                    ..default()
+                },
+                ShopLocationSelector,
+            ))
+            .with_children(|locs| {
+                // Shop location definitions
+                let locations = [
+                    ("the_corner", "The Corner"),
+                    ("the_block", "The Block"),
+                ];
+
+                for (idx, (id, name)) in locations.iter().enumerate() {
+                    // Only spawn button if location is unlocked
+                    if !unlocked_locations.contains(*id) {
+                        continue;
+                    }
+
+                    let is_first = idx == 0 || locations[..idx].iter().all(|(loc_id, _)| !unlocked_locations.contains(*loc_id));
+                    let bg = if is_first {
+                        theme::CONTINUE_BUTTON_BG // Active by default
+                    } else {
+                        theme::BUTTON_NEUTRAL_BG
+                    };
+
+                    locs.spawn((
+                        Button,
+                        Node {
+                            width: Val::Px(140.0),
+                            height: Val::Px(40.0),
+                            justify_content: JustifyContent::Center,
+                            align_items: AlignItems::Center,
+                            ..default()
+                        },
+                        BackgroundColor(bg),
+                        ShopLocationButton { location_id: id.to_string() },
+                    ))
+                    .with_children(|btn| {
+                        btn.spawn((
+                            Text::new(*name),
+                            TextFont::from_font_size(14.0),
+                            TextColor(Color::WHITE),
+                        ));
+                    });
+                }
+            });
+        });
+
+        // Card pool container - scrollable, fills available space (YOUR CARDS view)
         parent.spawn((
             Node {
                 width: Val::Percent(100.0),
@@ -66,6 +184,27 @@ pub fn setup_deck_builder(
                 ));
             });
         });
+
+        // SOW-020: Shop cards container (hidden by default, shown when SHOP tab active)
+        parent.spawn((
+            Node {
+                width: Val::Percent(100.0),
+                flex_grow: 1.0,
+                flex_direction: FlexDirection::Row,
+                flex_wrap: FlexWrap::Wrap,
+                padding: UiRect::all(Val::Px(10.0)),
+                row_gap: Val::Px(5.0),
+                column_gap: Val::Px(5.0),
+                align_content: AlignContent::FlexStart,
+                overflow: Overflow::scroll_y(),
+                display: Display::None, // Hidden by default
+                ..default()
+            },
+            BackgroundColor(Color::srgb(0.15, 0.12, 0.1)), // Slightly different bg for shop
+            Interaction::None,
+            ScrollPosition::default(),
+            ShopCardsContainer,
+        ));
 
         // Bottom: Stats, Heat display, and START RUN button
         parent.spawn(Node {

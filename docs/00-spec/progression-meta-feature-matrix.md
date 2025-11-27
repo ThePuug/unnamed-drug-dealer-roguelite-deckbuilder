@@ -27,7 +27,7 @@
 | Cash on hand tracking | ✅ | AccountState.cash_on_hand |
 | Cash persistence (account-wide) | ✅ | Survives permadeath |
 | Cash earning (from deals) | ✅ | Add profit on Safe outcome |
-| Cash spending (at locations) | ❌ | Requires location shop UI |
+| Cash spending (at locations) | 🔄 | SOW-020 planned |
 | Lifetime revenue metric | ✅ | AccountState.lifetime_revenue |
 
 ---
@@ -36,12 +36,12 @@
 
 | Feature | Status | Notes |
 |---------|:------:|-------|
-| Starting location (The Corner) | ❌ | Default unlocked location |
-| Location as card shops | ❌ | Browse/purchase cards per location |
-| Achievement-gated unlocks | ❌ | Locations unlock via achievements |
-| Location permanence | ❌ | Once unlocked, always accessible |
-| Multi-location shopping | ❌ | Can buy from any unlocked location |
-| Location UI (shop interface) | ❌ | Card display, pricing, purchase flow |
+| Starting location (The Corner) | 🔄 | SOW-020 planned |
+| Location as card shops | 🔄 | SOW-020 planned |
+| Achievement-gated unlocks | ❌ | Deferred to future RFC |
+| Location permanence | 🔄 | SOW-020 planned |
+| Multi-location shopping | 🔄 | SOW-020 planned |
+| Location UI (shop interface) | 🔄 | SOW-020 planned |
 
 ---
 
@@ -49,12 +49,12 @@
 
 | Feature | Status | Notes |
 |---------|:------:|-------|
-| Starting collection | ❌ | ~15-20 cards unlocked by default |
-| Location-specific card pools | ❌ | Each card at one location |
-| Cash purchase of cards | ❌ | Spend cash to unlock |
-| Permanent card unlocks | ❌ | Account-wide, never lost |
-| Card pricing tiers | ❌ | $500-$20k+ range |
-| Card purchase UI | ❌ | Details, price, confirm |
+| Starting collection | 🔄 | SOW-020 planned |
+| Location-specific card pools | 🔄 | SOW-020 planned |
+| Cash purchase of cards | 🔄 | SOW-020 planned |
+| Permanent card unlocks | 🔄 | SOW-020 planned |
+| Card pricing tiers | 🔄 | SOW-020 planned |
+| Card purchase UI | 🔄 | SOW-020 planned |
 
 ---
 

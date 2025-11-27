@@ -1,4 +1,5 @@
 // SOW-012: Shared test helpers for creating Cards with narrative_fragments field
+// SOW-020: Updated to include shop_location and shop_price fields
 // Available to all test modules via models::test_helpers
 
 #![cfg(test)]
@@ -6,75 +7,112 @@
 use super::card::{Card, CardType};
 use super::buyer::BuyerPersona;
 use crate::assets::GameAssets;
-use std::collections::HashMap;
 
-/// Create a Product card for testing
+/// Create a Product card for testing (with optional shop data)
 pub fn create_product(name: &str, price: u32, heat: i32) -> Card {
     Card {
-        id: format!("test_{}", rand::random::<u32>()),
+        id: name.to_lowercase().replace(' ', "_"),
         name: name.to_string(),
         card_type: CardType::Product { price, heat },
         narrative_fragments: None,
+        shop_location: Some("the_corner".to_string()),
+        shop_price: Some(0),
     }
 }
 
 /// Create a Location card for testing
 pub fn create_location(name: &str, evidence: u32, cover: u32, heat: i32) -> Card {
     Card {
-        id: format!("test_{}", rand::random::<u32>()),
+        id: name.to_lowercase().replace(' ', "_"),
         name: name.to_string(),
         card_type: CardType::Location { evidence, cover, heat },
         narrative_fragments: None,
+        shop_location: Some("the_corner".to_string()),
+        shop_price: Some(0),
     }
 }
 
-/// Create an Evidence card for testing
+/// Create an Evidence card for testing (no shop - Narc only)
 pub fn create_evidence(name: &str, evidence: u32, heat: i32) -> Card {
     Card {
-        id: format!("test_{}", rand::random::<u32>()),
+        id: name.to_lowercase().replace(' ', "_"),
         name: name.to_string(),
         card_type: CardType::Evidence { evidence, heat },
         narrative_fragments: None,
+        shop_location: None,
+        shop_price: None,
     }
 }
 
 /// Create a Cover card for testing
 pub fn create_cover(name: &str, cover: u32, heat: i32) -> Card {
     Card {
-        id: format!("test_{}", rand::random::<u32>()),
+        id: name.to_lowercase().replace(' ', "_"),
         name: name.to_string(),
         card_type: CardType::Cover { cover, heat },
         narrative_fragments: None,
+        shop_location: Some("the_corner".to_string()),
+        shop_price: Some(0),
     }
 }
 
 /// Create a DealModifier card for testing
 pub fn create_deal_modifier(name: &str, price_multiplier: f32, evidence: i32, cover: i32, heat: i32) -> Card {
     Card {
-        id: format!("test_{}", rand::random::<u32>()),
+        id: name.to_lowercase().replace(' ', "_"),
         name: name.to_string(),
         card_type: CardType::DealModifier { price_multiplier, evidence, cover, heat },
         narrative_fragments: None,
+        shop_location: Some("the_corner".to_string()),
+        shop_price: Some(0),
     }
 }
 
 /// Create an Insurance card for testing
 pub fn create_insurance(name: &str, cover: u32, cost: u32, heat_penalty: i32) -> Card {
     Card {
-        id: format!("test_{}", rand::random::<u32>()),
+        id: name.to_lowercase().replace(' ', "_"),
         name: name.to_string(),
         card_type: CardType::Insurance { cover, cost, heat_penalty },
         narrative_fragments: None,
+        shop_location: Some("the_corner".to_string()),
+        shop_price: Some(0),
     }
 }
 
-/// Create a Conviction card for testing
+/// Create a Conviction card for testing (no shop - Narc only)
 pub fn create_conviction(name: &str, heat_threshold: u32) -> Card {
     Card {
-        id: format!("test_{}", rand::random::<u32>()),
+        id: name.to_lowercase().replace(' ', "_"),
         name: name.to_string(),
         card_type: CardType::Conviction { heat_threshold },
         narrative_fragments: None,
+        shop_location: None,
+        shop_price: None,
+    }
+}
+
+/// Create a buyer-only location card (no shop_location)
+pub fn create_buyer_location(name: &str, evidence: u32, cover: u32, heat: i32) -> Card {
+    Card {
+        id: name.to_lowercase().replace(' ', "_"),
+        name: name.to_string(),
+        card_type: CardType::Location { evidence, cover, heat },
+        narrative_fragments: None,
+        shop_location: None,
+        shop_price: None,
+    }
+}
+
+/// Create a buyer-only modifier card (no shop_location)
+pub fn create_buyer_modifier(name: &str, price_multiplier: f32, evidence: i32, cover: i32, heat: i32) -> Card {
+    Card {
+        id: name.to_lowercase().replace(' ', "_"),
+        name: name.to_string(),
+        card_type: CardType::DealModifier { price_multiplier, evidence, cover, heat },
+        narrative_fragments: None,
+        shop_location: None,
+        shop_price: None,
     }
 }
 
@@ -160,17 +198,16 @@ fn create_mock_buyer_persona() -> BuyerPersona {
         },
         base_multiplier: 1.0,
         reduced_multiplier: 0.5,
-        heat_threshold: Some(50),
         evidence_threshold: None,
         reaction_deck_ids: vec![], // Empty for mock - not used in tests
         reaction_deck: vec![
-            create_deal_modifier("Test Modifier 1", 1.0, 10, 5, 5),
-            create_deal_modifier("Test Modifier 2", 1.0, 5, 10, 0),
-            create_location("Test Location 1", 5, 20, -5),
-            create_location("Test Location 2", 10, 15, 5),
-            create_deal_modifier("Test Modifier 3", 1.5, 15, 0, 10),
-            create_deal_modifier("Test Modifier 4", 0.8, 5, 15, -5),
-            create_deal_modifier("Test Modifier 5", 1.0, 5, 0, 20),
+            create_buyer_modifier("Test Modifier 1", 1.0, 10, 5, 5),
+            create_buyer_modifier("Test Modifier 2", 1.0, 5, 10, 0),
+            create_buyer_location("Test Location 1", 5, 20, -5),
+            create_buyer_location("Test Location 2", 10, 15, 5),
+            create_buyer_modifier("Test Modifier 3", 1.5, 15, 0, 10),
+            create_buyer_modifier("Test Modifier 4", 0.8, 5, 15, -5),
+            create_buyer_modifier("Test Modifier 5", 1.0, 5, 0, 20),
         ],
         scenarios: vec![
             BuyerScenario {

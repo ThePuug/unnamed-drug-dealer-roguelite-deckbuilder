@@ -1,5 +1,6 @@
 // SOW-AAA Phase 1: Deck validation and preset data creators
 // Extracted from main.rs (originally line 4151-4289)
+// SOW-020: Updated to support dynamic card availability
 
 use crate::models::card::{Card, CardType};
 
@@ -19,43 +20,78 @@ pub fn validate_deck(deck: &[Card]) -> Result<(), String> {
     Ok(())
 }
 
-/// Helper to get card from available pool by name
-fn get_card(available: &[Card], name: &str) -> Card {
+/// Helper to get card from available pool by name (returns Option for SOW-020 flexibility)
+fn try_get_card(available: &[Card], name: &str) -> Option<Card> {
     available.iter()
         .find(|c| c.name == name)
-        .expect(&format!("Card '{}' not found in available pool", name))
-        .clone()
+        .cloned()
 }
 
-/// Create default preset deck (20 cards: balanced selection from 24-card pool)
+/// SOW-020: Create default deck from whatever cards are available
+/// Selects a balanced mix based on what's unlocked, up to 20 cards
+pub fn create_default_deck_from_available(available: &[Card]) -> Vec<Card> {
+    let mut selected = Vec::new();
+
+    // Sort by card type for balanced selection
+    let products: Vec<_> = available.iter()
+        .filter(|c| matches!(c.card_type, CardType::Product { .. }))
+        .cloned()
+        .collect();
+    let locations: Vec<_> = available.iter()
+        .filter(|c| matches!(c.card_type, CardType::Location { .. }))
+        .cloned()
+        .collect();
+    let covers: Vec<_> = available.iter()
+        .filter(|c| matches!(c.card_type, CardType::Cover { .. }))
+        .cloned()
+        .collect();
+    let insurances: Vec<_> = available.iter()
+        .filter(|c| matches!(c.card_type, CardType::Insurance { .. }))
+        .cloned()
+        .collect();
+    let modifiers: Vec<_> = available.iter()
+        .filter(|c| matches!(c.card_type, CardType::DealModifier { .. }))
+        .cloned()
+        .collect();
+
+    // Target: 20 cards with balanced distribution
+    // Products: up to 5
+    selected.extend(products.into_iter().take(5));
+    // Locations: up to 4
+    selected.extend(locations.into_iter().take(4));
+    // Cover: up to 4
+    selected.extend(covers.into_iter().take(4));
+    // Insurance: up to 2
+    selected.extend(insurances.into_iter().take(2));
+    // Modifiers: up to 5
+    selected.extend(modifiers.into_iter().take(5));
+
+    selected
+}
+
+/// Create default preset deck (legacy - uses hardcoded names)
+/// Used when all cards are available
+#[allow(dead_code)]
 pub fn create_default_deck(available: &[Card]) -> Vec<Card> {
-    vec![
-        // 5 products (mix of tiers, exclude 4 products)
-        get_card(available, "Weed"),
-        get_card(available, "Codeine"),
-        get_card(available, "Ecstasy"),
-        get_card(available, "Coke"),
-        get_card(available, "Fentanyl"),
-        // 4 locations (all of them - dealer safe)
-        get_card(available, "Safe House"),
-        get_card(available, "Abandoned Warehouse"),
-        get_card(available, "Storage Unit"),
-        get_card(available, "Dead Drop"),
-        // 4 Cover cards (all of them)
-        get_card(available, "Alibi"),
-        get_card(available, "Bribe"),
-        get_card(available, "Fake Receipts"),
-        get_card(available, "Bribed Witness"),
-        // 2 Insurance (all of them)
-        get_card(available, "Plea Bargain"),
-        get_card(available, "Fake ID"),
-        // 5 modifiers (all of them)
-        get_card(available, "Disguise"),
-        get_card(available, "Burner Phone"),
-        get_card(available, "Lookout"),
-        get_card(available, "Clean Money"),
-        get_card(available, "False Trail"),
-    ]
+    // Preferred cards if available
+    let preferred = [
+        "Weed", "Codeine", "Ecstasy", "Coke", "Fentanyl",
+        "Safe House", "Abandoned Warehouse", "Storage Unit", "Dead Drop",
+        "Alibi", "Bribe", "Fake Receipts", "Bribed Witness",
+        "Plea Bargain", "Fake ID",
+        "Disguise", "Burner Phone", "Lookout", "Clean Money", "False Trail",
+    ];
+
+    let mut selected: Vec<Card> = preferred.iter()
+        .filter_map(|name| try_get_card(available, name))
+        .collect();
+
+    // If we don't have enough, fall back to dynamic selection
+    if selected.len() < 10 {
+        return create_default_deck_from_available(available);
+    }
+
+    selected
 }
 
 

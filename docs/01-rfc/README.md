@@ -26,6 +26,7 @@ RFCs bridge player needs and technical reality. Each RFC starts with a player-fa
 | 017 | Player Card Upgrades (Per-Run) | 🃏 Cards | ✅ Implemented (SOW-017 merged) | 2025-11-25 | - |
 | 018 | Narc Difficulty Scaling | 🎲 Roguelite | ✅ Implemented (SOW-018 merged) | 2025-11-25 | - |
 | 019 | Upgrade Stat Choice | 🃏 Cards | ✅ Implemented (SOW-019 merged) | 2025-11-27 | - |
+| 020 | Location Card Shops | 💰 Economy | ✅ Approved | 2025-11-27 | - |
 
 **Legend:**
 - **Status:** ✅ Implemented (merged to main) | ✅ Approved (ready for implementation) | 🔄 Under Review | 📝 Draft/Proposed | ❌ Rejected

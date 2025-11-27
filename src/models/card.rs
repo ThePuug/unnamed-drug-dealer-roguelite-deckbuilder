@@ -40,6 +40,12 @@ pub struct Card {
     // RFC-010: Tags will be added when implementing scenarios
     // SOW-012: Narrative fragments for story generation
     pub narrative_fragments: Option<NarrativeFragments>,
+    // SOW-020: Shop location system - which shop sells this card
+    #[serde(default)]
+    pub shop_location: Option<String>,
+    // SOW-020: Shop price (None = not for sale, 0 = starting collection)
+    #[serde(default)]
+    pub shop_price: Option<u32>,
 }
 
 /// Totals calculated from all played cards

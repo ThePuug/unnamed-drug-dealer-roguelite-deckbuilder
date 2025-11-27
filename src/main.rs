@@ -45,6 +45,7 @@ fn main() {
         .insert_resource(AiActionTimer::default())
         .init_resource::<CharacterLoaded>()
         .init_resource::<DecayInfo>()
+        .init_resource::<shop::ShopState>() // SOW-020: Shop state for deck builder
         .add_systems(Startup, setup)
         // Character persistence systems
         .add_systems(OnEnter(GameState::DeckBuilding), (
@@ -102,12 +103,20 @@ fn main() {
             story_history_button_system,
             update_deck_builder_ui_system,
             populate_deck_builder_cards_system,
+            // SOW-020: Shop systems
+            shop_tab_system,
+            shop_location_button_system,
+            populate_shop_cards_system,
+            shop_purchase_system,
+            update_shop_tab_visuals,
+            update_location_button_visuals,
             ui::ui_scroll_system, // Bevy 0.17: Manual scroll handling
         ).chain().run_if(in_state(GameState::DeckBuilding)))
         .run();
 }
 
 // SOW-013-B: Initialize DeckBuilder from loaded assets (OnEnter DeckBuilding state)
+// SOW-020: Filter by unlocked cards from AccountState
 // Only runs if DeckBuilder doesn't exist (first time entering DeckBuilding)
 fn initialize_deck_builder_from_assets(
     mut commands: Commands,
@@ -126,10 +135,16 @@ fn initialize_deck_builder_from_assets(
 
     // Only initialize if DeckBuilder doesn't exist yet
     if existing_deck_builder.is_none() {
-        let deck_builder = DeckBuilder::from_assets(&game_assets);
+        // SOW-020: Get unlocked cards from AccountState (or use starting collection for new saves)
+        let unlocked_cards = save_data
+            .as_ref()
+            .map(|data| data.account.unlocked_cards.clone())
+            .unwrap_or_else(|| save::AccountState::starting_collection());
+
+        let deck_builder = DeckBuilder::from_assets_filtered(&game_assets, &unlocked_cards);
         let card_count = deck_builder.available_cards.len();
         commands.insert_resource(deck_builder);
-        info!("DeckBuilder initialized from assets with {} cards", card_count);
+        info!("DeckBuilder initialized from assets with {} unlocked cards", card_count);
     } else {
         info!("DeckBuilder already exists - preserving current deck selection");
     }

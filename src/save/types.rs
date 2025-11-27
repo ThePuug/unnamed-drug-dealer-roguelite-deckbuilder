@@ -2,7 +2,7 @@
 
 use bevy::prelude::Resource;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Current save file format version
@@ -620,6 +620,10 @@ impl Default for CharacterState {
 /// RFC-016: Account Cash System
 /// - cash_on_hand: Spendable currency for unlocks
 /// - lifetime_revenue: Total ever earned (for achievements/leaderboards)
+///
+/// SOW-020: Location Card Shops
+/// - unlocked_cards: Set of card IDs the player has purchased
+/// - unlocked_locations: Set of shop location IDs the player can access
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct AccountState {
     /// Spendable cash (reduced by purchases)
@@ -628,7 +632,12 @@ pub struct AccountState {
     pub lifetime_revenue: u64,
     /// Total hands completed successfully
     pub hands_completed: u32,
-    // Future: unlocked_cards, unlocked_locations, achievements
+    /// SOW-020: Card IDs the player has unlocked (includes starting collection)
+    #[serde(default)]
+    pub unlocked_cards: HashSet<String>,
+    /// SOW-020: Shop location IDs the player can access
+    #[serde(default)]
+    pub unlocked_locations: HashSet<String>,
 }
 
 impl AccountState {
@@ -637,7 +646,52 @@ impl AccountState {
             cash_on_hand: 0,
             lifetime_revenue: 0,
             hands_completed: 0,
+            unlocked_cards: Self::starting_collection(),
+            unlocked_locations: HashSet::from(["the_corner".to_string()]),
         }
+    }
+
+    /// SOW-020: Starting card collection for new players
+    /// These cards are unlocked by default from The Corner
+    pub fn starting_collection() -> HashSet<String> {
+        HashSet::from([
+            // Products (basic tier)
+            "weed".to_string(),
+            "shrooms".to_string(),
+            "codeine".to_string(),
+            // Locations (simple spots)
+            "dead_drop".to_string(),
+            "parking_lot".to_string(),
+            "at_the_park".to_string(),
+            // Cover (basic)
+            "alibi".to_string(),
+            "fake_receipts".to_string(),
+            // Insurance (basic)
+            "fake_id".to_string(),
+            // Modifiers (basic)
+            "burner_phone".to_string(),
+            "lookout".to_string(),
+        ])
+    }
+
+    /// SOW-020: Check if a card is unlocked
+    pub fn is_card_unlocked(&self, card_id: &str) -> bool {
+        self.unlocked_cards.contains(card_id)
+    }
+
+    /// SOW-020: Unlock a card (called after purchase)
+    pub fn unlock_card(&mut self, card_id: &str) {
+        self.unlocked_cards.insert(card_id.to_string());
+    }
+
+    /// SOW-020: Check if a shop location is unlocked
+    pub fn is_location_unlocked(&self, location_id: &str) -> bool {
+        self.unlocked_locations.contains(location_id)
+    }
+
+    /// SOW-020: Unlock a shop location
+    pub fn unlock_location(&mut self, location_id: &str) {
+        self.unlocked_locations.insert(location_id.to_string());
     }
 
     /// Add profit from a successful hand

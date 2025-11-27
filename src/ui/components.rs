@@ -219,3 +219,50 @@ pub struct StoryHistoryCloseButton;
 
 #[derive(Component)]
 pub struct StoryHistoryText;
+
+// ============================================================================
+// SOW-020: Shop UI Components
+// ============================================================================
+
+/// Tab button container at top of deck builder
+#[derive(Component)]
+pub struct ShopTabsContainer;
+
+/// Individual tab button (Your Cards / Shop)
+#[derive(Component)]
+pub struct ShopTab {
+    pub is_shop: bool,
+}
+
+/// Container for shop location buttons
+#[derive(Component)]
+pub struct ShopLocationSelector;
+
+/// Button to select a shop location
+#[derive(Component)]
+pub struct ShopLocationButton {
+    pub location_id: String,
+}
+
+/// Container for shop cards display
+#[derive(Component)]
+pub struct ShopCardsContainer;
+
+/// Card display in shop showing price and locked/unlocked status
+#[derive(Component)]
+pub struct ShopCardDisplay {
+    pub card_id: String,
+    pub price: u32,
+    pub is_unlocked: bool,
+}
+
+/// Purchase button on a shop card
+#[derive(Component)]
+pub struct ShopPurchaseButton {
+    pub card_id: String,
+    pub price: u32,
+}
+
+/// Text showing the selected location name
+#[derive(Component)]
+pub struct ShopLocationNameText;
