@@ -4,30 +4,30 @@ SOWs are work orders for developers. Each SOW defines what needs to be built, wh
 
 ## SOW Index
 
-| # | Title | Category | Status | Created | Estimated | Actual |
-|---|-------|----------|--------|---------|-----------|--------|
-| 001 | Minimal Playable Hand | 🛠️ Foundation | ✅ Merged | 2025-11-09 | 12-16 hours | 4 hours |
-| 002 | Betting System and AI | 🃏 Cards | ✅ Merged | 2025-11-09 | 15-18 hours | 4 hours |
-| 003 | Insurance and Complete Cards | 🃏 Cards | ✅ Merged | 2025-11-09 | 12-14 hours | ~8 hours |
-| 004 | Card Retention Between Hands | 🃏 Cards | ✅ Merged | 2025-11-09 | 4-6 hours | ~3 hours |
-| 005 | Deck Balance and Card Distribution | 🃏 Cards | ✅ Merged | 2025-11-09 | 4-6 hours | ~4 hours |
-| 006 | Run Progression and Meta Systems | 🎲 Roguelite | ✅ Merged | 2025-11-09 | 8-10 hours | ~6 hours |
-| 007 | Meaningful Betting Decisions | 🎲 Roguelite | ❌ Rejected | 2025-11-10 | 6-8 hours | N/A |
-| 008 | Sequential Play with Progressive Dealer Reveals | 🎲 Roguelite | ✅ Merged | 2025-11-10 | 8-12 hours | ~5 hours |
-| 009 | Buyer System (Merged Dealer + Customer) | 🎲 Roguelite | ✅ Merged | 2025-11-11 | 10-13 hours | ~9 hours |
-| 010 | Buyer Scenarios and Product/Location Expansion | 🃏 Cards | ✅ Merged | 2025-11-15 | 13-17 hours | ~11 hours |
-| 011-A | UI Refactor - Core Layout & Foundation | 🎨 UI | ✅ Merged | 2025-11-15 | 14-18 hours | ~11.5 hours |
-| 011-B | UI Refactor - Hand Resolution & Polish | 🎨 UI | ✅ Merged | 2025-11-15 | 8-10 hours | ~5 hours |
-| 012 | Narrative Generation System | 🎨 UI | ✅ Merged | 2025-11-16 | 14-18 hours | ~10 hours |
-| 013 | Asset Externalization | 🛠️ Dev Tools | ✅ Merged | 2025-11-18 | 8-12 hours | ~6 hours |
-| 014 | Dynamic Narrative Construction | 🎨 UI | ✅ Merged | 2025-11-19 | 8-10 hours | ~8 hours |
-| 015 | Heat & Character Persistence | 🎲 Roguelite | ✅ Merged | 2025-11-25 | 14-18 hours | ~8 hours |
-| 016 | Account Cash System | 💰 Economy | ✅ Merged | 2025-11-25 | 8-10 hours | ~4 hours |
-| 017 | Player Card Upgrades | 🃏 Cards | ✅ Merged | 2025-11-25 | 10-14 hours | ~6 hours |
-| 018 | Narc Difficulty Scaling | 🎲 Roguelite | ✅ Merged | 2025-11-26 | 4-8 hours | ~4 hours |
-| 019 | Upgrade Stat Choice | 🃏 Cards | ✅ Merged | 2025-11-27 | 6-8 hours | ~4 hours |
-| 020 | Location Card Shops | 💰 Economy | 📝 Planned | 2025-11-27 | 4-6 hours | - |
-| AAA | Code Organization - main.rs Modularization | 🛠️ Dev Tools | 🔄 In Progress | 2025-11-15 | 16-24 hours | ~3 hours (Phases 1-4) |
+| # | Title | Category | Status | Created |
+|---|-------|----------|--------|---------|
+| 001 | Minimal Playable Hand | 🛠️ Foundation | ✅ Merged | 2025-11-09 |
+| 002 | Betting System and AI | 🃏 Cards | ✅ Merged | 2025-11-09 |
+| 003 | Insurance and Complete Cards | 🃏 Cards | ✅ Merged | 2025-11-09 |
+| 004 | Card Retention Between Hands | 🃏 Cards | ✅ Merged | 2025-11-09 |
+| 005 | Deck Balance and Card Distribution | 🃏 Cards | ✅ Merged | 2025-11-09 |
+| 006 | Run Progression and Meta Systems | 🎲 Roguelite | ✅ Merged | 2025-11-09 |
+| 007 | Meaningful Betting Decisions | 🎲 Roguelite | ❌ Rejected | 2025-11-10 |
+| 008 | Sequential Play with Progressive Dealer Reveals | 🎲 Roguelite | ✅ Merged | 2025-11-10 |
+| 009 | Buyer System (Merged Dealer + Customer) | 🎲 Roguelite | ✅ Merged | 2025-11-11 |
+| 010 | Buyer Scenarios and Product/Location Expansion | 🃏 Cards | ✅ Merged | 2025-11-15 |
+| 011-A | UI Refactor - Core Layout & Foundation | 🎨 UI | ✅ Merged | 2025-11-15 |
+| 011-B | UI Refactor - Hand Resolution & Polish | 🎨 UI | ✅ Merged | 2025-11-15 |
+| 012 | Narrative Generation System | 🎨 UI | ✅ Merged | 2025-11-16 |
+| 013 | Asset Externalization | 🛠️ Dev Tools | ✅ Merged | 2025-11-18 |
+| 014 | Dynamic Narrative Construction | 🎨 UI | ✅ Merged | 2025-11-19 |
+| 015 | Heat & Character Persistence | 🎲 Roguelite | ✅ Merged | 2025-11-25 |
+| 016 | Account Cash System | 💰 Economy | ✅ Merged | 2025-11-25 |
+| 017 | Player Card Upgrades | 🃏 Cards | ✅ Merged | 2025-11-25 |
+| 018 | Narc Difficulty Scaling | 🎲 Roguelite | ✅ Merged | 2025-11-26 |
+| 019 | Upgrade Stat Choice | 🃏 Cards | ✅ Merged | 2025-11-27 |
+| 020 | Location Card Shops | 💰 Economy | ✅ Merged | 2025-11-27 |
+| AAA | Code Organization - main.rs Modularization | 🛠️ Dev Tools | ✅ Merged | 2025-11-15 |
 
 **Legend:**
 - **Status:** ✅ Accepted/Merged | 🔄 In Progress/Review | 📝 Planned/Proposed | ❌ Rejected

@@ -1,8 +1,8 @@
 # Progression & Meta-Game - Feature Matrix
 
 **Spec:** [progression-meta.md](progression-meta.md)
-**Last Updated:** 2025-11-27
-**Overall Status:** 14/35 features complete (40%)
+**Last Updated:** 2025-11-29
+**Overall Status:** 26/35 features complete (74%)
 
 ---
 
@@ -10,51 +10,51 @@
 
 | Category | Complete | Total | % |
 |----------|:--------:|:-----:|:-:|
-| Cash System | 4 | 5 | 80% |
-| Location System | 0 | 6 | 0% |
-| Card Unlock System | 0 | 6 | 0% |
+| Cash System | 5 | 5 | 100% |
+| Location System | 5 | 6 | 83% |
+| Card Unlock System | 6 | 6 | 100% |
 | Per-Run Card Upgrades | 7 | 7 | 100% |
 | Character System | 3 | 7 | 43% |
 | Achievements | 0 | 4 | 0% |
-| **Total** | **14** | **35** | **40%** |
+| **Total** | **26** | **35** | **74%** |
 
 ---
 
-## Cash System - 4/5 (80%)
+## Cash System - 5/5 (100%)
 
 | Feature | Status | Notes |
 |---------|:------:|-------|
 | Cash on hand tracking | ✅ | AccountState.cash_on_hand |
 | Cash persistence (account-wide) | ✅ | Survives permadeath |
 | Cash earning (from deals) | ✅ | Add profit on Safe outcome |
-| Cash spending (at locations) | 🔄 | SOW-020 planned |
+| Cash spending (at locations) | ✅ | SOW-020 |
 | Lifetime revenue metric | ✅ | AccountState.lifetime_revenue |
 
 ---
 
-## Location System - 0/6 (0%)
+## Location System - 5/6 (83%)
 
 | Feature | Status | Notes |
 |---------|:------:|-------|
-| Starting location (The Corner) | 🔄 | SOW-020 planned |
-| Location as card shops | 🔄 | SOW-020 planned |
+| Starting location (The Corner) | ✅ | SOW-020 |
+| Location as card shops | ✅ | SOW-020 |
 | Achievement-gated unlocks | ❌ | Deferred to future RFC |
-| Location permanence | 🔄 | SOW-020 planned |
-| Multi-location shopping | 🔄 | SOW-020 planned |
-| Location UI (shop interface) | 🔄 | SOW-020 planned |
+| Location permanence | ✅ | SOW-020 |
+| Multi-location shopping | ✅ | SOW-020 |
+| Location UI (shop interface) | ✅ | SOW-020 |
 
 ---
 
-## Card Unlock System - 0/6 (0%)
+## Card Unlock System - 6/6 (100%)
 
 | Feature | Status | Notes |
 |---------|:------:|-------|
-| Starting collection | 🔄 | SOW-020 planned |
-| Location-specific card pools | 🔄 | SOW-020 planned |
-| Cash purchase of cards | 🔄 | SOW-020 planned |
-| Permanent card unlocks | 🔄 | SOW-020 planned |
-| Card pricing tiers | 🔄 | SOW-020 planned |
-| Card purchase UI | 🔄 | SOW-020 planned |
+| Starting collection | ✅ | SOW-020 |
+| Location-specific card pools | ✅ | SOW-020 |
+| Cash purchase of cards | ✅ | SOW-020 |
+| Permanent card unlocks | ✅ | SOW-020 |
+| Card pricing tiers | ✅ | SOW-020 |
+| Card purchase UI | ✅ | SOW-020 |
 
 ---
 
@@ -118,8 +118,8 @@
 ## Remaining Work for Launch
 
 **Priority 1 - Core Meta Loop:**
-- Location System (6 features)
-- Card Unlock System (6 features)
+- ~~Location System~~ ✅ (5/6 complete, achievement-gating deferred)
+- ~~Card Unlock System~~ ✅ (6/6 complete)
 - Achievements (4 features)
 
 **Priority 2 - Character Variety:**
