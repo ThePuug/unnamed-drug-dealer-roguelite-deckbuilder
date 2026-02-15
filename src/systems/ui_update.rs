@@ -1,6 +1,6 @@
 // SOW-AAA: UI update systems
 // Extracted from main.rs
-// Updated for Bevy 0.17
+// Updated for Bevy 0.18
 
 use bevy::prelude::*;
 use crate::{CardType, HandState, HandPhase, DeckBuilder, Owner};

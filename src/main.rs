@@ -110,7 +110,7 @@ fn main() {
             shop_purchase_system,
             update_shop_tab_visuals,
             update_location_button_visuals,
-            ui::ui_scroll_system, // Bevy 0.17: Manual scroll handling
+            ui::ui_scroll_system, // Bevy 0.18: Manual scroll handling
         ).chain().run_if(in_state(GameState::DeckBuilding)))
         .run();
 }

@@ -1,6 +1,6 @@
 // UI Helpers - Reusable card display functions
 // SOW-011-A Phase 2: Eliminates ~200 lines of duplicated card rendering logic
-// Updated for Bevy 0.17
+// Updated for Bevy 0.18
 
 use bevy::prelude::*;
 use crate::CardType;
@@ -312,10 +312,10 @@ fn spawn_card_text_overlays(
                     height: Val::Px(16.0 * scale),
                     justify_content: JustifyContent::Center,
                     align_items: AlignItems::Center,
+                    border_radius: BorderRadius::all(Val::Px(8.0 * scale)),
                     ..default()
                 },
                 BackgroundColor(badge_bg),
-                BorderRadius::all(Val::Px(8.0 * scale)),
             ))
             .with_children(|parent| {
                 // Use default font (DejaVuSans has filled star ★ U+2605)
@@ -418,7 +418,7 @@ fn spawn_card_text_overlays(
         });
     }
 
-    // Bottom banner: Card name (font size reduced for Bevy 0.17)
+    // Bottom banner: Card name (font size reduced for Bevy 0.18)
     parent.spawn(Node {
         position_type: PositionType::Absolute,
         left: Val::Percent(8.0),

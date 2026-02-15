@@ -1,7 +1,7 @@
 // UI Systems - Update systems for active slots, heat bar, etc.
 // SOW-011-A Phase 4: Active slot population and heat bar updates
 // SOW-011-B Phase 1: Resolution overlay system
-// Updated for Bevy 0.17
+// Updated for Bevy 0.18
 
 use bevy::prelude::*;
 use crate::{HandState, CardType, Card, HandPhase, HandOutcome, Owner};
@@ -462,9 +462,9 @@ pub fn update_background_system(
 }
 
 /// Handle mouse wheel scrolling for UI containers with ScrollPosition
-/// Bevy 0.17 requires manual scroll handling
+/// Bevy 0.18 requires manual scroll handling
 pub fn ui_scroll_system(
-    mut mouse_wheel_events: EventReader<bevy::input::mouse::MouseWheel>,
+    mut mouse_wheel_events: MessageReader<bevy::input::mouse::MouseWheel>,
     mut scroll_query: Query<(&Interaction, &mut ScrollPosition, &ComputedNode), With<CardPoolContainer>>,
 ) {
     use bevy::input::mouse::MouseScrollUnit;

@@ -1,6 +1,6 @@
 // SOW-AAA: UI setup functions
 // Extracted from main.rs
-// Updated for Bevy 0.17
+// Updated for Bevy 0.18
 
 use bevy::prelude::*;
 use super::theme;
@@ -168,7 +168,7 @@ pub fn setup_deck_builder(
             },
             BackgroundColor(theme::CARD_POOL_BG),
             Interaction::None, // Required for hover detection
-            ScrollPosition::default(), // Bevy 0.17: Required for scrolling
+            ScrollPosition::default(), // Bevy 0.18: Required for scrolling
             CardPoolContainer,
         ))
         .with_children(|parent| {

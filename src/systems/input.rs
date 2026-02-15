@@ -1,6 +1,6 @@
 // SOW-AAA: Input and button systems
 // Extracted from main.rs
-// Updated for Bevy 0.17
+// Updated for Bevy 0.18
 
 use bevy::prelude::*;
 use rand::prelude::*;

@@ -89,7 +89,7 @@ pub fn setup_upgrade_choice_ui(
 
                 opt_parent.spawn((
                     Button,
-                    Interaction::default(), // Explicitly add for Bevy 0.17
+                    Interaction::default(), // Explicitly add for Bevy 0.18
                     Node {
                         width: Val::Px(200.0),
                         height: Val::Px(120.0),
