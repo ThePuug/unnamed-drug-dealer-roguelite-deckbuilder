@@ -6,7 +6,9 @@ use std::collections::{HashMap, HashSet};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Current save file format version
-pub const SAVE_VERSION: u32 = 1;
+/// SOW-021: Bumped 1 -> 2 (upgrade thresholds changed from testing to spec values;
+/// older saves are rejected and the game starts a fresh account)
+pub const SAVE_VERSION: u32 = 2;
 
 /// Maximum sanity values for validation
 const MAX_HEAT: u32 = 10_000;
@@ -174,25 +176,25 @@ impl HeatTier {
 /// RFC-017: Card upgrade tier based on play count
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum UpgradeTier {
-    Base,   // 0-4 plays: No bonus
-    Tier1,  // 5+ plays: +10% primary stat
-    Tier2,  // Bronze: 12+ plays (TESTING: 2+)
-    Tier3,  // Silver: 25+ plays (TESTING: 3+)
-    Tier4,  // Gold: 50+ plays (TESTING: 4+)
-    Tier5,  // Foil: 100+ plays (TESTING: 5+)
+    Base,   // 0-2 plays: No bonus
+    Tier1,  // 3+ plays: +10% primary stat
+    Tier2,  // Bronze: 8+ plays
+    Tier3,  // Silver: 15+ plays
+    Tier4,  // Gold: 25+ plays
+    Tier5,  // Foil: 40+ plays
 }
 
 impl UpgradeTier {
     /// Calculate tier from play count
-    /// TESTING: Using 1/2/3/4/5 thresholds (production: 5/12/25/50/100)
+    /// SOW-021: Spec thresholds per card-system.md (0/3/8/15/25/40 plays)
     pub fn from_play_count(count: u32) -> Self {
         match count {
-            0 => UpgradeTier::Base,
-            1 => UpgradeTier::Tier1,   // TESTING (production: 5..=11)
-            2 => UpgradeTier::Tier2,   // TESTING (production: 12..=24)
-            3 => UpgradeTier::Tier3,   // TESTING (production: 25..=49)
-            4 => UpgradeTier::Tier4,   // TESTING (production: 50..=99)
-            _ => UpgradeTier::Tier5,   // TESTING: 5+ (production: 100+)
+            0..=2 => UpgradeTier::Base,
+            3..=7 => UpgradeTier::Tier1,
+            8..=14 => UpgradeTier::Tier2,
+            15..=24 => UpgradeTier::Tier3,
+            25..=39 => UpgradeTier::Tier4,
+            _ => UpgradeTier::Tier5,
         }
     }
 
@@ -211,11 +213,11 @@ impl UpgradeTier {
     /// Get plays needed for next tier (None if max tier)
     pub fn plays_to_next(&self) -> Option<u32> {
         match self {
-            UpgradeTier::Base => Some(1),   // TESTING (production: 5)
-            UpgradeTier::Tier1 => Some(2),  // TESTING (production: 12)
-            UpgradeTier::Tier2 => Some(3),  // TESTING (production: 25)
-            UpgradeTier::Tier3 => Some(4),  // TESTING (production: 50)
-            UpgradeTier::Tier4 => Some(5),  // TESTING (production: 100)
+            UpgradeTier::Base => Some(3),
+            UpgradeTier::Tier1 => Some(8),
+            UpgradeTier::Tier2 => Some(15),
+            UpgradeTier::Tier3 => Some(25),
+            UpgradeTier::Tier4 => Some(40),
             UpgradeTier::Tier5 => None,     // Max tier
         }
     }
@@ -955,12 +957,18 @@ mod tests {
     #[test]
     fn test_upgrade_tier_from_play_count() {
         // TESTING MODE: Tiers at 0/1/2/3/4/5 plays (production: 0/5/12/25/50/100)
+        // SOW-021: Spec thresholds (card-system.md): 0/3/8/15/25/40
         assert_eq!(UpgradeTier::from_play_count(0), UpgradeTier::Base);
-        assert_eq!(UpgradeTier::from_play_count(1), UpgradeTier::Tier1);
-        assert_eq!(UpgradeTier::from_play_count(2), UpgradeTier::Tier2);
-        assert_eq!(UpgradeTier::from_play_count(3), UpgradeTier::Tier3);
-        assert_eq!(UpgradeTier::from_play_count(4), UpgradeTier::Tier4);
-        assert_eq!(UpgradeTier::from_play_count(5), UpgradeTier::Tier5);
+        assert_eq!(UpgradeTier::from_play_count(2), UpgradeTier::Base);
+        assert_eq!(UpgradeTier::from_play_count(3), UpgradeTier::Tier1);
+        assert_eq!(UpgradeTier::from_play_count(7), UpgradeTier::Tier1);
+        assert_eq!(UpgradeTier::from_play_count(8), UpgradeTier::Tier2);
+        assert_eq!(UpgradeTier::from_play_count(14), UpgradeTier::Tier2);
+        assert_eq!(UpgradeTier::from_play_count(15), UpgradeTier::Tier3);
+        assert_eq!(UpgradeTier::from_play_count(24), UpgradeTier::Tier3);
+        assert_eq!(UpgradeTier::from_play_count(25), UpgradeTier::Tier4);
+        assert_eq!(UpgradeTier::from_play_count(39), UpgradeTier::Tier4);
+        assert_eq!(UpgradeTier::from_play_count(40), UpgradeTier::Tier5);
         assert_eq!(UpgradeTier::from_play_count(100), UpgradeTier::Tier5);
     }
 
@@ -977,11 +985,11 @@ mod tests {
     #[test]
     fn test_upgrade_tier_plays_to_next() {
         // TESTING MODE thresholds for next tier
-        assert_eq!(UpgradeTier::Base.plays_to_next(), Some(1));
-        assert_eq!(UpgradeTier::Tier1.plays_to_next(), Some(2));
-        assert_eq!(UpgradeTier::Tier2.plays_to_next(), Some(3));
-        assert_eq!(UpgradeTier::Tier3.plays_to_next(), Some(4));
-        assert_eq!(UpgradeTier::Tier4.plays_to_next(), Some(5));
+        assert_eq!(UpgradeTier::Base.plays_to_next(), Some(3));
+        assert_eq!(UpgradeTier::Tier1.plays_to_next(), Some(8));
+        assert_eq!(UpgradeTier::Tier2.plays_to_next(), Some(15));
+        assert_eq!(UpgradeTier::Tier3.plays_to_next(), Some(25));
+        assert_eq!(UpgradeTier::Tier4.plays_to_next(), Some(40));
         assert_eq!(UpgradeTier::Tier5.plays_to_next(), None); // Max tier
     }
 
@@ -1051,24 +1059,28 @@ mod tests {
     fn test_character_get_card_tier() {
         let mut state = CharacterState::new();
 
+        // SOW-021: Spec thresholds (0/3/8/15/25/40)
         // No plays = Base tier
         assert_eq!(state.get_card_tier("Test Card"), UpgradeTier::Base);
 
-        // TESTING MODE: 1st play = Tier 1
+        // 2 plays still Base; 3rd play reaches Tier 1
+        state.increment_play_count("Test Card");
+        state.increment_play_count("Test Card");
+        assert_eq!(state.get_card_tier("Test Card"), UpgradeTier::Base);
         state.increment_play_count("Test Card");
         assert_eq!(state.get_card_tier("Test Card"), UpgradeTier::Tier1);
 
-        // 2nd play = Tier 2 (TESTING MODE)
-        state.increment_play_count("Test Card");
+        // 8 plays = Tier 2
+        for _ in 0..5 {
+            state.increment_play_count("Test Card");
+        }
         assert_eq!(state.get_card_tier("Test Card"), UpgradeTier::Tier2);
 
-        // Continue to max tier
-        state.increment_play_count("Test Card"); // 3 plays = Tier3
-        state.increment_play_count("Test Card"); // 4 plays = Tier4
-        state.increment_play_count("Test Card"); // 5 plays = Tier5 (max)
+        // 40 plays = Tier 5 (max); more plays stay at max
+        for _ in 0..32 {
+            state.increment_play_count("Test Card");
+        }
         assert_eq!(state.get_card_tier("Test Card"), UpgradeTier::Tier5);
-
-        // More plays stay at Tier5 (max)
         state.increment_play_count("Test Card");
         assert_eq!(state.get_card_tier("Test Card"), UpgradeTier::Tier5);
     }

@@ -90,7 +90,9 @@ pub fn load_save(path: &Path) -> Result<SaveData, SaveError> {
         .map_err(|_| SaveError::TamperedOrCorrupted)?;
 
     // Check version
-    if save_file.version > SAVE_VERSION {
+    // SOW-021: Reject any mismatched version (older or newer). There is no
+    // migration path pre-release; load_or_create falls back to a fresh account.
+    if save_file.version != SAVE_VERSION {
         return Err(SaveError::UnsupportedVersion(save_file.version));
     }
 
@@ -193,5 +195,26 @@ mod tests {
     fn test_get_save_directory_creates_dir() {
         let dir = get_save_directory();
         assert!(dir.exists());
+    }
+
+    #[test]
+    fn test_old_version_rejected() {
+        // SOW-021: version mismatch (older or newer) must be rejected so
+        // load_or_create falls back to a fresh account instead of
+        // misinterpreting stale data (e.g., pre-spec upgrade thresholds).
+        let dir = tempdir().unwrap();
+        let save_path = dir.path().join("save.dat");
+
+        let payload = bincode::serialize(&SaveData::new()).unwrap();
+        let signature = crypto::sign(&payload);
+        let old_file = SaveFile {
+            version: SAVE_VERSION - 1,
+            data: payload,
+            signature,
+        };
+        fs::write(&save_path, bincode::serialize(&old_file).unwrap()).unwrap();
+
+        let result = load_save(&save_path);
+        assert!(matches!(result, Err(SaveError::UnsupportedVersion(v)) if v == SAVE_VERSION - 1));
     }
 }

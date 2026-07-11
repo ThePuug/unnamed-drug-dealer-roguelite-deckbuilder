@@ -148,7 +148,7 @@ pub fn restart_button_system(
 // ============================================================================
 pub fn update_restart_button_states(
     hand_state_query: Query<&HandState>,
-    mut restart_button_query: Query<(&mut BackgroundColor, &mut Visibility), With<RestartButton>>,
+    mut restart_button_query: Query<(&mut BackgroundColor, &mut Visibility, &Children), With<RestartButton>>,
     go_home_button_query: Query<(Entity, &Children), With<GoHomeButton>>,
     mut text_query: Query<&mut Text>,
 ) {
@@ -164,7 +164,7 @@ pub fn update_restart_button_states(
     let is_busted = matches!(hand_state.outcome, Some(HandOutcome::Busted));
 
     // NEW DEAL button: Hide if busted, disable if deck exhausted
-    let (mut bg_color, mut visibility) = restart_button_query
+    let (mut bg_color, mut visibility, restart_children) = restart_button_query
         .single_mut()
         .expect("Expected exactly one RestartButton in resolution overlay");
 
@@ -180,6 +180,17 @@ pub fn update_restart_button_states(
         } else {
             theme::BUTTON_DISABLED_BG.into()
         };
+
+        // SOW-021: Explain WHY the button is disabled on deck exhaustion
+        for child in restart_children.iter() {
+            if let Ok(mut text) = text_query.get_mut(child) {
+                **text = if can_deal {
+                    "NEW DEAL".to_string()
+                } else {
+                    "OUT OF CARDS".to_string()
+                };
+            }
+        }
     }
 
     // GO HOME button text: "GO HOME" if safe, "END RUN" if busted
