@@ -111,7 +111,13 @@ impl HandState {
             if self.cash >= cost {
                 // Activate insurance: pay cost, gain heat penalty
                 self.cash -= cost;
-                self.current_heat = self.current_heat.saturating_add(heat_penalty as u32);
+                // SOW-021: apply the HeatPenalty upgrade stat (decrease semantics,
+                // like Heat/Evidence in calculate_totals) - this is the only charge
+                // site, so without it the upgrade choice would do nothing
+                let penalty_mult =
+                    2.0 - self.get_stat_multiplier(&insurance_name, crate::save::UpgradeableStat::HeatPenalty);
+                let effective_penalty = (heat_penalty as f32 * penalty_mult).round() as u32;
+                self.current_heat = self.current_heat.saturating_add(effective_penalty);
 
                 // Burn insurance card (remove from deck permanently)
                 self.cards_mut(Owner::Player).deck.retain(|card| card.name != insurance_name);
@@ -211,6 +217,29 @@ mod tests {
         // In this test we push directly, so only insurance heat_penalty is added during activation
         let insurance_heat = if let CardType::Insurance { heat_penalty, .. } = insurance.card_type { heat_penalty } else { 0 };
         assert_eq!(hand_state.current_heat, insurance_heat as u32);
+    }
+
+    #[test]
+    fn test_insurance_heat_penalty_upgrade_reduces_activation_heat() {
+        // SOW-021: activation is the only heat_penalty charge site, so the
+        // HeatPenalty upgrade stat must apply there or it does nothing at all
+        let mut hand_state = HandState::default();
+        hand_state.cash = 1500;
+
+        hand_state.cards_played.push(create_product("Weed", 30, 5));
+        hand_state.cards_played.push(create_location("Location", 30, 20, 0));
+        hand_state.cards_played.push(create_insurance("Plea Bargain", 5, 1000, 20));
+
+        // Two HeatPenalty upgrades: stat multiplier 1.2 -> penalty x0.8
+        let mut upgrades = crate::save::CardUpgrades::new();
+        upgrades.add_upgrade(crate::save::UpgradeableStat::HeatPenalty);
+        upgrades.add_upgrade(crate::save::UpgradeableStat::HeatPenalty);
+        hand_state.card_upgrades.insert("Plea Bargain".to_string(), upgrades);
+
+        let outcome = hand_state.resolve_hand();
+        assert_eq!(outcome, HandOutcome::Safe);
+        // Penalty 20 x (2.0 - 1.2) = 16 instead of the raw 20
+        assert_eq!(hand_state.current_heat, 16);
     }
 
     #[test]

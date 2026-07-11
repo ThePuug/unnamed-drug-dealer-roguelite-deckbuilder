@@ -225,6 +225,15 @@ impl HandState {
         self.active_product(true).is_some() && self.active_location(true).is_some()
     }
 
+    /// SOW-021: Cards the player could bring to a next hand - deck PLUS unplayed
+    /// hand cards. start_next_hand returns unplayed hand cards to the deck
+    /// (shuffle_cards_back) before its exhaustion check, so raw deck.len()
+    /// understates availability; UI exhaustion checks must use this instead.
+    pub fn playable_cards_remaining(&self) -> usize {
+        let cards = self.cards(Owner::Player);
+        cards.deck.len() + cards.hand.iter().filter(|s| s.is_some()).count()
+    }
+
     /// Get heat value from a card (applies Narc multiplier for Evidence cards)
     fn get_card_heat(&self, card: &Card, owner: Owner) -> i32 {
         use crate::CardType;

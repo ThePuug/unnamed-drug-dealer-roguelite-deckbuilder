@@ -129,7 +129,9 @@ pub fn restart_button_system(
             }
 
             // Check if deck is exhausted
-            if hand_state.cards(Owner::Player).deck.len() < 3 {
+            // SOW-021: count deck + unplayed hand (matches start_next_hand's
+            // own post-shuffle-back exhaustion check)
+            if hand_state.playable_cards_remaining() < 3 {
                 // Button disabled, ignore click
                 return;
             }
@@ -173,8 +175,9 @@ pub fn update_restart_button_states(
         *visibility = Visibility::Hidden;
     } else {
         // Safe/Folded: Show NEW DEAL, disable if deck exhausted
+        // SOW-021: exhaustion counts deck + unplayed hand, matching the engine
         *visibility = Visibility::Visible;
-        let can_deal = hand_state.cards(Owner::Player).deck.len() >= 3;
+        let can_deal = hand_state.playable_cards_remaining() >= 3;
         *bg_color = if can_deal {
             theme::BUTTON_ENABLED_BG.into()
         } else {
@@ -182,13 +185,13 @@ pub fn update_restart_button_states(
         };
 
         // SOW-021: Explain WHY the button is disabled on deck exhaustion
+        // (write only on change - this system runs every frame)
+        let label = if can_deal { "NEW DEAL" } else { "OUT OF CARDS" };
         for child in restart_children.iter() {
             if let Ok(mut text) = text_query.get_mut(child) {
-                **text = if can_deal {
-                    "NEW DEAL".to_string()
-                } else {
-                    "OUT OF CARDS".to_string()
-                };
+                if **text != label {
+                    **text = label.to_string();
+                }
             }
         }
     }
@@ -198,13 +201,12 @@ pub fn update_restart_button_states(
         .single()
         .expect("Expected exactly one GoHomeButton in resolution overlay");
 
+    let go_home_label = if is_busted { "END RUN" } else { "GO HOME" };
     for child in children.iter() {
         if let Ok(mut text) = text_query.get_mut(child) {
-            **text = if is_busted {
-                "END RUN".to_string()
-            } else {
-                "GO HOME".to_string()
-            };
+            if **text != go_home_label {
+                **text = go_home_label.to_string();
+            }
         }
     }
 }

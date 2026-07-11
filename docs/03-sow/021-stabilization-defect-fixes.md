@@ -131,7 +131,21 @@
 
 ## Discussion
 
-*This section is populated during implementation with questions, decisions, and deviations.*
+### Implementation Note: Deck exhaustion modeled as "no outcome change", not a new HandOutcome variant
+
+Considered adding a `HandOutcome::DeckExhausted` variant, but that ripples through every outcome match (resolution, save integration, UI overlay, narrative patterns) for a state the UI already prevents. Chose instead: `start_next_hand` returns `false` and leaves the prior (Safe/Folded) outcome untouched, so the resolution overlay simply persists with NEW DEAL disabled — and the disabled button now reads "OUT OF CARDS" so the player knows why. The permadeath precondition (`outcome == Busted`) can no longer be fabricated by exhaustion through any path.
+
+### Implementation Note: Demand string fix choices
+
+"Pills" mapped per persona flavor: Ecstasy (Frat Bro), Codeine (Desperate Housewife), Coke (Wall Street Wolf). "Park" → "At the Park", "Warehouse" → "Abandoned Warehouse", "Private Residence" → "Safe House". "Dorm" and "Office" removed (no card exists; authoring those as player-ownable cards is future content work). Two demand targets remain gated behind the locked Block shop — Safe House (Housewife) and Ice/Coke (Wolf "Adrenaline Junkie", pre-existing) — accepted here; both resolve when location unlocking ships.
+
+### Implementation Note: Audit found more dead strings than the review listed
+
+The review named "Private Residence", "Dorm", "Office", "Park". The load-time validator also caught "Pills" (in all three buyers' base demands) and "Warehouse" (≠ "Abandoned Warehouse"), and Frat Bro's base demand locations were 100% dead ("Dorm", "Party", "Park"). This is exactly the failure class the validator now prevents — a name-based system with no integrity check.
+
+### Implementation Note: Batched upgrade screen API
+
+`CharacterState::apply_upgrade_choice` (head-of-queue only) replaced by `apply_upgrade_choice_for(card_name, stat)` so rows on the batched screen resolve in any order. Keyboard shortcuts 1/2 resolve the *first* pending upgrade's two options. DECIDE LATER sets an `UpgradeChoiceDeferred` resource consumed by `check_pending_upgrades_system` and `initialize_deck_builder_from_assets`; the flag clears on entering InRun so deferred upgrades re-prompt after the next run.
 
 ---
 

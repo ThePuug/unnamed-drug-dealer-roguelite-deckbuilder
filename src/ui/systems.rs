@@ -292,12 +292,13 @@ pub fn update_resolution_overlay_system(
                 }
             }
             Some(HandOutcome::Busted) => {
-                if hand_state.cards(Owner::Player).deck.len() < 3 {
-                    results.push_str(&format!("Deck Exhausted: {} cards\n\nRun Ends", hand_state.cards(Owner::Player).deck.len()));
-                } else {
-                    results.push_str(&format!("Evidence: {} > Cover: {} ✗\n\n", totals.evidence, totals.cover));
-                    results.push_str("You got caught!");
-                }
+                // SOW-021: Busted now ONLY means a genuine bust (exhaustion no longer
+                // fabricates this outcome), so always explain the actual cause.
+                // The old deck.len() < 3 special case here mislabeled real late-run
+                // busts as "Deck Exhausted" - exhaustion messaging lives on the
+                // NEW DEAL button ("OUT OF CARDS") instead.
+                results.push_str(&format!("Evidence: {} > Cover: {} ✗\n\n", totals.evidence, totals.cover));
+                results.push_str("You got caught!");
             }
             Some(HandOutcome::Folded) => {
                 results.push_str("You bailed out\n\nNo profit, no risk");

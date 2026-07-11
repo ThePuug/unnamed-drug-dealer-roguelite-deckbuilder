@@ -456,6 +456,12 @@ impl CharacterState {
 
         let decay = elapsed_hours.min(self.heat);
         self.heat = self.heat.saturating_sub(decay);
+        // SOW-021: consume the decay window so repeated calls are idempotent.
+        // OnEnter(DeckBuilding) fires more than once per launch (UpgradeChoice
+        // round trips), which previously re-applied the same decay each time.
+        if decay > 0 {
+            self.last_played = now;
+        }
         decay
     }
 
@@ -832,6 +838,22 @@ mod tests {
     }
 
     #[test]
+    fn test_decay_not_reapplied_on_repeat_calls() {
+        // SOW-021: OnEnter(DeckBuilding) fires more than once per launch
+        // (UpgradeChoice round trips) - decay must consume its window
+        let mut state = CharacterState::new();
+        state.heat = 100;
+        state.last_played = current_timestamp().saturating_sub(10 * 3600); // 10h ago
+
+        assert_eq!(state.apply_decay(), 10);
+        assert_eq!(state.heat, 90);
+
+        // Second call in the same session decays nothing further
+        assert_eq!(state.apply_decay(), 0);
+        assert_eq!(state.heat, 90);
+    }
+
+    #[test]
     fn test_decay_does_not_go_below_zero() {
         let mut state = CharacterState::new();
         state.heat = 5;
@@ -954,7 +976,6 @@ mod tests {
 
     #[test]
     fn test_upgrade_tier_from_play_count() {
-        // TESTING MODE: Tiers at 0/1/2/3/4/5 plays (production: 0/5/12/25/50/100)
         // SOW-021: Spec thresholds (card-system.md): 0/3/8/15/25/40
         assert_eq!(UpgradeTier::from_play_count(0), UpgradeTier::Base);
         assert_eq!(UpgradeTier::from_play_count(2), UpgradeTier::Base);
@@ -982,7 +1003,7 @@ mod tests {
 
     #[test]
     fn test_upgrade_tier_plays_to_next() {
-        // TESTING MODE thresholds for next tier
+        // SOW-021: Spec thresholds (absolute play counts for the next tier)
         assert_eq!(UpgradeTier::Base.plays_to_next(), Some(3));
         assert_eq!(UpgradeTier::Tier1.plays_to_next(), Some(8));
         assert_eq!(UpgradeTier::Tier2.plays_to_next(), Some(15));

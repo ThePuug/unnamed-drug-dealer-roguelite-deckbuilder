@@ -65,7 +65,10 @@ fn main() {
         // RFC-019: Upgrade Choice state
         .add_systems(OnEnter(GameState::UpgradeChoice), setup_upgrade_choice_ui)
         .add_systems(OnExit(GameState::UpgradeChoice), cleanup_upgrade_choice_ui)
-        .add_systems(Update, upgrade_option_click_system.run_if(in_state(GameState::UpgradeChoice)));
+        .add_systems(Update, (
+            upgrade_option_click_system,
+            ui::ui_scroll_system, // SOW-021: scroll the batched upgrade list
+        ).run_if(in_state(GameState::UpgradeChoice)));
 
     app
         .add_systems(Startup, ui::scale_ui_to_fit_system)  // Initial UI scaling

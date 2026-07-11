@@ -100,6 +100,20 @@ fn spawn_upgrade_choice_ui(commands: &mut Commands, save_data: &SaveData) {
         ));
 
         // One row per pending upgrade: [card name + tier] [option 1] [option 2]
+        // SOW-021 review fix: rows live in a scrollable container so large
+        // synchronized tier-up waves can't push rows or DECIDE LATER offscreen
+        parent.spawn((
+            Node {
+                flex_direction: FlexDirection::Column,
+                align_items: AlignItems::Center,
+                row_gap: Val::Px(12.0),
+                max_height: Val::Px(650.0),
+                overflow: Overflow::scroll_y(),
+                ..default()
+            },
+            Interaction::default(),
+            ScrollPosition::default(),
+        )).with_children(|parent| {
         for pending in &character.pending_upgrades {
             let card_type = pending.card_type.clone();
             let options = pending.options;
@@ -170,8 +184,10 @@ fn spawn_upgrade_choice_ui(commands: &mut Commands, save_data: &SaveData) {
                 }
             });
         }
+        }); // end scrollable rows container
 
-        // SOW-021: DECIDE LATER - keeps remaining upgrades pending
+        // SOW-021: DECIDE LATER - keeps remaining upgrades pending (fixed
+        // position on the root, outside the scroll area)
         parent.spawn((
             Button,
             Interaction::default(),
