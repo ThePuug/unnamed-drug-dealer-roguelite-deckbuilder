@@ -572,25 +572,23 @@ impl CharacterState {
         !self.pending_upgrades.is_empty()
     }
 
-    /// RFC-019: Apply an upgrade choice and remove from pending queue
-    /// Returns true if the upgrade was applied
-    pub fn apply_upgrade_choice(&mut self, stat: UpgradeableStat) -> bool {
-        if let Some(pending) = self.pending_upgrades.first() {
-            // Verify the stat is one of the options
-            if pending.options[0] != stat && pending.options[1] != stat {
-                return false;
-            }
+    /// SOW-021: Apply an upgrade choice for a SPECIFIC pending card (batched
+    /// upgrade screen lets the player resolve pending upgrades in any order).
+    /// Returns true if the upgrade was applied.
+    pub fn apply_upgrade_choice_for(&mut self, card_name: &str, stat: UpgradeableStat) -> bool {
+        let Some(index) = self.pending_upgrades.iter().position(|p| p.card_name == card_name) else {
+            return false;
+        };
 
-            // Apply the upgrade
-            let card_name = pending.card_name.clone();
-            self.add_card_upgrade(&card_name, stat);
-
-            // Remove from pending queue
-            self.pending_upgrades.remove(0);
-            true
-        } else {
-            false
+        // Verify the stat is one of this card's offered options
+        let pending = &self.pending_upgrades[index];
+        if pending.options[0] != stat && pending.options[1] != stat {
+            return false;
         }
+
+        self.add_card_upgrade(card_name, stat);
+        self.pending_upgrades.remove(index);
+        true
     }
 
     /// Validate character state sanity
@@ -1053,6 +1051,43 @@ mod tests {
         assert_eq!(state.get_play_count("Card A"), 3);
         assert_eq!(state.get_play_count("Card B"), 1);
         assert_eq!(state.get_play_count("Card C"), 0);
+    }
+
+    #[test]
+    fn test_apply_upgrade_choice_for_any_order() {
+        // SOW-021: batched upgrade screen resolves pending upgrades in any order
+        let mut state = CharacterState::new();
+        let product = crate::models::card::CardType::Product { price: 30, heat: 5 };
+
+        state.pending_upgrades.push(PendingUpgrade {
+            card_name: "Card A".to_string(),
+            card_type: product.clone(),
+            tier: UpgradeTier::Tier1,
+            options: [UpgradeableStat::Price, UpgradeableStat::Heat],
+        });
+        state.pending_upgrades.push(PendingUpgrade {
+            card_name: "Card B".to_string(),
+            card_type: product,
+            tier: UpgradeTier::Tier1,
+            options: [UpgradeableStat::Price, UpgradeableStat::Heat],
+        });
+
+        // Resolve the SECOND pending first
+        assert!(state.apply_upgrade_choice_for("Card B", UpgradeableStat::Heat));
+        assert_eq!(state.pending_upgrades.len(), 1);
+        assert_eq!(state.pending_upgrades[0].card_name, "Card A");
+        assert!(state.card_upgrades.contains_key("Card B"));
+
+        // Stat not among the card's offered options is rejected
+        assert!(!state.apply_upgrade_choice_for("Card A", UpgradeableStat::Cover));
+        assert_eq!(state.pending_upgrades.len(), 1);
+
+        // Unknown card is rejected
+        assert!(!state.apply_upgrade_choice_for("Card C", UpgradeableStat::Price));
+
+        // Resolve the remaining card
+        assert!(state.apply_upgrade_choice_for("Card A", UpgradeableStat::Price));
+        assert!(state.pending_upgrades.is_empty());
     }
 
     #[test]

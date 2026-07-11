@@ -139,6 +139,10 @@ pub struct CoverPool;
 #[derive(Component)]
 pub struct DealModPool;
 
+/// SOW-021: Round and turn indicator ("Round 2/3 — YOUR TURN")
+#[derive(Component)]
+pub struct TurnIndicatorText;
+
 #[derive(Component)]
 pub struct DeckCounter; // Deck cards remaining counter
 

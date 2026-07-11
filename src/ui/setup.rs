@@ -684,6 +684,14 @@ pub fn create_ui(commands: &mut Commands) {
                 ..default()
             })
             .with_children(|parent| {
+                // SOW-021: Round + turn indicator (updated by update_turn_indicator_system)
+                parent.spawn((
+                    Text::new("Round 1/3"),
+                    TextFont::from_font_size(16.0),
+                    TextColor(theme::TEXT_PRIMARY),
+                    TurnIndicatorText,
+                ));
+
                 // Evidence total
                 parent.spawn((
                     Text::new("● Evidence: 0"),

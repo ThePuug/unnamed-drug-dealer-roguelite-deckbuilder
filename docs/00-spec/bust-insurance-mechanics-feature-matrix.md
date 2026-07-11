@@ -1,7 +1,7 @@
 # Bust & Insurance Mechanics - Feature Matrix
 
 **Spec:** [bust-insurance-mechanics.md](bust-insurance-mechanics.md)
-**Last Updated:** 2025-11-27
+**Last Updated:** 2026-07-11
 **Overall Status:** 23/23 features complete (100%)
 
 ---
@@ -37,7 +37,7 @@
 | Insurance check on bust | ✅ | `try_insurance_activation()` |
 | Requirements verification | ✅ | `cash >= cost` check |
 | Cost payment | ✅ | `self.cash -= cost` |
-| Heat penalty application | ✅ | `current_heat.saturating_add(heat_penalty)` |
+| Heat penalty application | ✅ | On activation only (SOW-021 fixed a double-charge: penalty was also added on play via `get_card_heat`) |
 | Insurance burn | ✅ | `deck.retain()` removes card |
 
 ---
