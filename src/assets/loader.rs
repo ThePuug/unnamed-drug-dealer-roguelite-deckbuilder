@@ -205,6 +205,20 @@ fn load_game_assets(mut commands: Commands, asset_server: Res<AssetServer>, mut 
             for buyer in &buyers {
                 validate_buyer(buyer).expect("Buyer validation failed");
             }
+
+            // SOW-021: Every demand string must resolve to a real card name.
+            // Fail loudly in debug; log an error (but keep running) in release.
+            let product_names: Vec<&str> = game_assets.products.values().map(|c| c.name.as_str()).collect();
+            let location_names: Vec<&str> = game_assets.locations.values().map(|c| c.name.as_str()).collect();
+            for buyer in &buyers {
+                if let Err(e) = validate_buyer_demand_strings(buyer, &product_names, &location_names) {
+                    #[cfg(debug_assertions)]
+                    panic!("Demand string validation failed: {}", e);
+                    #[cfg(not(debug_assertions))]
+                    error!("Demand string validation failed (demand cannot pay out): {}", e);
+                }
+            }
+
             game_assets.buyers = buyers;
             info!("Loaded {} buyer personas", game_assets.buyers.len());
         }
@@ -340,6 +354,43 @@ fn validate_buyer(buyer: &BuyerPersona) -> Result<(), String> {
     Ok(())
 }
 
+/// SOW-021: Validate that every demand string on a buyer (base demand and all
+/// scenarios, products and locations) resolves to a real card name.
+///
+/// Demand matching is by exact card-name string (see is_demand_satisfied), so a
+/// typo or a renamed card silently makes a demand impossible to satisfy - the
+/// multiplier just never pays out. This check makes that an authoring-time error
+/// instead. Demand lists deliberately stay human-readable names (not IDs) to
+/// keep content authorable.
+fn validate_buyer_demand_strings(
+    buyer: &BuyerPersona,
+    product_names: &[&str],
+    location_names: &[&str],
+) -> Result<(), String> {
+    let check = |strings: &[String], known: &[&str], kind: &str, context: &str| -> Result<(), String> {
+        for s in strings {
+            if !known.contains(&s.as_str()) {
+                return Err(format!(
+                    "Buyer '{}' {} demands unknown {} '{}' - demand strings must exactly match a card name (known: {})",
+                    buyer.display_name, context, kind, s, known.join(", ")
+                ));
+            }
+        }
+        Ok(())
+    };
+
+    check(&buyer.demand.products, product_names, "product", "base")?;
+    check(&buyer.demand.locations, location_names, "location", "base")?;
+
+    for scenario in &buyer.scenarios {
+        let context = format!("scenario '{}'", scenario.display_name);
+        check(&scenario.products, product_names, "product", &context)?;
+        check(&scenario.locations, location_names, "location", &context)?;
+    }
+
+    Ok(())
+}
+
 
 /// Load narrative defaults from RON file
 fn load_narrative_defaults(path: &str) -> Result<crate::models::narrative::NarrativeFragments, String> {
@@ -406,4 +457,87 @@ fn load_actor_portraits(asset_server: &AssetServer, game_assets: &mut GameAssets
     }
 
     info!("Initiated loading of {} actor portraits", count);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::buyer::{BuyerDemand, BuyerScenario};
+
+    fn test_buyer(scenario_products: Vec<&str>, scenario_locations: Vec<&str>) -> BuyerPersona {
+        BuyerPersona {
+            display_name: "Test Buyer".to_string(),
+            demand: BuyerDemand {
+                products: vec!["Weed".to_string()],
+                locations: vec!["Safe House".to_string()],
+                description: "test".to_string(),
+            },
+            base_multiplier: 2.0,
+            reduced_multiplier: 1.0,
+            evidence_threshold: None,
+            reaction_deck_ids: vec![],
+            reaction_deck: vec![],
+            scenarios: vec![BuyerScenario {
+                display_name: "Test Scenario".to_string(),
+                products: scenario_products.into_iter().map(String::from).collect(),
+                locations: scenario_locations.into_iter().map(String::from).collect(),
+                heat_threshold: None,
+                description: "test".to_string(),
+                narrative_fragments: None,
+            }],
+            active_scenario_index: None,
+        }
+    }
+
+    const PRODUCTS: &[&str] = &["Weed", "Coke"];
+    const LOCATIONS: &[&str] = &["Safe House", "Frat House"];
+
+    #[test]
+    fn test_demand_validation_accepts_known_names() {
+        let buyer = test_buyer(vec!["Weed", "Coke"], vec!["Frat House"]);
+        assert!(validate_buyer_demand_strings(&buyer, PRODUCTS, LOCATIONS).is_ok());
+    }
+
+    #[test]
+    fn test_demand_validation_rejects_unknown_product() {
+        // "Pills" was a shipped dead string - no card has that name
+        let buyer = test_buyer(vec!["Pills"], vec!["Frat House"]);
+        let err = validate_buyer_demand_strings(&buyer, PRODUCTS, LOCATIONS).unwrap_err();
+        assert!(err.contains("Pills"), "error should name the bad string: {}", err);
+    }
+
+    #[test]
+    fn test_demand_validation_rejects_unknown_location() {
+        // "Park" vs card "At the Park" was a shipped near-miss
+        let buyer = test_buyer(vec!["Weed"], vec!["Park"]);
+        let err = validate_buyer_demand_strings(&buyer, PRODUCTS, LOCATIONS).unwrap_err();
+        assert!(err.contains("Park"), "error should name the bad string: {}", err);
+    }
+
+    #[test]
+    fn test_demand_validation_checks_base_demand_too() {
+        let mut buyer = test_buyer(vec!["Weed"], vec!["Safe House"]);
+        buyer.demand.locations = vec!["Private Residence".to_string()];
+        assert!(validate_buyer_demand_strings(&buyer, PRODUCTS, LOCATIONS).is_err());
+    }
+
+    #[test]
+    fn test_shipped_demand_strings_all_resolve() {
+        // SOW-021 acceptance criterion: zero unresolvable demand strings in
+        // the shipped content. Loads the real RON files.
+        let products = load_and_validate_cards("assets/cards/products.ron", "Product")
+            .expect("products.ron should load");
+        let locations = load_and_validate_cards("assets/cards/locations.ron", "Location")
+            .expect("locations.ron should load");
+        let buyers = load_and_validate_buyers("assets/buyers.ron")
+            .expect("buyers.ron should load");
+
+        let product_names: Vec<&str> = products.iter().map(|c| c.name.as_str()).collect();
+        let location_names: Vec<&str> = locations.iter().map(|c| c.name.as_str()).collect();
+
+        for buyer in &buyers {
+            validate_buyer_demand_strings(buyer, &product_names, &location_names)
+                .unwrap_or_else(|e| panic!("{}", e));
+        }
+    }
 }
