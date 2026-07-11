@@ -74,7 +74,7 @@ impl Default for UpgradeInfo {
         Self {
             tier_name: "Base".to_string(),
             plays: 0,
-            plays_to_next: Some(1),
+            plays_to_next: Some(3), // SOW-021: spec threshold for Tier1
             multiplier: 1.0,
             star_color: (0.5, 0.5, 0.5),
             is_foil: false,
@@ -139,7 +139,8 @@ fn get_card_stats_with_multiplier(card_type: &CardType, multiplier: f32) -> Vec<
             vec![
                 StatInfo { emoji: "🛡", label: "Cover", value: format!("{:+}", upgraded_cover) },
                 StatInfo { emoji: "💵", label: "Cost", value: format!("${}", cost) },
-                StatInfo { emoji: "🔥", label: "Heat", value: format!("{:+}", heat_penalty) },
+                // SOW-021: heat penalty is contingent on activation, not paid on play
+                StatInfo { emoji: "🔥", label: "Heat", value: format!("{:+} if used", heat_penalty) },
             ]
         },
         CardType::DealModifier { price_multiplier, evidence, cover, heat } => {

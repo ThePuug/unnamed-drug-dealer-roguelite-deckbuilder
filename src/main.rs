@@ -46,6 +46,7 @@ fn main() {
         .init_resource::<CharacterLoaded>()
         .init_resource::<DecayInfo>()
         .init_resource::<shop::ShopState>() // SOW-020: Shop state for deck builder
+        .init_resource::<UpgradeChoiceDeferred>() // SOW-021: DECIDE LATER flag
         .add_systems(Startup, setup)
         // Character persistence systems
         .add_systems(OnEnter(GameState::DeckBuilding), (
@@ -55,13 +56,19 @@ fn main() {
             initialize_deck_builder_from_assets,
             setup_deck_builder,
         ).chain())
-        .add_systems(OnEnter(GameState::InRun), ensure_character_on_run_start)
+        .add_systems(OnEnter(GameState::InRun), (
+            ensure_character_on_run_start,
+            clear_upgrade_deferral, // SOW-021: re-prompt pending upgrades after next run
+        ))
         .add_systems(OnExit(GameState::DeckBuilding), cleanup_deck_builder_ui)
         .add_systems(OnExit(GameState::InRun), mark_deck_completed_system)
         // RFC-019: Upgrade Choice state
         .add_systems(OnEnter(GameState::UpgradeChoice), setup_upgrade_choice_ui)
         .add_systems(OnExit(GameState::UpgradeChoice), cleanup_upgrade_choice_ui)
-        .add_systems(Update, upgrade_option_click_system.run_if(in_state(GameState::UpgradeChoice)));
+        .add_systems(Update, (
+            upgrade_option_click_system,
+            ui::ui_scroll_system, // SOW-021: scroll the batched upgrade list
+        ).run_if(in_state(GameState::UpgradeChoice)));
 
     app
         .add_systems(Startup, ui::scale_ui_to_fit_system)  // Initial UI scaling
@@ -85,6 +92,7 @@ fn main() {
             ui_update_system,
             ui::update_active_slots_system,
             ui::update_heat_bar_system,
+            ui::update_turn_indicator_system, // SOW-021: round/turn indicator
             ui::update_resolution_overlay_system,
             ui::update_background_system,
             update_character_heat_display_system,
@@ -123,11 +131,13 @@ fn initialize_deck_builder_from_assets(
     game_assets: Res<assets::GameAssets>,
     existing_deck_builder: Option<Res<DeckBuilder>>,
     save_data: Option<Res<save::SaveData>>,
+    deferred: Res<UpgradeChoiceDeferred>,
 ) {
     // RFC-019: Skip if pending upgrades (we're about to redirect to UpgradeChoice)
+    // SOW-021: unless the player deferred them (DECIDE LATER) - then we stay here
     if let Some(ref data) = save_data {
         if let Some(ref character) = data.character {
-            if character.has_pending_upgrades() {
+            if character.has_pending_upgrades() && !deferred.0 {
                 return;
             }
         }

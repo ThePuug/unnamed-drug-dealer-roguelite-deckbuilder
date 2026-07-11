@@ -292,12 +292,13 @@ pub fn update_resolution_overlay_system(
                 }
             }
             Some(HandOutcome::Busted) => {
-                if hand_state.cards(Owner::Player).deck.len() < 3 {
-                    results.push_str(&format!("Deck Exhausted: {} cards\n\nRun Ends", hand_state.cards(Owner::Player).deck.len()));
-                } else {
-                    results.push_str(&format!("Evidence: {} > Cover: {} ✗\n\n", totals.evidence, totals.cover));
-                    results.push_str("You got caught!");
-                }
+                // SOW-021: Busted now ONLY means a genuine bust (exhaustion no longer
+                // fabricates this outcome), so always explain the actual cause.
+                // The old deck.len() < 3 special case here mislabeled real late-run
+                // busts as "Deck Exhausted" - exhaustion messaging lives on the
+                // NEW DEAL button ("OUT OF CARDS") instead.
+                results.push_str(&format!("Evidence: {} > Cover: {} ✗\n\n", totals.evidence, totals.cover));
+                results.push_str("You got caught!");
             }
             Some(HandOutcome::Folded) => {
                 results.push_str("You bailed out\n\nNo profit, no risk");
@@ -490,5 +491,44 @@ pub fn ui_scroll_system(
                 scroll_position.y = new_y;
             }
         }
+    }
+}
+
+/// SOW-021: Round and turn indicator - the player must always know which of
+/// the 3 rounds they are in and whose action is in progress
+pub fn update_turn_indicator_system(
+    hand_state_query: Query<&HandState>,
+    mut indicator_query: Query<(&mut Text, &mut TextColor), With<TurnIndicatorText>>,
+) {
+    let Ok(hand_state) = hand_state_query.single() else {
+        return;
+    };
+    let Ok((mut text, mut color)) = indicator_query.single_mut() else {
+        return;
+    };
+
+    let round = hand_state.current_round;
+    let (label, text_color) = match hand_state.current_state {
+        HandPhase::Draw => (format!("Round {}/3 — dealing...", round), theme::TEXT_SECONDARY),
+        HandPhase::PlayerPhase => {
+            if hand_state.all_players_acted() {
+                (format!("Round {}/3", round), theme::TEXT_SECONDARY)
+            } else if hand_state.current_player() == Owner::Player {
+                (format!("Round {}/3 — YOUR TURN", round), theme::TEXT_PRIMARY)
+            } else {
+                (format!("Round {}/3 — Narc is acting...", round), theme::EVIDENCE_CARD_COLOR)
+            }
+        }
+        HandPhase::DealerReveal => {
+            (format!("Round {}/3 — Buyer reacting...", round), theme::TEXT_SECONDARY)
+        }
+        HandPhase::FoldDecision => (format!("Round {}/3", round), theme::TEXT_SECONDARY),
+        HandPhase::Resolve | HandPhase::Bust => ("Hand complete".to_string(), theme::TEXT_SECONDARY),
+    };
+
+    // Only write on change to avoid dirtying the Text component every frame
+    if **text != label {
+        **text = label;
+        *color = TextColor(text_color);
     }
 }

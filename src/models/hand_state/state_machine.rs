@@ -78,9 +78,9 @@ impl HandState {
 
         // Check deck exhaustion before starting new hand
         if self.cards(Owner::Player).deck.len() < 3 {
-            // Deck exhausted - cannot start new hand
-            self.outcome = Some(HandOutcome::Busted);
-            self.current_state = HandPhase::Bust;
+            // SOW-021: Deck exhausted - session must end via GO HOME (neutral end).
+            // Never mark Busted here: that outcome triggers permadeath in
+            // save_after_resolution_system. Leave prior outcome/state untouched.
             return false;
         }
 
@@ -225,6 +225,15 @@ impl HandState {
         self.active_product(true).is_some() && self.active_location(true).is_some()
     }
 
+    /// SOW-021: Cards the player could bring to a next hand - deck PLUS unplayed
+    /// hand cards. start_next_hand returns unplayed hand cards to the deck
+    /// (shuffle_cards_back) before its exhaustion check, so raw deck.len()
+    /// understates availability; UI exhaustion checks must use this instead.
+    pub fn playable_cards_remaining(&self) -> usize {
+        let cards = self.cards(Owner::Player);
+        cards.deck.len() + cards.hand.iter().filter(|s| s.is_some()).count()
+    }
+
     /// Get heat value from a card (applies Narc multiplier for Evidence cards)
     fn get_card_heat(&self, card: &Card, owner: Owner) -> i32 {
         use crate::CardType;
@@ -233,7 +242,9 @@ impl HandState {
             CardType::Location { heat, .. } => *heat,
             CardType::Cover { heat, .. } => *heat,
             CardType::DealModifier { heat, .. } => *heat,
-            CardType::Insurance { heat_penalty, .. } => *heat_penalty as i32,
+            // SOW-021: heat_penalty applies only when insurance activates at resolution
+            // (see resolution.rs try_insurance_activation) - playing the card is heat-free
+            CardType::Insurance { .. } => 0,
             CardType::Evidence { heat, .. } => {
                 // Apply Narc upgrade multiplier to Evidence heat
                 if owner == Owner::Narc {
@@ -579,10 +590,36 @@ mod tests {
     }
 
     #[test]
-    fn test_deck_exhaustion_ends_run() {
+    fn test_insurance_adds_no_heat_on_play() {
+        // SOW-021: heat_penalty is charged only at activation (resolution.rs),
+        // never when the card is played. Previously double-charged.
+        let mut hand_state = HandState::default();
+        hand_state.current_state = HandPhase::PlayerPhase;
+        hand_state.current_round = 1;
+        hand_state.current_player_index = 1; // Turn order [Narc, Player] -> Player's turn
+        hand_state.current_heat = 10;
+
+        hand_state.cards_mut(Owner::Player).hand[0] =
+            Some(create_insurance("Fake ID", 15, 0, 40));
+
+        hand_state.play_card(Owner::Player, 0).expect("play should succeed");
+
+        // Heat unchanged - the +40 penalty is contingent on activation
+        assert_eq!(hand_state.current_heat, 10);
+        assert_eq!(hand_state.cards_played.len(), 1);
+    }
+
+    #[test]
+    fn test_deck_exhaustion_is_neutral_not_permadeath() {
+        // SOW-021: Deck exhaustion must never produce a Busted outcome -
+        // Busted triggers character deletion in save_after_resolution_system.
+        // Exhaustion is a neutral "can't continue, go home" condition.
         let mut hand_state = HandState::default();
         hand_state.cash = 1000;
         hand_state.current_heat = 50;
+        // Simulate post-resolution state of a Safe hand
+        hand_state.outcome = Some(HandOutcome::Safe);
+        hand_state.current_state = HandPhase::Bust;
 
         // Deplete deck to 2 cards
         let player_cards = hand_state.cards_mut(Owner::Player);
@@ -594,7 +631,8 @@ mod tests {
         let can_continue = hand_state.start_next_hand();
 
         assert!(!can_continue);
-        assert_eq!(hand_state.outcome, Some(HandOutcome::Busted));
+        // Prior outcome must be preserved - never overwritten to Busted
+        assert_eq!(hand_state.outcome, Some(HandOutcome::Safe));
         assert_eq!(hand_state.current_state, HandPhase::Bust);
     }
 }

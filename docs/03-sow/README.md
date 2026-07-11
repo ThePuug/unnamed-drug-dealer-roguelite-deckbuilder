@@ -27,6 +27,7 @@ SOWs are work orders for developers. Each SOW defines what needs to be built, wh
 | 018 | Narc Difficulty Scaling | 🎲 Roguelite | ✅ Merged | 2025-11-26 |
 | 019 | Upgrade Stat Choice | 🃏 Cards | ✅ Merged | 2025-11-27 |
 | 020 | Location Card Shops | 💰 Economy | ✅ Merged | 2025-11-27 |
+| 021 | Stabilization - Defect Fixes and Data Integrity | 🛠️ Foundation | ✅ Merged | 2026-07-11 |
 | AAA | Code Organization - main.rs Modularization | 🛠️ Dev Tools | ✅ Merged | 2025-11-15 |
 
 **Legend:**

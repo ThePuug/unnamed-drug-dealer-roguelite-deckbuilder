@@ -11,11 +11,14 @@ pub fn setup_deck_builder(
     mut commands: Commands,
     save_data: Option<Res<crate::save::SaveData>>,
     emoji_font: Res<EmojiFont>,
+    deferred: Res<crate::systems::UpgradeChoiceDeferred>,
 ) {
     // RFC-019: Don't spawn DeckBuilder UI if we're about to redirect to UpgradeChoice
+    // SOW-021: unless the player chose DECIDE LATER - then the deck builder MUST
+    // spawn or DeckBuilding becomes an empty screen (soft-lock)
     if let Some(ref data) = save_data {
         if let Some(ref character) = data.character {
-            if character.has_pending_upgrades() {
+            if character.has_pending_upgrades() && !deferred.0 {
                 return;
             }
         }
@@ -684,6 +687,14 @@ pub fn create_ui(commands: &mut Commands) {
                 ..default()
             })
             .with_children(|parent| {
+                // SOW-021: Round + turn indicator (updated by update_turn_indicator_system)
+                parent.spawn((
+                    Text::new("Round 1/3"),
+                    TextFont::from_font_size(16.0),
+                    TextColor(theme::TEXT_PRIMARY),
+                    TurnIndicatorText,
+                ));
+
                 // Evidence total
                 parent.spawn((
                     Text::new("● Evidence: 0"),

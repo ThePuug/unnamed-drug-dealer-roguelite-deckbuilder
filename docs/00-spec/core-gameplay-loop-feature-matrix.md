@@ -1,7 +1,7 @@
 # Core Gameplay Loop - Feature Matrix
 
 **Spec:** [core-gameplay-loop.md](core-gameplay-loop.md)
-**Last Updated:** 2025-11-27
+**Last Updated:** 2026-07-11
 **Overall Status:** 48/48 features complete (100%)
 
 ---
@@ -85,7 +85,7 @@
 
 | Feature | Status | Notes |
 |---------|:------:|-------|
-| Turn indicator | ✅ | "Turn: Player" in status |
+| Turn indicator | ✅ | Round N/3 + actor state in counters row (SOW-021; earlier ✅ claim was inaccurate — only button-color feedback existed) |
 | Card count per player | ✅ | Visible hand displays |
 | Running totals display | ✅ | Evidence/Cover/Multiplier |
 | Color-coded safety | ✅ | Heat bar green/yellow/red |
