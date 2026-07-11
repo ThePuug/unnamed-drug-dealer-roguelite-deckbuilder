@@ -2,15 +2,15 @@
 
 ## Status
 
-**Planned** - 2026-07-11
+**Merged** - 2026-07-12
 
 ## References
 
 - **Review:** Design & Fun Review 2026-07 (`unnamed-indie-studio-internal` repo: `projects/drug-dealer-roguelite/review-2026-07.md`) — this SOW implements the review's "Phase 0 — Defuse"
 - **Spec:** [Card System](../00-spec/card-system.md), [Bust & Insurance Mechanics](../00-spec/bust-insurance-mechanics.md), [Core Gameplay Loop](../00-spec/core-gameplay-loop.md)
 - **RFC:** None — all items are defect corrections against already-approved specs, per process discussion (2026-07-11)
-- **Branch:** (proposed)
-- **Implementation Time:** 7-10 hours
+- **Branch:** sow-021-stabilization (merged)
+- **Implementation Time:** ~6 hours (including adversarial review pass)
 
 **Pre-approved decisions (from review Q&A, 2026-07-11):**
 1. Upgrade thresholds: **spec values are canonical** (0/3/8/15/25/40 plays per `card-system.md:114`), superseding the `production: 5/12/25/50/100` code comments
@@ -143,6 +143,14 @@ Considered adding a `HandOutcome::DeckExhausted` variant, but that ripples throu
 
 The review named "Private Residence", "Dorm", "Office", "Park". The load-time validator also caught "Pills" (in all three buyers' base demands) and "Warehouse" (≠ "Abandoned Warehouse"), and Frat Bro's base demand locations were 100% dead ("Dorm", "Party", "Park"). This is exactly the failure class the validator now prevents — a name-based system with no integrity check.
 
+### Implementation Note: Adversarial review pass (pre-merge)
+
+A 3-lens review (correctness / Bevy systems / spec compliance) with per-finding adversarial verification ran against the branch diff. 16 findings raised, 9 confirmed real (rest refuted as unreachable), all fixed before merge. Notable confirmed items: DECIDE LATER soft-locked the game (`setup_deck_builder` was a third pending-upgrades gate not threaded with the deferral flag); the resolution overlay's old "Deck Exhausted" branch would have mislabeled every genuine late-run bust after Phase 1 removed the exhaustion→Busted mapping; the UI's raw `deck.len()` exhaustion check contradicted the engine's deck+unplayed-hand check (could force-end runs 1-2 hands early — now unified via `playable_cards_remaining()`); and the HeatPenalty upgrade stat had no effect anywhere once the double-charge was fixed (now applied at activation). Also fixed: `apply_decay` re-applied the same decay on every DeckBuilding re-entry (now consumes its window).
+
+### Implementation Note: Wolf base demand product
+
+The SOW's candidate list suggested Codeine for Wall Street Wolf; implementation chose **Coke** (premium fits the persona and matches his "Adrenaline Junkie" scenario products). Note his base and Adrenaline Junkie demands are Block-shop products, so like Safe House they stay luck-gated until location unlocking ships.
+
 ### Implementation Note: Batched upgrade screen API
 
 `CharacterState::apply_upgrade_choice` (head-of-queue only) replaced by `apply_upgrade_choice_for(card_name, stat)` so rows on the batched screen resolve in any order. Keyboard shortcuts 1/2 resolve the *first* pending upgrade's two options. DECIDE LATER sets an `UpgradeChoiceDeferred` resource consumed by `check_pending_upgrades_system` and `initialize_deck_builder_from_assets`; the flag clears on entering InRun so deferred upgrades re-prompt after the next run.
@@ -151,4 +159,41 @@ The review named "Private Residence", "Dorm", "Office", "Park". The load-time va
 
 ## Acceptance Review
 
-*This section is populated after implementation is complete.*
+### Scope Completion: 100%
+
+**Phases Complete:**
+- ✅ Phase 1: Core Rules Defects
+- ✅ Phase 2: Demand Data Integrity
+- ✅ Phase 3: UX Corrections
+- ✅ Review-findings fix pass (9 confirmed findings, all resolved)
+
+### Architectural Compliance
+
+All pre-approved decisions honored: spec thresholds (0/3/8/15/25/40) live, save wipe via version bump, The Block untouched, demand lists remain human-readable names with load-time validation, single SOW without RFC. Deck exhaustion can no longer reach the permadeath path through any caller; the UI and engine now share one exhaustion predicate (`playable_cards_remaining`). One scope addition beyond the plan, driven by review: the HeatPenalty upgrade multiplier is now applied at insurance activation (the stat was otherwise inert — a latent RFC-019 gap surfaced by the single-charge fix).
+
+### Player Experience Validation (PLAYER role)
+
+The player can now always answer "whose turn is it and which round am I in"; upgrade rewards arrive as one decision screen instead of modal spam and can be deferred; a disabled NEW DEAL explains itself ("OUT OF CARDS") and no longer lies about when the deck is actually exhausted; a genuine bust is reported as a bust. Demand multipliers can no longer silently reference nonexistent cards.
+
+### Performance
+
+No new per-frame allocations (button label writes now change-guarded); no measurable load-time impact from demand validation (string comparisons over ~30 cards at startup).
+
+### Test Coverage
+
+107 tests passing (was 99 pre-SOW): +8 covering insurance single-charge, spec tier boundaries, version rejection, exhaustion neutrality, demand validation (4 unit + 1 shipped-content integration), out-of-order upgrade application, decay idempotency, and HeatPenalty-at-activation.
+
+---
+
+## Conclusion
+
+All seven verified defects from the July 2026 design review's "Phase 0 — Defuse" are fixed, plus five more surfaced during implementation (Pills/Warehouse/Party dead strings, decay re-application, inert HeatPenalty stat, exhaustion predicate mismatch, stale bust overlay branch). The game's data layer now self-validates at load. Next up per the review roadmap: the tension milestone (escrow pot, commit-before-reveal, Narc policy, visible payout).
+
+---
+
+## Sign-Off
+
+**Reviewed By:** ARCHITECT Role (3-lens adversarial review, per-finding verification)
+**Date:** 2026-07-12
+**Decision:** ✅ **ACCEPTED**
+**Status:** Merged to main
