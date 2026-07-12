@@ -2,7 +2,7 @@
 
 ## Status
 
-**Review** - 2026-07-12 (all 3 phases complete on branch; pacing measured)
+**Merged** - 2026-07-12
 
 ## References
 
@@ -161,4 +161,39 @@ heat bookkeeping ($30 / CRED 1 / 184 Inferno).
 
 ## Acceptance Review
 
-*Populated after implementation.*
+### Scope Completion: 100%
+
+- ✅ Phase 1: Lean start (8 cards, Weed-only product, fresh-deck validation)
+- ✅ Phase 2: Full cash+cred ladder across both areas (table above); demand
+  attainability validation
+- ✅ Phase 3: Pacing measured (blind floor + target play), one tune applied
+  (Shrooms $150 → $100), ladder verified on screen
+
+### Architectural Compliance
+
+174 tests (4 new content pins); zero new warnings; content in the assets
+submodule with validation per the authorability rule; Reed's local asset
+edits untouched.
+
+### Player Experience Validation
+
+Target-play pacing hits the SOW goal: Shrooms in session 2-3, Block a
+10-20 session mid-term. e2e screenshots: full Corner ladder with credit
+lines, tuned Shrooms, 8/20 valid lean deck, and post-session bookkeeping
+($30 / 1 cred / 184 heat after 3 blind sessions).
+
+### Deliberately shipped-hot
+
+The blind-play floor is brutal (Inferno in 3 bad sessions; fresh GAME OVER
+possible at Base narc). This is a heat-economy gap, not a ladder gap - it
+is the measured acceptance target for SOW-027 (fresh-floor coverage), with
+the difficulty-stance question surfaced to Reed.
+
+---
+
+## Sign-Off
+
+**Reviewed By:** ARCHITECT review + pacing measurements + on-screen e2e
+**Date:** 2026-07-12
+**Decision:** ✅ **ACCEPTED** (floor flags carried to SOW-027)
+**Status:** Merged to main
