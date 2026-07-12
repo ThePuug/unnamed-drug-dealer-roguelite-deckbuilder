@@ -18,6 +18,14 @@ use game_state::{GameState, AiActionTimer};
 use save::SavePlugin;
 
 fn main() {
+    // SOW-023: dev subcommand - `cargo run -- forge <scenario> [--dir <path>]`
+    // writes a crafted, signed save for e2e playtests and exits (no App)
+    let cli_args: Vec<String> = std::env::args().collect();
+    if cli_args.get(1).map(String::as_str) == Some("forge") {
+        save::forge::run_cli(&cli_args[2..]);
+        return;
+    }
+
     let mut app = App::new();
 
     app.add_plugins(DefaultPlugins.set(WindowPlugin {
@@ -99,7 +107,6 @@ fn main() {
             ui::update_turn_display_system,   // SOW-021/022: round + actor pill
             ui::update_resolution_overlay_system,
             ui::update_background_system,
-            update_character_heat_display_system,
             update_decay_display_system,
             clear_decay_display_system,
             update_account_cash_display_system,

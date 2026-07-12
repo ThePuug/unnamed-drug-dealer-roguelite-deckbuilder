@@ -3,7 +3,7 @@
 use bevy::prelude::*;
 use crate::save::{SaveManager, SaveData};
 use crate::models::hand_state::{HandState, HandPhase, HandOutcome};
-use crate::ui::components::{CharacterHeatText, CharacterTierText, DecayInfoDisplay, AccountCashText, LifetimeRevenueText, StoryHistoryText, StoryHistoryButton, StoryHistoryOverlay, StoryHistoryCloseButton};
+use crate::ui::components::{DecayInfoDisplay, AccountCashText, LifetimeRevenueText, StoryHistoryText, StoryHistoryButton, StoryHistoryOverlay, StoryHistoryCloseButton};
 
 /// Resource tracking if character data has been loaded this session
 #[derive(Resource, Default)]
@@ -220,42 +220,26 @@ pub fn mark_deck_completed_system(
     // This system kept for potential future cleanup needs on state exit
 }
 
-/// System to update character heat display UI
-pub fn update_character_heat_display_system(
-    save_data: Option<Res<SaveData>>,
-    mut heat_text_query: Query<&mut Text, (With<CharacterHeatText>, Without<CharacterTierText>, Without<DecayInfoDisplay>)>,
-    mut tier_text_query: Query<(&mut Text, &mut TextColor), (With<CharacterTierText>, Without<CharacterHeatText>, Without<DecayInfoDisplay>)>,
-) {
-    let Some(save_data) = save_data else {
-        return;
-    };
+// SOW-023: update_character_heat_display_system removed - the roster panel is
+// the per-dealer heat display (the old stats-block line duplicated it)
 
-    // RFC-023: the deck-builder readout describes the ACTIVE dealer
-    // (Phase 3 replaces this with the roster panel)
-    let character = save_data.active_character();
-    let (heat, tier) = (character.heat, character.heat_tier());
-
-    // Update heat text
-    for mut text in heat_text_query.iter_mut() {
-        **text = format!("Heat: {}", heat);
-    }
-
-    // Update tier text with color
-    for (mut text, mut color) in tier_text_query.iter_mut() {
-        **text = format!("[{}]", tier.name());
-        let (r, g, b) = tier.color();
-        *color = TextColor(Color::srgb(r, g, b));
-    }
-}
-
-/// System to display decay information
+/// System to display decay information (the only decay surface; names the
+/// active dealer since the roster shows several heats now)
 pub fn update_decay_display_system(
     decay_info: Res<DecayInfo>,
+    save_data: Option<Res<SaveData>>,
     mut decay_text_query: Query<(&mut Text, &mut Visibility), With<DecayInfoDisplay>>,
 ) {
     for (mut text, mut visibility) in decay_text_query.iter_mut() {
         if decay_info.decay_amount > 0 && !decay_info.displayed {
-            **text = format!("Heat decayed by {} while away", decay_info.decay_amount);
+            let who = save_data
+                .as_ref()
+                .map(|save| save.active_dealer_state().name.clone())
+                .unwrap_or_else(|| "Your dealer".to_string());
+            **text = format!(
+                "While you were away: {} cooled off by {}",
+                who, decay_info.decay_amount
+            );
             *visibility = Visibility::Visible;
         } else if decay_info.displayed || decay_info.decay_amount == 0 {
             *visibility = Visibility::Hidden;

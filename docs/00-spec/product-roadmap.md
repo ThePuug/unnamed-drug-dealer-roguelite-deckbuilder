@@ -41,6 +41,20 @@ period when busted. **Cash is global.** The product needs:
 
 ## Iteration Log
 
+### Iteration 2 — 2026-07-12
+
+- SOW-023 all phases complete on `sow-023-kingpin-dealers` (Review):
+  dealer roster + turn-based jail + bail + kingpin-as-dealer (Phases 1-2),
+  operations panel + arcade game-over board (Phase 3), forge/isolated-save/
+  closed-loop playtest harness (Phase 4).
+- Reed's design answers folded in mid-flight: turn-based sentences scaling
+  with heat, proportional time-served heat reduction, prior-conviction scars,
+  bail tradeoff, kingpin game-over feeding a fallen-empires leaderboard
+  (stats shown, stories archived for SOW-026).
+- e2e-verified live: dealer select, jail tick on run completion, bail cost
+  decay, per-dealer heat transfer, global cash, HIRE cost doubling.
+- Next: SOW-023 acceptance + merge, then SOW-024 (Areas & Unlocks).
+
 ### Iteration 1 — 2026-07-12
 - SOW-022 (Game Play v2) accepted + merged after playtest-directed iterations.
 - Baseline scripted playtest: blind 3-slot play busts on hand 1

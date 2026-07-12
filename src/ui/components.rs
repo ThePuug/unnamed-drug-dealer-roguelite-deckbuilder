@@ -294,14 +294,9 @@ pub struct ResolutionResults;
 // Character Heat Display (Persistent Heat from Save System)
 // ============================================================================
 
-#[derive(Component)]
-pub struct CharacterHeatDisplay;
-
-#[derive(Component)]
-pub struct CharacterHeatText;
-
-#[derive(Component)]
-pub struct CharacterTierText;
+// SOW-023: CharacterHeatDisplay/CharacterHeatText/CharacterTierText removed -
+// per-dealer heat displays on the operations roster panel (the old stats-block
+// line duplicated it)
 
 #[derive(Component)]
 pub struct DecayInfoDisplay;

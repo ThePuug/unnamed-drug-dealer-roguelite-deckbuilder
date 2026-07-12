@@ -3,6 +3,7 @@
 mod types;
 mod crypto;
 mod io;
+pub mod forge; // SOW-023: dev save forge for e2e scenarios
 
 pub use types::*;
 
@@ -73,11 +74,8 @@ impl SaveManager {
         self.save_path.exists()
     }
 
-    /// RFC-023: Reset the whole empire and persist it (kingpin-bust game over)
-    pub fn reset_empire(&self, data: &mut SaveData) -> Result<(), SaveError> {
-        data.reset_empire();
-        self.save(data)
-    }
+    // SOW-023: reset_empire helper pruned - save_after_resolution_system calls
+    // SaveData::reset_empire directly and saves through the normal path
 }
 
 impl Default for SaveManager {
@@ -190,12 +188,16 @@ mod tests {
         data.active_character_mut().heat = 75;
         manager.save(&data).unwrap();
 
-        manager.reset_empire(&mut data).unwrap();
+        // SOW-023: mirrors save_after_resolution_system's kingpin-bust path
+        // (the SaveManager::reset_empire wrapper was pruned as unused)
+        data.reset_empire();
+        manager.save(&data).unwrap();
 
-        // Persisted state is a fresh kingpin-only empire
+        // Persisted state is a fresh kingpin-only empire (board survives)
         let loaded = manager.load().unwrap();
         assert_eq!(loaded.dealers.len(), 1);
         assert!(loaded.dealers[0].is_kingpin);
         assert_eq!(loaded.active_character().heat, 0);
+        assert_eq!(loaded.fallen_empires.len(), 1);
     }
 }

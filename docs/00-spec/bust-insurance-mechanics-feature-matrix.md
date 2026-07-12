@@ -1,7 +1,7 @@
 # Bust & Insurance Mechanics - Feature Matrix
 
 **Spec:** [bust-insurance-mechanics.md](bust-insurance-mechanics.md)
-**Last Updated:** 2026-07-11
+**Last Updated:** 2026-07-12
 **Overall Status:** 23/23 features complete (100%)
 
 ---
@@ -25,7 +25,7 @@
 | Feature | Status | Notes |
 |---------|:------:|-------|
 | Evidence > Cover check | ✅ | `resolution.rs:42` |
-| Bust triggers permadeath | ✅ | `save_integration.rs:167` - character = None |
+| Bust triggers permadeath | ✅ | SOW-023: hired dealers JAIL (turn-based sentence); a KINGPIN bust ends the empire (epitaph archived, save resets) - the one remaining permadeath |
 | Tie goes to player | ✅ | `evidence <= cover` (not strict greater) |
 
 ---

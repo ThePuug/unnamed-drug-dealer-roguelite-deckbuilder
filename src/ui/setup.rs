@@ -249,28 +249,10 @@ pub fn setup_deck_builder(
                     DeckStatsDisplay,
                 ));
 
-                // Character heat display
-                parent.spawn(Node {
-                    flex_direction: FlexDirection::Row,
-                    column_gap: Val::Px(8.0),
-                    ..default()
-                })
-                .with_children(|parent| {
-                    parent.spawn((
-                        Text::new("Heat: 0"),
-                        TextFont::from_font_size(20.0),
-                        TextColor(Color::WHITE),
-                        CharacterHeatText,
-                    ));
-                    parent.spawn((
-                        Text::new("[Cold]"),
-                        TextFont::from_font_size(20.0),
-                        TextColor(Color::srgb(0.3, 0.7, 0.3)),
-                        CharacterTierText,
-                    ));
-                });
+                // SOW-023: the "Heat: N [Tier]" line is gone - per-dealer heat
+                // lives on the roster panel now (Reed: it duplicated the panel)
 
-                // Decay info (hidden by default)
+                // Decay info (hidden by default; the only decay surface)
                 parent.spawn((
                     Text::new(""),
                     TextFont::from_font_size(18.0),

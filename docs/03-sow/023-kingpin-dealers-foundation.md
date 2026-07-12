@@ -2,7 +2,7 @@
 
 ## Status
 
-**In Progress** - 2026-07-12 (Phases 1-2 complete on branch)
+**Review** - 2026-07-12 (all 4 phases complete on branch; e2e-verified)
 
 ## References
 
@@ -140,6 +140,54 @@ Deck-builder heat/tier/story readouts point at the ACTIVE dealer; the roster
 panel (select/hire/bail, jailed sentence display, kingpin badge) is Phase 3.
 The Phase-3-consumed API (`hire_dealer`, `bail_out`, `next_hire_cost`,
 `bail_cost`) carries `#[allow(dead_code)]` markers that Phase 3 removes.
+
+### ANSWERED by Reed (2026-07-12) - arcade leaderboard addendum
+
+Kingpin game-over feeds an arcade board of fallen empires: summary stats
+displayed (top-3 by lifetime revenue on the GAME OVER overlay, "← THIS RUN"
+marker), the full story ledger ARCHIVED in each `EmpireEpitaph` but not
+displayed - presentation deferred to SOW-026. `fallen_empires` survives
+`reset_empire` (append-then-reset-then-restore).
+
+### Implementation Note: forge is a main-binary subcommand (Phase 4)
+
+The plan said `src/bin/save-forge.rs`, but this is a binary crate with no lib
+target - a second bin can't reach the save/crypto modules without a large
+lib refactor. `cargo run -- forge <scenario> [--dir]` (early-exit before the
+Bevy App) gives the same capability with zero restructuring. Scenarios:
+fresh / funded / roster / hot, all validated + roundtrip-tested. Signing uses
+the real HMAC key per Reed's explicit approval.
+
+### Implementation Note: e2e verification (Phase 4)
+
+`tools/e2e/playtest.ps1` is closed-loop: it forges a scenario into an
+isolated `DDD_SAVE_DIR`, tails the game log for "Resolution outcome:" lines,
+and clicks the right overlay button per outcome (the old script busted on
+hand 1 without noticing). Verified live:
+- roster scenario: selected Ray, played 2 hands (Safe, InvalidDeal), GO HOME
+  → Ray's heat 45→52 on his card, Slim's sentence ticked 2→1 RUNS with bail
+  $600→$300, cash banked globally ($1,230)
+- funded scenario: HIRE clicked → Slim joined at $500, cash $5000→$4500,
+  next hire doubled to $1000
+Roster cards are FIXED 250px wide so the harness can target rows
+deterministically. PS 5.1 gotcha baked into the script: native stderr must
+not enter the pipeline (forge runs via cmd redirect).
+
+### Implementation Note: stats-block dedup (Reed UI feedback, 2026-07-12)
+
+The lower-left "Heat: N [Tier]" line duplicated the roster panel and was
+removed (markers, spawn, and its update system pruned; deck count / Cash /
+Lifetime stay). The decay callout is now the ONLY decay surface and names
+the dealer it applies to: "While you were away: Ray cooled off by N" -
+kept in the stats block, since it's account-level news you read on arrival.
+Bonus pruning: the never-constructed CharacterHeatDisplay marker and the
+unused SaveManager::reset_empire wrapper (its test now mirrors the real
+kingpin-bust path and additionally asserts the board survives).
+
+### Implementation Note: nested bail button
+
+The BAIL button nests inside the dealer-row Button; bevy picking gives the
+inner button the interaction, so paying bail doesn't re-select the runner.
 
 ---
 

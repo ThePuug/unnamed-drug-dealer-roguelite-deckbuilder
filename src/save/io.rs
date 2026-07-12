@@ -6,13 +6,18 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-/// Get platform-appropriate save directory
+/// Get platform-appropriate save directory.
+/// SOW-023: `DDD_SAVE_DIR` overrides it so e2e playtests and dev tooling
+/// never touch the real save (a scripted bust once permadeathed a live
+/// character).
 pub fn get_save_directory() -> PathBuf {
-    let base = dirs::data_local_dir()
-        .or_else(dirs::data_dir)
-        .unwrap_or_else(|| PathBuf::from("."));
-
-    let save_dir = base.join("DrugDealerDeckbuilder");
+    let save_dir = match std::env::var("DDD_SAVE_DIR") {
+        Ok(dir) if !dir.trim().is_empty() => PathBuf::from(dir),
+        _ => dirs::data_local_dir()
+            .or_else(dirs::data_dir)
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join("DrugDealerDeckbuilder"),
+    };
 
     // Ensure directory exists
     if !save_dir.exists() {
