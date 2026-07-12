@@ -34,7 +34,8 @@ SOWs are work orders for developers. Each SOW defines what needs to be built, wh
 | 025 | Street Cred & Stationing | 🎲 Roguelite | ✅ Merged | 2026-07-12 |
 | 026 | Content Authoring Pass | 🃏 Cards | ✅ Merged | 2026-07-12 |
 | 027 | Heat Economy | 🎲 Roguelite | ✅ Merged | 2026-07-12 |
-| 028 | Third Zone: The Strip | 🃏 Cards | 🔄 Review | 2026-07-12 |
+| 028 | Third Zone: The Strip | 🃏 Cards | ✅ Merged | 2026-07-12 |
+| 029 | City Map Screen | 🗺️ Map/Events | 🔄 In Progress | 2026-07-12 |
 | AAA | Code Organization - main.rs Modularization | 🛠️ Dev Tools | ✅ Merged | 2025-11-15 |
 
 **Legend:**

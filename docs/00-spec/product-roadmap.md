@@ -31,11 +31,9 @@ period when busted. **Cash is global.** The product needs:
 5. ✅ **SOW-027 Heat Economy** — merged; per-area × per-tier narc
    compositions (multipliers retired), Lay Low + Crooked Lawyer, Heat
    upgrade wired, fresh floor ≤ Hot, ZERO-warnings baseline.
-6. **SOW-028 Third Zone: The Strip + zone coherence** (Reed: creative
-   freedom, adjust zones 1-2 as needed) — nightlife zone with the Pimp
-   persona, Ecstasy/Ice re-zoned there, Housewife → Block as its first-rung
-   clientele (fixes the Wolf ×2.8 gap), tuning pass across the 3-zone
-   ladder. Design: studio repo `2026-07-12-three-zones.md`.
+6. ✅ **SOW-028 Third Zone: The Strip + zone coherence** — merged; Pimp
+   persona, Ecstasy/Ice re-zoned to the Strip, Housewife → Block first
+   rung (Wolf ×2.8 gap closed), Corner fresh floor re-tuned to Cold.
 7. **SOW-029 City Map Screen** — area picker/preview + move UI, with three
    real nodes to show.
 8. **SOW-030 Kingpin Ledger** (P5) — empire/dealer history + full
@@ -58,6 +56,27 @@ dealer. Original debt list fully absorbed: jail-as-wager shipped (023),
 RFC-019 resolved (027), harness isolation/outcome-awareness shipped (023/024).
 
 ## Iteration Log
+
+### Iteration 7 — 2026-07-12
+
+- SOW-028 merged (175 tests, zero warnings): The Strip (nightlife,
+  $1,200) with the Pimp (×2.0, Night Shift / VIP Treatment), Back of the
+  Club + VIP Room, Velvet Rope + crowd modifiers, vice-sweep narc texture
+  (heat-noisy, conviction-light; tips Hot+ only, one per tier). Ecstasy/
+  Ice re-zoned Block→Strip; Housewife → Block ×1.5 first rung (Wolf ×2.8
+  flag closed — pinned by test and drawn live).
+- Measured, one tuning iteration: Corner fresh floor was regressing to
+  Scorching-135 (root cause ~90% buyer reaction cards) → tuned to Cold-0;
+  Strip stays hottest per session BY DESIGN (heat tax, zero busts in six
+  blind sessions — feeds the burn-then-cool rotation); Block busts at
+  Blazing with 5-run sentences (contrast intact).
+- Systems insight recorded: self-referential heat sources (tips→heat→
+  tiers→tips) compound — ration them per tier when authoring narcs.
+- For Reed: art asks (club back-alley, VIP lounge backgrounds); judgment
+  call on Strip session-3 heat (+85 at Blazing) after a human playtest.
+- Process: fork committed to local main by mistake; branch rebuilt, main
+  reset with Reed's approval, merge --no-ff as usual. Nothing lost.
+- Next: SOW-029 City Map Screen (three real nodes to show).
 
 ### Iteration 6 — 2026-07-12
 
