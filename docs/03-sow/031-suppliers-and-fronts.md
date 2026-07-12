@@ -2,7 +2,7 @@
 
 ## Status
 
-**Review** - 2026-07-13 (all 4 phases on `sow-031-suppliers-fronts`; 253 tests, zero warnings; full lifecycle e2e-verified live)
+**Accepted** - 2026-07-13 (all 4 phases on `sow-031-suppliers-fronts`; 255 tests, zero warnings; full lifecycle e2e-verified live; adversarial review findings fixed)
 
 ## References
 
@@ -213,6 +213,39 @@ normalize() line.
    single-dealer (kingpin only), so the dealer-count switch is correct
    as-is.
 
+### Adversarial review (pre-merge, coordinator) — 4 distinct defects, fixed 5960be0
+
+A 44-agent panel (5 dimensions, 3 skeptics per finding) sustained 13
+findings that collapse to four distinct defects — notably, several
+dimensions found the same two bugs independently:
+
+1. **HIGH — repossession never landed in-session.** go-home snapshotted
+   `unlocked_cards` BEFORE `tick_fronts()`, then rebuilt the DeckBuilder
+   from the stale snapshot and reinstated the played deck unfiltered —
+   the player kept playing the repossessed card run after run until an
+   app restart (the save file was right; the session wasn't). Fixed:
+   re-snapshot after the tick + ownership filter on the played deck.
+2. **HIGH — muscle-bench softlock.** Benching the empire's ONLY
+   available dealer (broke solo kingpin) was a saved, permanent
+   softlock: Relocating only ticks on completed runs, and no runs can
+   complete. Fixed: the beating requires another available dealer;
+   repossession + souring land regardless. Pinned both ways by test.
+3. **MED — fronted cards weren't playable NOW.** take_front put the card
+   in the save, but the DeckBuilder pool only rebuilt at go-home — the
+   4-run window burned a tick before the card could earn, quietly
+   undermining the serviceability math (the e2e missed it because forge
+   scenarios pre-load fronts). Fixed with `DeckBuilder::resync_available`
+   at the unlock site — which also fixes the same pre-existing gap for
+   SOW-020 cash purchases.
+4. **LOW — FRONT offers went stale** when cash moved without the shop
+   being touched (hire/bail with the tab open). Fixed: save changes
+   while the shop is viewing re-populate the tab.
+
+Root-cause note for the pattern ledger: defects 1 and 3 are the same
+disease — a DERIVED resource (DeckBuilder) drifting from its source of
+truth (SaveData ownership). Every mutation site must resync, or the
+derivation must move to change-detection. Recorded in GUIDANCE.md.
+
 ### For Reed
 
 - **Window feel** is the one open tuning knob (4 runs, own runs count).
@@ -231,4 +264,51 @@ normalize() line.
 
 ## Acceptance Review
 
-*Populated after implementation.*
+**Reviewer:** ARCHITECT role (coordinator) — 2026-07-13
+**Verdict: ACCEPT**
+
+### Verification performed
+
+- **Build/test:** 255 passed / 0 failed / 0 warnings on `5960be0`
+  (implementation +28 from the 225 baseline; review fixes +2 more with
+  one test deliberately rewritten — the old bench test had pinned the
+  softlock).
+- **Branch hygiene:** all commits on `sow-031-suppliers-fronts`; main
+  untouched; assets submodule carries exactly the two intended commits
+  (content + Reed's art drop); Reed's other local edits intact.
+- **Adversarial review:** 44-agent panel, 4 distinct defects (2 HIGH),
+  all fixed same-day (Discussion). The 2 HIGHs were in exactly the
+  territory the panel was pointed at: state-machine edges the e2e's
+  forge-loaded scenarios structurally could not reach. Both fixes are
+  unit-pinned; the UI propagation rides existing verified paths
+  (resource change-detection → pool repopulate).
+- **Reed fold-ins verified:** five renamed dealer portraits wired (pool
+  8 → 13, appended), silhouette.png as the "Silhouette" key with legacy
+  Barista normalization at load.
+- **Acceptance criteria:** functional lifecycle criterion met and
+  e2e-evidenced; pressure criterion MEASURED at the design intent with
+  no tuning iteration spent; integrity criterion met via the SOW-021
+  version policy (bump 5 → 6) rather than the SOW text's serde-defaults
+  premise — the deviation is correct (bincode) and recorded.
+
+### Assessment
+
+- Reed's core rationale ("pressure on runs to SUCCEED") is now
+  measurable in play: blind dud runs burned a window in 3 ticks and got
+  cut off; targeted play serviced the same debt with room to spare.
+  That asymmetry IS the mechanic, verified.
+- The derived-resource drift lesson (defects 1+3) joins the overlay/
+  init_resource lessons in GUIDANCE.md — third SOW in a row where the
+  panel's catch generalizes beyond the diff.
+- Deviations all sound; the strapped-scenario compression and the
+  Relocating-as-bench reuse are good engineering judgment.
+
+### Carried forward
+
+- **Reed judgment (open):** window feel (4 vs 5 runs, before touching
+  vig); muscle-bench flavor ("ROUGHED UP" status vs reused MOVING);
+  arcade score formula; epitaph naming (schema nod).
+- Save wipe on next launch of any v5 save (version bump) — flagged to
+  Reed pre-merge.
+- Supplier portraits remain art-backlog #9; supplier faces get homes on
+  map node cards when they land.
