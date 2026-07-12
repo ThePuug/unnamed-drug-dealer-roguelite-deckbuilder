@@ -215,10 +215,21 @@ pub const COUNT_CHIP_BG: Color = Color::srgba(0.047, 0.055, 0.086, 0.85);
 pub const COUNT_CHIP_BORDER: Color = Color::srgba(0.471, 0.510, 0.627, 0.35);
 pub const COUNT_CHIP_TEXT: Color = Color::srgb(0.682, 0.714, 0.784);               // #aeb6c8
 
-// Deal table ghost insurance slot
+// Deal table ghost slots (empty-slot treatment, one palette per slot type -
+// derived from the card type colors: border alpha 0.4, bg alpha 0.05,
+// text lightened toward white at alpha 0.7)
 pub const GHOST_INSURANCE_BORDER: Color = Color::srgba(0.2, 0.8, 0.8, 0.4);
 pub const GHOST_INSURANCE_BG: Color = Color::srgba(0.2, 0.8, 0.8, 0.05);
 pub const GHOST_INSURANCE_TEXT: Color = Color::srgba(0.471, 0.784, 0.784, 0.7);
+pub const GHOST_LOCATION_BORDER: Color = Color::srgba(0.3, 0.6, 0.9, 0.4);
+pub const GHOST_LOCATION_BG: Color = Color::srgba(0.3, 0.6, 0.9, 0.05);
+pub const GHOST_LOCATION_TEXT: Color = Color::srgba(0.55, 0.75, 0.95, 0.7);
+pub const GHOST_PRODUCT_BORDER: Color = Color::srgba(0.9, 0.7, 0.2, 0.4);
+pub const GHOST_PRODUCT_BG: Color = Color::srgba(0.9, 0.7, 0.2, 0.05);
+pub const GHOST_PRODUCT_TEXT: Color = Color::srgba(0.95, 0.8, 0.5, 0.7);
+pub const GHOST_CONVICTION_BORDER: Color = Color::srgba(0.9, 0.2, 0.2, 0.4);
+pub const GHOST_CONVICTION_BG: Color = Color::srgba(0.9, 0.2, 0.2, 0.05);
+pub const GHOST_CONVICTION_TEXT: Color = Color::srgba(0.95, 0.55, 0.55, 0.7);
 
 // Evidence vs Cover balance bar
 pub const BALANCE_EVIDENCE_TEXT: Color = Color::srgb(1.0, 0.420, 0.420);           // #ff6b6b

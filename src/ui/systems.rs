@@ -95,8 +95,38 @@ pub fn update_active_slots_system(
                     &emoji_font,
                     upgrade_info,
                 );
-            } else if slot.slot_type == SlotType::Insurance {
-                // SOW-022: ghost "+ INSURANCE" slot invites the play
+            } else {
+                // SOW-022: every empty slot gets the ghost treatment. The "+"
+                // prefix invites a play - Location/Product/Insurance are the
+                // player's to fill; Conviction is the narc's threat slot, so
+                // its ghost states the slot without inviting anything.
+                let (label, border, bg, text) = match slot.slot_type {
+                    SlotType::Location => (
+                        "+ LOCATION",
+                        theme::GHOST_LOCATION_BORDER,
+                        theme::GHOST_LOCATION_BG,
+                        theme::GHOST_LOCATION_TEXT,
+                    ),
+                    SlotType::Product => (
+                        "+ PRODUCT",
+                        theme::GHOST_PRODUCT_BORDER,
+                        theme::GHOST_PRODUCT_BG,
+                        theme::GHOST_PRODUCT_TEXT,
+                    ),
+                    SlotType::Conviction => (
+                        "CONVICTION",
+                        theme::GHOST_CONVICTION_BORDER,
+                        theme::GHOST_CONVICTION_BG,
+                        theme::GHOST_CONVICTION_TEXT,
+                    ),
+                    SlotType::Insurance => (
+                        "+ INSURANCE",
+                        theme::GHOST_INSURANCE_BORDER,
+                        theme::GHOST_INSURANCE_BG,
+                        theme::GHOST_INSURANCE_TEXT,
+                    ),
+                };
+
                 let (width, height) = helpers::CardSize::Table.dimensions();
                 parent.spawn((
                     Node {
@@ -108,33 +138,17 @@ pub fn update_active_slots_system(
                         border_radius: BorderRadius::all(Val::Px(12.0)),
                         ..default()
                     },
-                    BackgroundColor(theme::GHOST_INSURANCE_BG),
-                    BorderColor::all(theme::GHOST_INSURANCE_BORDER),
+                    BackgroundColor(bg),
+                    BorderColor::all(border),
                     PlayedCardDisplay,
                 ))
                 .with_children(|parent| {
                     parent.spawn((
-                        Text::new("+ INSURANCE"),
+                        Text::new(label),
                         TextFont::from_font_size(12.0),
-                        TextColor(theme::GHOST_INSURANCE_TEXT),
+                        TextColor(text),
                     ));
                 });
-            } else {
-                // Ghosted placeholder communicates the slot type by color
-                let color = match slot.slot_type {
-                    SlotType::Location => theme::LOCATION_CARD_COLOR,
-                    SlotType::Product => theme::PRODUCT_CARD_COLOR,
-                    SlotType::Conviction => theme::CONVICTION_CARD_COLOR,
-                    SlotType::Insurance => theme::INSURANCE_CARD_COLOR,
-                };
-
-                helpers::spawn_placeholder(
-                    parent,
-                    "",
-                    helpers::CardSize::Table,
-                    color,
-                    game_assets.card_placeholder.clone(),
-                );
             }
         });
     }
