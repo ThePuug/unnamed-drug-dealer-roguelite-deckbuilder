@@ -2,7 +2,7 @@
 
 ## Status
 
-**Planned** - 2026-07-12
+**Review** - 2026-07-12 (all 4 phases complete on branch)
 
 ## References
 
@@ -94,7 +94,60 @@ warnings.
 
 ## Discussion
 
-*Populated during implementation.*
+### Implementation Note: pilot item substitution (Phase 1)
+
+The SOW named Shrooms as the Corner pilot for cred gating, but Shrooms is
+STARTING COLLECTION (shop_price 0, pre-unlocked) - it cannot be shop-gated
+as authored today. The Corner's only real shop item is **Storage Unit
+($1,500)**, which took the pilot requirement (3 Corner cred); **Heroin
+($8,000, Block)** carries the Block pilot (5 Block cred). Reed's
+"Shrooms as an unlockable" example becomes real in the SOW-026 authoring
+pass when the starting collection gets leaner and Shrooms moves to shop
+stock.
+
+### Implementation Note: MOVE button target (Phase 3)
+
+With two areas the MOVE button targets the first unlocked area that isn't
+the dealer's station ("MOVE TO THE BLOCK - $250"). A real area picker
+belongs to the map screen SOW. Relocating dealers show "MOVING · N RUNS"
+and START RUN reads "MOVING" (vs "JAILED") when the active dealer is
+mid-move.
+
+### Implementation Note: tick semantics (Phase 2)
+
+`tick_sentence` now serves BOTH jail sentences and relocations at the same
+choke point (run completion via GO HOME/END RUN), runner excluded. The
+go-home log line became "Back in action: ..." accordingly. Pre-existing
+subtlety worth knowing (not introduced here): decay skips unavailable
+dealers per-call, but `last_played` isn't advanced while benched, so the
+first decay after release counts the benched wall-clock hours too -
+harmless today (release usually zeroes heat; relocation is 1 run) but worth
+a look if decay semantics ever tighten.
+
+### Tuning candidates (flagged for the next playtest)
+
+- Move fee $250 vs first hire $500 vs bail $300/run: moving is currently
+  the cheapest roster action; with only 2 areas that's probably right (it
+  buys access, not relief - no heat effects), but revisit when the map
+  grows or if move-spam appears.
+- Cred pilot thresholds (3 / 5) are placeholders; the real ladder is
+  SOW-026 authoring-pass work.
+- Sentence constant (1 + heat/25) unchanged from SOW-023 and still untested
+  against real pacing.
+
+### e2e evidence (Phase 4)
+
+`hustler` forge scenario (isolated save): roster panel verified on screen -
+kingpin "THE CORNER · CRED 4 / READY / MOVE TO THE BLOCK $250" with active
+border, Ray "THE BLOCK · CRED 2 / READY / MOVE TO THE CORNER $250", HIRE
+$1,000 (roster-of-2 doubling), cash $1,500, and the SOW-023 heat line
+correctly absent from the stats block. Shop cred-lock text, the
+"unlocked by <name>" credit line, and a live move click could NOT be
+visually verified - the desktop was contested during the run window (the
+driver's foreground guard aborted clicks, four attempts over ~90s). Those
+paths are covered by unit tests (best_cred, move_dealer, gate math) and
+the server-side purchase guard; one uncontested e2e pass at acceptance
+should eyeball the shop states.
 
 ---
 

@@ -2,7 +2,7 @@
 
 **Spec:** [progression-meta.md](progression-meta.md)
 **Last Updated:** 2026-07-12
-**Overall Status:** 27/35 features complete (77%)
+**Overall Status:** 30/38 features complete (79%)
 
 ---
 
@@ -11,12 +11,12 @@
 | Category | Complete | Total | % |
 |----------|:--------:|:-----:|:-:|
 | Cash System | 5 | 5 | 100% |
-| Location System | 6 | 6 | 100% |
+| Location System | 9 | 9 | 100% |
 | Card Unlock System | 6 | 6 | 100% |
 | Per-Run Card Upgrades | 7 | 7 | 100% |
 | Character System | 3 | 7 | 43% |
 | Achievements | 0 | 4 | 0% |
-| **Total** | **26** | **35** | **74%** |
+| **Total** | **30** | **38** | **79%** |
 
 ---
 
@@ -32,7 +32,7 @@
 
 ---
 
-## Location System - 6/6 (100%)
+## Location System - 9/9 (100%)
 
 | Feature | Status | Notes |
 |---------|:------:|-------|
@@ -42,6 +42,9 @@
 | Location permanence | ✅ | SOW-020 |
 | Multi-location shopping | ✅ | SOW-020 |
 | Location UI (shop interface) | ✅ | SOW-020 |
+| Dealer stationing (runs happen where the dealer stands) | ✅ | SOW-025: station per dealer, move = $250 + 1-run downtime, replaces SOW-024's interim random pick |
+| Street cred per dealer per area | ✅ | SOW-025: +1 per Safe deal in the run's area, never decays; roster card shows "STATION · CRED n" |
+| Cred-gated shop stock | ✅ | SOW-025: `shop_cred_required` in card RON (pilots: Storage Unit 3, Heroin 5); roster's best cred opens the door, shop credits the dealer by name |
 
 ---
 
@@ -118,7 +121,7 @@
 ## Remaining Work for Launch
 
 **Priority 1 - Core Meta Loop:**
-- ~~Location System~~ ✅ (6/6 complete - SOW-024 area purchases)
+- ~~Location System~~ ✅ (9/9 complete - SOW-024 areas + SOW-025 stationing/cred)
 - ~~Card Unlock System~~ ✅ (6/6 complete)
 - Achievements (4 features)
 
