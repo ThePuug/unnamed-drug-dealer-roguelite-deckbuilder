@@ -205,6 +205,9 @@ pub fn update_deck_discard_system(
             }
         }
         if let Some(card) = top_card {
+            // RFC-017/018: badge info so the face-up card matches the stats
+            // the totals actually applied (upgraded cover, tier-scaled evidence)
+            let upgrade_info = ui::upgrade_info_for(hand_state, &card);
             commands.entity(slot_entity).with_children(|parent| {
                 ui::spawn_card_display_with_upgrade(
                     parent,
@@ -215,7 +218,7 @@ pub fn update_deck_discard_system(
                     PlayedCardDisplay,
                     game_assets.card_template.clone(),
                     &emoji_font,
-                    None,
+                    upgrade_info,
                 );
             });
         }

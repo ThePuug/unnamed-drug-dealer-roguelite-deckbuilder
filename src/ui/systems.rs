@@ -77,42 +77,11 @@ pub fn update_active_slots_system(
             SlotType::Insurance => hand_state.active_insurance(true),
         };
 
-        // Spawn card or placeholder (Medium size, no margin for override slots)
+        // Spawn card or placeholder into the table slot
         commands.entity(slot_entity).with_children(|parent| {
             if let Some(card) = active_card {
-                // RFC-017: Get upgrade info for player cards
-                // RFC-018: Get upgrade info for Narc cards (Evidence/Conviction)
-                let upgrade_info = match card.card_type {
-                    CardType::Product { .. } | CardType::Location { .. } | CardType::Insurance { .. } => {
-                        let tier = hand_state.get_card_tier(&card.name);
-                        let play_count = hand_state.card_play_counts.get(&card.name).copied().unwrap_or(0);
-                        Some(helpers::UpgradeInfo {
-                            tier_name: tier.name().to_string(),
-                            plays: play_count,
-                            plays_to_next: tier.plays_to_next(),
-                            multiplier: tier.multiplier(),
-                            star_color: tier.star_color(),
-                            is_foil: tier.is_foil(),
-                        })
-                    }
-                    CardType::Evidence { .. } | CardType::Conviction { .. } => {
-                        // RFC-018: Narc cards use ⚖ (scales) with same color tiers
-                        let tier = hand_state.narc_upgrade_tier;
-                        if tier != crate::save::UpgradeTier::Base {
-                            Some(helpers::UpgradeInfo {
-                                tier_name: "⚖".to_string(), // Scales of Justice
-                                plays: 0,
-                                plays_to_next: None, // No progress for Narc cards
-                                multiplier: tier.multiplier(),
-                                star_color: tier.star_color(),
-                                is_foil: tier.is_foil(),
-                            })
-                        } else {
-                            None // Base tier shows no badge
-                        }
-                    }
-                    _ => None, // Cover/DealModifier don't show tier badges
-                };
+                // RFC-017/018 badge info (SOW-022: shared helper)
+                let upgrade_info = helpers::upgrade_info_for(&hand_state, card);
 
                 // SOW-022: Table-size card on "the deal on the table"
                 helpers::spawn_card_display_with_upgrade(

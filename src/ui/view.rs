@@ -112,13 +112,15 @@ pub struct IntentView {
     pub rows: Vec<IntentRow>,
 }
 
-/// Stat rows for a narc card with the narc upgrade tier applied
-/// (mirrors the engine: evidence/heat scale with the tier; conviction
-/// thresholds are checked raw at resolution)
+/// Stat rows for a narc card with the narc upgrade tier applied.
+/// Mirrors the engine exactly: evidence TRUNCATES (`calculate_totals` does
+/// `as u32`), heat ROUNDS (`get_card_heat` does `.round()`), and conviction
+/// thresholds are checked raw at resolution - the telegraph must promise the
+/// numbers that will actually materialize.
 fn narc_card_rows(card: &Card, tier_multiplier: f32) -> Vec<IntentRow> {
     match card.card_type {
         CardType::Evidence { evidence, heat } => vec![
-            ("🔍", format!("{:+}", (evidence as f32 * tier_multiplier).round() as i32)),
+            ("🔍", format!("{:+}", (evidence as f32 * tier_multiplier) as i32)),
             ("🔥", format!("{:+}", (heat as f32 * tier_multiplier).round() as i32)),
         ],
         CardType::Conviction { heat_threshold } => {
@@ -131,7 +133,9 @@ fn narc_card_rows(card: &Card, tier_multiplier: f32) -> Vec<IntentRow> {
 
 /// What the narc intent bubble should show, if anything.
 /// - Narc's pending turn: telegraph the card it is about to play (`hand[0]`)
-/// - After the narc acted this round: show what it actually played
+/// - After the narc acted (rest of the round incl. buyer reaction): show the
+///   card it actually played - the last narc-type card in `cards_played`
+///   (the narc always acts first each round, so that is this round's play)
 /// - Otherwise (dealing / hand over): nothing
 pub fn narc_intent(hand_state: &HandState) -> Option<IntentView> {
     let tier_mult = hand_state.narc_upgrade_tier.multiplier();
@@ -151,7 +155,7 @@ pub fn narc_intent(hand_state: &HandState) -> Option<IntentView> {
 
     if matches!(hand_state.current_state, HandPhase::PlayerPhase | HandPhase::DealerReveal) {
         let played = hand_state
-            .cards_played_this_round
+            .cards_played
             .iter()
             .rev()
             .find(|c| matches!(c.card_type, CardType::Evidence { .. } | CardType::Conviction { .. }))?;
@@ -375,10 +379,38 @@ mod tests {
     }
 
     #[test]
+    fn intent_evidence_truncates_like_the_engine() {
+        // calculate_totals does `(evidence * mult) as u32` (truncation), so a
+        // 5-evidence card at Tier1 contributes +5, not the rounded +6 - the
+        // telegraph must not promise evidence that never materializes
+        let mut hs = hand_state_with_narc_card(create_evidence("Patrol", 5, 5));
+        hs.narc_upgrade_tier = crate::save::UpgradeTier::Tier1; // ×1.1 → 5.5
+        let intent = narc_intent(&hs).unwrap();
+        assert_eq!(intent.rows[0], ("🔍", "+5".to_string()));
+        // heat rounds, matching get_card_heat: 5.5 → 6
+        assert_eq!(intent.rows[1], ("🔥", "+6".to_string()));
+    }
+
+    #[test]
     fn intent_shows_played_card_after_narc_acts() {
         let mut hs = hand_state_with_narc_card(create_evidence("Surveillance", 20, 5));
         hs.current_player_index = 1; // Narc already acted
-        hs.cards_played_this_round.push(create_evidence("Anonymous Tip", 5, 20));
+        // play_card pushes to cards_played (the production write path)
+        hs.cards_played.push(create_evidence("Anonymous Tip", 5, 20));
+        let intent = narc_intent(&hs).unwrap();
+        assert_eq!(intent.verb, "PLAYED");
+        assert_eq!(intent.card_name, "ANONYMOUS TIP");
+    }
+
+    #[test]
+    fn intent_played_ignores_non_narc_cards_on_top() {
+        // Player/buyer cards played after the narc's must not displace the
+        // PLAYED display - only Evidence/Conviction are narc plays
+        let mut hs = hand_state_with_narc_card(create_evidence("Surveillance", 20, 5));
+        hs.current_player_index = 2; // everyone acted
+        hs.cards_played.push(create_evidence("Anonymous Tip", 5, 20));
+        hs.cards_played.push(create_product("Weed", 30, 5));
+        hs.cards_played.push(create_cover("Alibi", 30, -5));
         let intent = narc_intent(&hs).unwrap();
         assert_eq!(intent.verb, "PLAYED");
         assert_eq!(intent.card_name, "ANONYMOUS TIP");

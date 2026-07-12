@@ -88,6 +88,46 @@ impl Default for UpgradeInfo {
 
 // SOW-022: get_card_stats removed (all callers pass an explicit multiplier)
 
+/// SOW-022: Badge/multiplier info for a card wherever it appears on the table
+/// or discard stack. Player-ownable types carry the RFC-017 play-tier star;
+/// narc types (Evidence/Conviction) carry the RFC-018 ⚖ badge when the narc
+/// tier is scaled, so displayed stats always match what totals apply.
+pub fn upgrade_info_for(hand_state: &crate::HandState, card: &crate::Card) -> Option<UpgradeInfo> {
+    match card.card_type {
+        CardType::Product { .. }
+        | CardType::Location { .. }
+        | CardType::Insurance { .. }
+        | CardType::Cover { .. }
+        | CardType::DealModifier { .. } => {
+            let tier = hand_state.get_card_tier(&card.name);
+            let plays = hand_state.card_play_counts.get(&card.name).copied().unwrap_or(0);
+            Some(UpgradeInfo {
+                tier_name: tier.name().to_string(),
+                plays,
+                plays_to_next: tier.plays_to_next(),
+                multiplier: tier.multiplier(),
+                star_color: tier.star_color(),
+                is_foil: tier.is_foil(),
+            })
+        }
+        CardType::Evidence { .. } | CardType::Conviction { .. } => {
+            let tier = hand_state.narc_upgrade_tier;
+            if tier != crate::save::UpgradeTier::Base {
+                Some(UpgradeInfo {
+                    tier_name: "⚖".to_string(), // Scales of Justice
+                    plays: 0,
+                    plays_to_next: None, // No progress display for Narc cards
+                    multiplier: tier.multiplier(),
+                    star_color: tier.star_color(),
+                    is_foil: tier.is_foil(),
+                })
+            } else {
+                None // Base tier shows no badge
+            }
+        }
+    }
+}
+
 /// RFC-017: Get stats with upgrade multiplier applied to primary stat
 fn get_card_stats_with_multiplier(card_type: &CardType, multiplier: f32) -> Vec<StatInfo> {
     match card_type {

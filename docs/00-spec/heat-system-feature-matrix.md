@@ -1,7 +1,7 @@
 # Heat System - Feature Matrix
 
 **Spec:** [heat-system.md](heat-system.md)
-**Last Updated:** 2025-11-27
+**Last Updated:** 2026-07-12
 **Overall Status:** 14/14 features complete (100%)
 
 ---
@@ -75,5 +75,10 @@
 - HeatTier enum: `src/save/types.rs:104`
 - apply_decay(): `src/save/types.rs:446`
 - Narc scaling: `src/save/types.rs:150` (narc_upgrade_tier)
-- Heat bar UI: `src/ui/theme.rs` (percentage-based colors, not tier colors)
-- Tier display: `src/systems/save_integration.rs:214` (tier.color())
+- Heat bar UI (SOW-022): YOUR STANDING panel gradient track on a fixed 0–100
+  scale with conviction-threshold tick marks (`src/ui/theme.rs` STANDING_HEAT_*,
+  `src/ui/systems.rs` update_standing_panel_system, ticks from
+  `src/ui/view.rs` conviction_ticks). Session heat tier chip uses
+  `HeatTier::from_heat(current_heat)` name + color. The buyer's scenario heat
+  cap displays separately on the BAILS AT HEAT chip.
+- Tier display (deck builder): `src/systems/save_integration.rs:214` (tier.color())

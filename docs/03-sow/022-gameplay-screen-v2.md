@@ -138,7 +138,47 @@ no new warnings.
 
 ## Discussion
 
-*Populated during implementation.*
+### Implementation Note: Narc intent semantics
+
+The mockup shows an intent bubble but a mockup can't express timing. Decision:
+while the Narc is the pending actor the bubble telegraphs `hand[0]` (the card
+`ai_betting_system` will play) with tier-scaled values; after the Narc acts it
+relabels to `PLAYED · <name>` for the rest of the round. The telegraph reveals
+hidden info only during the ~1s AI-timer window before the card becomes public
+anyway. Conviction thresholds display RAW because `resolve_hand` checks them
+unmultiplied — the card face shows a multiplied threshold (pre-existing
+display/engine mismatch in `helpers.rs`, out of scope here, worth its own fix).
+
+### Implementation Note: Discard stack derivation
+
+`HandState.discard_pile` only records overridden slot cards, but the mockup's
+discard top card is a COVER card — so the v2 discard stack means "everything
+resolved into the past this hand." `view::discard_view` derives it
+chronologically from `cards_played` alone (E/C/M plays + slot overrides via a
+replay walk), keeping `discard_pile` untouched as the engine-facing record.
+
+### Implementation Note: Heat bar scale
+
+v1's heat bar was denominated in the buyer's scenario threshold. v2 separates
+the concerns: the YOUR STANDING track is a fixed 0–100 scale carrying
+conviction-threshold ticks (derived from the Narc's actual Conviction cards,
+content-driven per the SOW-021 authorability lesson), while the buyer's cap
+lives on the BAILS AT HEAT chip. Heat above 100 clamps the fill; the numeric
+readout stays truthful.
+
+### Implementation Note: Legacy removals
+
+Dead code orphaned or surfaced by the restructure was pruned rather than
+suppressed: `HandPhase::FoldDecision` (never constructed since SOW-008),
+`CardSize::Medium`, four legacy card-spawn helpers, and v1-only theme
+constants/markers. Warning count is 40 vs 43 on main — no new warnings.
+
+### Implementation Note: PASS button styling vs. enable/disable
+
+The v2 PASS button uses a `BackgroundGradient` face, which the old
+every-frame `BackgroundColor` overwrite in `update_betting_button_states`
+would fight. The system now swaps gradient/border/text-color variants and is
+gated by a `Local<Option<bool>>` so it writes only on state change.
 
 ---
 
