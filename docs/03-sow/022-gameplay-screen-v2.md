@@ -2,7 +2,7 @@
 
 ## Status
 
-**In Progress** - 2026-07-12
+**Review** - 2026-07-12 (implementation + adversarial review + e2e verification complete; awaiting user playtest sign-off)
 
 ## References
 
@@ -182,6 +182,61 @@ gated by a `Local<Option<bool>>` so it writes only on state change.
 
 ---
 
+### Implementation Note: e2e verification driver
+
+Visual verification was done by driving the real game window:
+`tools/e2e/game-drive.ps1` screenshots (occlusion-proof `PrintWindow`) and
+clicks/hovers in 1920×1080 design coordinates, converting through the UiScale
+letterbox and monitor DPI (auto-detected). Two hard-won lessons baked into the
+script: posted `WM_LBUTTONDOWN` messages do NOT drive winit/bevy picking (real
+input with a foreground-verification guard is required), and a DPI-unaware
+capture process sees virtualized coordinates (screenshots silently become
+top-left crops on a 150% monitor).
+
+---
+
 ## Acceptance Review
 
-*Populated after implementation.*
+### Scope Completion: 100%
+
+- ✅ Phase 1: View-model foundation (`src/ui/view.rs`, 21 unit tests)
+- ✅ Phase 2: Screen restructure (theme/components/setup/helpers)
+- ✅ Phase 3: System rebinding (all v2 elements live-update)
+- ✅ Phase 4: Documentation (feature matrices, SOW index)
+
+### Architectural Compliance
+
+- All colors are named theme constants; card rendering stays on the single
+  helpers.rs path; emoji use the separate-EmojiFont-entity pattern; root/marker
+  contracts for `scale_ui_to_fit_system`/`toggle_game_state_ui_system` intact.
+- Build clean with **zero new warnings** (40 vs 43 on main — three
+  pre-existing dead helpers were removed). `cargo test`: **128 passed**.
+- Adversarial review (5 dimensions → 9 confirmed findings after verification,
+  5 refuted): all confirmed defects fixed — dead intent-PLAYED branch, hand
+  slot-index click validation (pre-existing, surfaced by the fan rewrite),
+  telegraph rounding vs engine truncation, discard top-card badge info,
+  disabled-PASS residual glow.
+
+### Player Experience Validation
+
+Verified live via the e2e driver (screenshots in session scratchpad):
+deck builder → START RUN → full hand loop (narc intent bubble, card play from
+the fan with hover lift, balance bar SAFE/AT RISK flips, discard chronology
+incl. an overridden location, buyer bubble hover detail, location background +
+vignette after a location play, disabled/enabled action buttons) → resolution
+overlay → outcome messaging. **Subjective fun/readability judgment requires
+the user's playtest — not claimed here** (DEVELOPER role rule).
+
+### Performance
+
+No new per-frame despawn/respawn paths; rebuild-style systems remain gated on
+`Changed<HandState>`; per-frame text/pill/button systems write only on change.
+
+---
+
+## Sign-Off
+
+**Reviewed By:** pending (user playtest)
+**Date:** —
+**Decision:** pending
+**Status:** Branch `sow-022-gameplay-v2` ready for review
