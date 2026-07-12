@@ -39,13 +39,10 @@ period when busted. **Cash is global.** The product needs:
 8. ✅ **SOW-030 Kingpin Ledger** (P5) — merged; empire strip, dossiers
    with story feeds, browsable board with IN PROGRESS row, map zone
    history line, zero schema changes.
-9. **SOW-031 Suppliers & Fronts** (Reed-confirmed v2) — named supplier NPC
-   per zone; fronts: take product cards now, owe from proceeds, due in N
-   runs on the run-ticker; escalation ladder on default (cut off → muscle →
-   soured). Rationale: due-dates make unproductive runs cost something —
-   run-quality pressure countering fold-early safety. Defaults: fronts
-   against cards (own after payoff), 1 supplier/zone. Design: studio repo
-   `2026-07-12-supplier-mechanic.md`.
+9. ✅ **SOW-031 Suppliers & Fronts** — merged; Lil Smoke / Miss Velvet /
+   The Broker, 25% vig, 4-run windows on the run-ticker, cut off →
+   muscle → soured, surfaces on shop/hub/map/ledger; zone strings moved
+   to RON; SAVE_VERSION 6.
 10. **SOW-032 Starter/Tutorial Arc — "Road to Your First Dealer"** —
    OPTIONAL at empire start; skipping confers NO benefit (the arc earns
    exactly what ordinary play would); beats: first front → first payback →
@@ -57,6 +54,38 @@ dealer. Original debt list fully absorbed: jail-as-wager shipped (023),
 RFC-019 resolved (027), harness isolation/outcome-awareness shipped (023/024).
 
 ## Iteration Log
+
+### Iteration 10 — 2026-07-13
+
+- SOW-031 merged (255 tests, zero warnings): the supply side exists.
+  One named supplier per zone (Lil Smoke / Miss Velvet / The Broker with
+  voice lines), fronts against cards at 25% vig due in 4 runs — the
+  runner's OWN run counts, so unproductive runs spend real ticks (Reed's
+  run-quality pressure, now measured: blind dud play burned a window in
+  3 runs and got cut off; targeted play serviced the same debt). PAY any
+  time; escalation CutOff → muscle (20% seizure / bench) → Soured
+  (permanent). Surfaces: shop header + FRONT/PAY, hub due-clock beside
+  START RUN, map node supplier lines, ledger OWED stat. Zone identity/
+  narc-hint strings moved into shop_locations.ron (SOW-029 carry
+  closed). SAVE_VERSION 5 → 6 (bincode; v5 saves reset — Reed flagged).
+- Reed art drop wired mid-flight: five dealer portraits (julie, marcus,
+  gladys, bubba, roxanne — pool 8 → 13, no face duplication until
+  roster 14) and his silhouette.png as the player character's
+  placeholder ("Silhouette" key; deliberately generic pending character
+  customization; legacy Barista kingpins normalize at load).
+- Adversarial review (44 agents): 4 distinct defects, 2 HIGH — a
+  repossessed card kept playing all session (stale DeckBuilder
+  snapshot), and the broke-muscle bench could permanently softlock a
+  solo empire. Both fixed + unit-pinned same-day. Pattern recorded:
+  derived resources drift from SaveData — resync at every mutation
+  site (GUIDANCE.md).
+- SOW-032 Tutorial Arc authored (design: studio repo
+  2026-07-13-tutorial-arc.md — guided play, not a mode; six beats;
+  graduation at the first $500 hire) but NOT started: paused for the
+  night at Reed's direction. It is the LAST item on the current
+  roadmap — next-arc planning follows Reed's playtest of the full loop.
+- Open for Reed: front window feel (4 vs 5 runs), muscle-bench flavor,
+  arcade score formula, epitaph naming, Strip session-3 heat.
 
 ### Iteration 9 — 2026-07-12
 
@@ -203,6 +232,14 @@ RFC-019 resolved (027), harness isolation/outcome-awareness shipped (023/024).
 
 ## Backlog (post-core)
 
-- **Starter/Tutorial arc — "Road to Your First Dealer"** (Reed, 2026-07-12):
-  onboarding whose graduation is affording the first $500 hire; teaches
-  deal → heat → bank → cred along the way. After the map screen + ledger.
+- **Character customization** (Reed, 2026-07-12): player-character
+  portrait picker (and whatever else grows from it). The shipped
+  silhouette placeholder is its hook — `normalize()`'s silhouette line
+  is what a picker replaces.
+- **Event log SOW** (from SOW-030 review): timestamps on stories would
+  enable a true cross-empire timeline; epitaph naming rides the same
+  schema change if Reed nods.
+- **Stabilization pass candidates:** StoryHistoryOverlay focus-policy
+  gap (pre-SOW-029); "ROUGHED UP" dealer status for the muscle bench
+  (currently reads MOVING); scroll machinery if ledger caps+tails start
+  to chafe.
