@@ -839,11 +839,13 @@ pub const DEALER_NAME_POOL: [&str; 12] = [
     "Lucky", "Smokes", "Blade", "Ace", "Vega", "Halo",
 ];
 
-/// Actor portraits not used by the narc or any buyer persona - these faces
-/// become the dealer roster (keys into GameAssets.actor_portraits)
-pub const DEALER_PORTRAIT_POOL: [&str; 9] = [
+/// Actor portraits available as dealer faces (keys into
+/// GameAssets.actor_portraits). Excludes the narc and every buyer persona -
+/// SOW-028 promoted the Pimp to the Strip's clientele, so his face left the
+/// pool (E1, art-backlog): a hire must never wear a buyer's face.
+pub const DEALER_PORTRAIT_POOL: [&str; 8] = [
     "Barista", "Displaced Patriot", "Flower Child", "Hells Angel", "Hippie",
-    "Pimp", "Pretty Woman", "Street Walker", "Widow",
+    "Pretty Woman", "Street Walker", "Widow",
 ];
 
 /// Whether a dealer can be sent out on a run

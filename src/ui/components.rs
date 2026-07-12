@@ -455,3 +455,36 @@ pub struct MapHintText;
 pub struct MapDealerChipButton {
     pub dealer_index: usize,
 }
+
+// ============================================================================
+// SOW-030: Kingpin Ledger overlay
+// ============================================================================
+
+/// Hub button that opens/closes the ledger ("LEDGER" in the tab row)
+#[derive(Component)]
+pub struct LedgerButton;
+
+/// Full-screen ledger overlay root (child of DeckBuilderRoot, same
+/// inheritance as MapOverlay; FocusPolicy::Block per the SOW-029 lesson)
+#[derive(Component)]
+pub struct LedgerOverlay;
+
+#[derive(Component)]
+pub struct LedgerCloseButton;
+
+/// Body container (children rebuilt on save or ledger-state change by
+/// populate_ledger_system)
+#[derive(Component)]
+pub struct LedgerBody;
+
+/// Dossier row - click to open this dealer's story feed
+#[derive(Component)]
+pub struct LedgerDossierButton {
+    pub dealer_index: usize,
+}
+
+/// Fallen-empire board row - click to open its archived stories
+#[derive(Component)]
+pub struct LedgerEpitaphButton {
+    pub epitaph_index: usize,
+}

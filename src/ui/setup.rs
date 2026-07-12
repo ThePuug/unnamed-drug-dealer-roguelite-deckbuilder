@@ -75,6 +75,8 @@ pub fn setup_deck_builder(
     // SOW-029: fresh map state each time the hub spawns (closed, no
     // armed move)
     commands.insert_resource(crate::systems::city_map::MapUiState::default());
+    // SOW-030: fresh ledger state (closed, no story feed)
+    commands.insert_resource(crate::systems::kingpin_ledger::LedgerUiState::default());
 
     // Deck builder root container - 1920x1080 design, will be scaled/positioned by scale_ui_to_fit_system
     commands.spawn((
@@ -160,6 +162,28 @@ pub fn setup_deck_builder(
             .with_children(|btn| {
                 btn.spawn((
                     Text::new("CITY MAP"),
+                    TextFont::from_font_size(16.0),
+                    TextColor(Color::WHITE),
+                ));
+            });
+
+            // SOW-030: LEDGER - the empire's memory (dossiers, stories,
+            // fallen-empires board)
+            tabs.spawn((
+                Button,
+                Node {
+                    width: Val::Px(150.0),
+                    height: Val::Px(40.0),
+                    justify_content: JustifyContent::Center,
+                    align_items: AlignItems::Center,
+                    ..default()
+                },
+                BackgroundColor(theme::LEDGER_TAB_BG),
+                LedgerButton,
+            ))
+            .with_children(|btn| {
+                btn.spawn((
+                    Text::new("LEDGER"),
                     TextFont::from_font_size(16.0),
                     TextColor(Color::WHITE),
                 ));
@@ -390,6 +414,9 @@ pub fn setup_deck_builder(
 
         // SOW-029: City map overlay (hidden; nodes populated on open)
         crate::systems::city_map::spawn_map_overlay(parent);
+
+        // SOW-030: Kingpin ledger overlay (hidden; body populated on open)
+        crate::systems::kingpin_ledger::spawn_ledger_overlay(parent);
     });
 
     // Story History Overlay (initially hidden)
