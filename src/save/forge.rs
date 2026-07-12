@@ -85,6 +85,62 @@ pub fn scenario(name: &str) -> Option<SaveData> {
                 save.dealers[0].add_cred("the_strip");
             }
         }
+        // SOW-030: ledger e2e - an empire with history. Two fallen empires
+        // bracket the living one ($5,000 > $2,000 living > $900), stories
+        // on both active dealers, cred spread across two zones.
+        "legacy" => {
+            save.account.cash_on_hand = 800;
+            save.account.lifetime_revenue = 2000;
+            save.account.unlocked_locations.insert("the_strip".to_string());
+            save.dealers[0].character.heat = 35;
+            save.dealers[0].character.decks_played = 6;
+            for _ in 0..3 {
+                save.dealers[0].add_cred(DEFAULT_STATION);
+            }
+            save.dealers[0].character.story_history.extend([
+                "Moved product at the park while the beat cop bought donuts.".to_string(),
+                "The frat house wanted it loud; the kingpin kept it quiet.".to_string(),
+                "A noise complaint nearly ended the night early.".to_string(),
+            ]);
+
+            let mut ray = DealerState::recruit(&save.dealers);
+            ray.name = "Ray".to_string();
+            ray.station = "the_strip".to_string();
+            ray.character.heat = 55;
+            ray.character.decks_played = 3;
+            ray.prior_convictions = 1;
+            for _ in 0..2 {
+                ray.add_cred("the_strip");
+            }
+            ray.character.story_history.push(
+                "Ray worked the velvet rope like he owned the club.".to_string(),
+            );
+            save.dealers.push(ray);
+
+            save.fallen_empires.push(EmpireEpitaph {
+                ended_at: 1_700_000_000,
+                lifetime_revenue: 900,
+                cash_at_fall: 40,
+                dealers_hired: 0,
+                total_prior_convictions: 1,
+                decks_played: 4,
+                stories: vec![
+                    "The first empire died broke on a corner.".to_string(),
+                ],
+            });
+            save.fallen_empires.push(EmpireEpitaph {
+                ended_at: 1_710_000_000,
+                lifetime_revenue: 5000,
+                cash_at_fall: 1200,
+                dealers_hired: 2,
+                total_prior_convictions: 3,
+                decks_played: 15,
+                stories: vec![
+                    "The second empire ran three dealers deep.".to_string(),
+                    "It ended in a warehouse full of warrants.".to_string(),
+                ],
+            });
+        }
         _ => return None,
     }
     Some(save)
@@ -93,12 +149,12 @@ pub fn scenario(name: &str) -> Option<SaveData> {
 /// CLI entry: parse `<scenario> [--dir <path>]`, write the signed save
 pub fn run_cli(args: &[String]) {
     let Some(name) = args.first() else {
-        eprintln!("usage: forge <fresh|funded|roster|hot|mogul|hustler|nightowl> [--dir <path>]");
+        eprintln!("usage: forge <fresh|funded|roster|hot|mogul|hustler|nightowl|legacy> [--dir <path>]");
         std::process::exit(2);
     };
 
     let Some(save) = scenario(name) else {
-        eprintln!("unknown scenario '{name}' (fresh|funded|roster|hot|mogul|hustler|nightowl)");
+        eprintln!("unknown scenario '{name}' (fresh|funded|roster|hot|mogul|hustler|nightowl|legacy)");
         std::process::exit(2);
     };
     save.validate().expect("forged scenario must pass save validation");
@@ -125,7 +181,7 @@ mod tests {
     #[test]
     fn every_scenario_validates_and_roundtrips() {
         let dir = tempdir().unwrap();
-        for name in ["fresh", "funded", "roster", "hot", "mogul", "hustler", "nightowl"] {
+        for name in ["fresh", "funded", "roster", "hot", "mogul", "hustler", "nightowl", "legacy"] {
             let save = scenario(name).expect(name);
             save.validate().unwrap_or_else(|e| panic!("{name} invalid: {e:?}"));
 
@@ -165,6 +221,19 @@ mod tests {
         assert_eq!(save.dealers[0].cred_in("the_strip"), 2);
         assert!(save.account.unlocked_locations.contains("the_strip"));
         assert!(save.account.unlocked_locations.contains("the_block"));
+    }
+
+    #[test]
+    fn legacy_scenario_shape() {
+        let save = scenario("legacy").unwrap();
+        assert_eq!(save.fallen_empires.len(), 2);
+        // The living empire ($2,000 lifetime) slots between the fallen
+        // ($5,000 and $900) - the exact bracket the ledger e2e verifies
+        assert!(save.fallen_empires.iter().any(|e| e.lifetime_revenue > 2000));
+        assert!(save.fallen_empires.iter().any(|e| e.lifetime_revenue < 2000));
+        assert!(!save.dealers[0].character.story_history.is_empty());
+        assert_eq!(save.dealers[1].name, "Ray");
+        assert!(!save.dealers[1].character.story_history.is_empty());
     }
 
     #[test]

@@ -2,7 +2,7 @@
 
 ## Status
 
-**In Progress** - 2026-07-12
+**Review** - 2026-07-12 (all 4 phases on `sow-030-kingpin-ledger`; 217 tests, zero warnings; save-integrity verified byte-identical)
 
 ## References
 
@@ -88,7 +88,108 @@ where the same number appears twice).
 
 ## Discussion
 
-*Populated during implementation.*
+### Shipped UI structure
+
+- **LEDGER tab** joins the hub row after CITY MAP (design (575, 40), gold
+  `LEDGER_TAB_BG`); existing tab positions unchanged, so no prior harness
+  coordinates moved.
+- **LedgerOverlay** mirrors the map overlay exactly: absolute full-size
+  child of `DeckBuilderRoot`, opaque `LEDGER_CANVAS_BG`,
+  `FocusPolicy::Block` on the root, `GlobalZIndex(92)` (above the map's
+  90 for determinism), CLOSE at the map's geometry so (1843, 79) works on
+  both overlays.
+- **Three panels** under a full-width EMPIRE strip:
+  - THE EMPIRE: lifetime revenue (gold - the arcade score), cash, decks,
+    hires, zones, convictions (red) - the exact numbers
+    `EmpireEpitaph::from_save` freezes, pinned by test.
+  - THE ROSTER (560px): dossier buttons - name (+" · BOSS" gold for the
+    kingpin), heat tier colored, "STATION · n DEALS · n DECKS · n PRIORS
+    · n STORIES" line, gold CRED line per zone in canonical order,
+    status note (JAILED/MOVING/LAYING LOW) shared with map chips via the
+    now-pub `map_view::chip_status_note`.
+  - FALLEN EMPIRES (560px): every epitaph ranked by lifetime revenue;
+    the living empire is a NON-button row with a gold border slotted at
+    its would-be rank ("— $2,000 · IN PROGRESS"); ties go to the dead
+    (the record stands until strictly beaten - pinned by test).
+  - STORIES (flex): idle hint → feed on dossier/epitaph click, newest
+    first, capped at 15 with an "… n earlier stories" tail.
+- **View-model** is pure (`src/ui/ledger_view.rs`, 20 tests):
+  empire/dossier/board/story derivations + the shared zone-history
+  helpers. `systems/kingpin_ledger.rs` only orchestrates.
+
+### Derive-don't-record held
+
+Zero save-schema changes. `street_cred` doubles as the deals-closed
+counter (+1 per Safe deal by construction), `EmpireEpitaph` already
+archived stories, `leaderboard_top` already ranked. **Save integrity
+verified live: SHA256 of save.dat byte-identical before/after a full
+ledger session** (open, dossier feed, epitaph feed, dead-zone click,
+close). "Biggest single deal" and named epitaphs stay out of scope until
+an event-log SOW.
+
+### Map node history line
+
+"3 deals closed · best: The Kingpin (3)" in gold under each unlocked
+zone's chips - placed BELOW the chips deliberately so the harness's
+chip-y reference coordinates stay valid. Derivation shared with the
+ledger (`ledger_view::zone_history_line`, best-dealer consistency with
+the shop credit line pinned by test).
+
+### E1 closed
+
+`DEALER_PORTRAIT_POOL` dropped "Pimp" (9 → 8 faces) with the comment
+rewritten to state the rule (a hire must never wear a buyer's face);
+recruit()'s skip-used/modulo-wrap logic needed no change.
+
+### Deviations (rationale)
+
+1. **Ledger systems in their own chained group** - the hub Update chain
+   sits exactly at Bevy's 20-system tuple limit; the ledger is
+   self-contained (reads SaveData + its own resource, spawns only under
+   LedgerBody), so cross-group ordering is immaterial.
+2. **Story feed caps at 15** (view returns all; UI truncates with a
+   tail count) - keeps the panel inside 1080 design height without
+   pulling scroll machinery into the overlay. Revisit if feeds grow.
+3. **New forge scenario `legacy`** (not in the SOW's list): two fallen
+   empires bracketing the living one + stories on both dealers - makes
+   the board's rank-slotting e2e deterministic instead of grinding a
+   live game-over. Shape pinned by test.
+4. **IN PROGRESS row is not clickable** - the living empire's stories
+   live in the roster dossiers; duplicating them behind the board row
+   would be two surfaces for one record.
+
+### e2e evidence (out\sweep30\, legacy scenario, isolated save dir)
+
+- `01-ledger-open.png`: three panels populated - empire strip correct
+  ($2,000 gold / $800 / 9 / 1 / 2 / 1 red), both dossiers with cred
+  lines, board showing 1. $5,000 → gold "— $2,000 · IN PROGRESS" →
+  2. $900 (exact designed bracket).
+- `02-dossier-stories.png`: Kingpin dossier focused (green border),
+  "STORIES — THE KINGPIN" newest-first (3 stories).
+- `03-epitaph-stories.png`: $5,000 epitaph focused, "STORIES — FALLEN
+  EMPIRE ($5,000)" archive newest-first; focus swapped cleanly off the
+  dossier.
+- Dead-zone click at the old START RUN spot (1798, 987) with the ledger
+  open: inert (no run started, log silent) - FocusPolicy::Block verified
+  on the new overlay.
+- CLOSE → hub live (CITY MAP tab worked immediately after);
+  `04-map-history-line.png`: Corner "3 deals closed · best: The Kingpin
+  (3)", Strip "2 deals closed · best: Ray (2)", locked Block shows no
+  history line; chips unshifted.
+- Save integrity: SHA256 identical before/after the whole session.
+
+### For Reed
+
+- **Score formula**: lifetime revenue is the arcade score (already
+  ranked by `leaderboard_top`). Alternatives (runs survived, zones ×
+  revenue) are a tuning conversation when the board has real entries.
+- **"Name your fallen empire"** at game over would complete the arcade
+  fantasy but needs a schema addition (epitaph name field) - waiting on
+  your nod; if wanted, a tombstone/board-frame illustration becomes an
+  art ask for art-backlog.md.
+- No NEW art asks from this SOW (the ledger is text + palette by
+  design; portraits on dossiers could ride a later polish pass using
+  the existing actor art).
 
 ---
 
