@@ -2,7 +2,7 @@
 
 ## Status
 
-**Review** - 2026-07-12 (all 4 phases implemented on `sow-029-city-map`; 196 tests, zero warnings)
+**Accepted** - 2026-07-12 (all 4 phases on `sow-029-city-map`; 196 tests, zero warnings; adversarial review findings fixed)
 
 ## References
 
@@ -167,8 +167,77 @@ state.
 - SOW-030 (ledger) gets an obvious home: a per-zone history line on the
   node card. SOW-031's supplier NPC likewise (one face per node).
 
+### Adversarial review (pre-merge, coordinator) — 3 findings, fixed a6c6162
+
+A 16-agent review panel (4 dimensions, 3 skeptics per finding, majority
+sustains) confirmed:
+
+1. **HIGH — launch panic with pending upgrades.** The three map systems
+   took bare `ResMut<MapUiState>`, but the resource was only inserted at
+   the end of `setup_deck_builder` — which early-returns on the
+   pending-upgrades frame (SOW-021 DECIDE LATER makes that a persisted
+   save state). Bevy 0.18 panics on a missing required resource →
+   deterministic crash on every launch of such a save. Fixed with
+   `init_resource` in main.rs (the ShopState precedent).
+2. **HIGH — overlay click fall-through.** `Node` defaults to
+   `FocusPolicy::Pass`; the opaque canvas was purely visual, so clicks
+   on any non-button map area landed on hidden hub buttons beneath
+   (deck toggles, roster cash spends, START RUN, tab switches). Fixed
+   with `FocusPolicy::Block` on the overlay root; verified live
+   (dead-zone click inert, CLOSE/UNLOCK/chips still work). Side effect,
+   intended: the hidden CITY MAP tab no longer toggle-closes the map —
+   CLOSE is the exit.
+3. **LOW — harness doc.** The single chip-y (533) only holds for
+   1-clientele-line nodes; the Block's chip sits ~28px lower. Doc
+   corrected to the per-node formula.
+
+**Flag carried (pre-existing, NOT this SOW):** `StoryHistoryOverlay`
+shares the Pass-through structural gap (translucent, transient, lower
+stakes) — queue for a stabilization pass.
+
 ---
 
 ## Acceptance Review
 
-*Populated after implementation.*
+**Reviewer:** ARCHITECT role (coordinator) — 2026-07-12
+**Verdict: ACCEPT**
+
+### Verification performed
+
+- **Build/test:** 196 passed / 0 failed / 0 warnings on `a6c6162`
+  (delta from 175 baseline = the 21 map_view unit tests, all pure).
+- **Branch hygiene:** all commits on `sow-029-city-map`, main untouched,
+  assets submodule untouched, Reed's local asset edits intact.
+- **Adversarial review:** 16-agent panel over the full diff; 3 findings
+  sustained (2 high, 1 low), all fixed in `a6c6162` — see Discussion.
+  The two high fixes were re-verified LIVE with the driver on a forged
+  roster save: map renders all three nodes correctly (affordability
+  states, jailed chip, narc hints), dead-zone click at the old START RUN
+  spot is inert, CLOSE returns to an untouched hub (deck 8/20, cash
+  unchanged).
+- **Acceptance criteria:** met. Functional: three live nodes + both
+  actions through the pre-existing single code paths. UX: locked zones
+  sell the aspiration; move confirm shows fee + downtime before commit;
+  rotation is two clicks. Code quality: zero warnings, view-model fully
+  tested, no duplicated paths.
+
+### Assessment
+
+- The overlay-inherits-DeckBuilderRoot decision paid off (scaling +
+  cleanup for free) but caused both high findings — the hub stays alive
+  beneath an overlay, so resource lifetimes and focus policy are load-
+  bearing. **Pattern for GUIDANCE-level memory: full-screen overlays over
+  a live screen need `FocusPolicy::Block` on the root, and any resource a
+  state's Update systems read must be `init_resource`'d, not inserted in
+  OnEnter setups that can early-return.**
+- Deviations (shop row survives unlocked-only, code-side zone strings,
+  roster MOVE kept) are all sound; the zone-strings-into-RON flag is
+  queued for the next content-touching SOW (SOW-031 authoring).
+- Confirmed direction: node cards are the home for SOW-030's per-zone
+  history line and SOW-031's supplier face.
+
+### Carried forward
+
+- StoryHistoryOverlay focus-policy gap (pre-existing) → stabilization.
+- Art: three map-node illustrations (in art-backlog.md).
+- Zone identity/narc-hint strings → shop_locations.ron in SOW-031.
