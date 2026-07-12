@@ -575,11 +575,18 @@ pub fn populate_roster_panel_system(
                         },
                     ));
 
-                    // Identity + status column
+                    // Identity + status column. min_width 0 lets the column
+                    // shrink below its text's intrinsic width (SOW-027: the
+                    // action stack must stay INSIDE the fixed 250px card -
+                    // overflowing slides it under the next card, which then
+                    // steals the buttons' clicks)
                     parent.spawn(Node {
                         flex_direction: FlexDirection::Column,
                         row_gap: Val::Px(2.0),
                         flex_grow: 1.0,
+                        flex_shrink: 1.0,
+                        min_width: Val::Px(0.0),
+                        overflow: Overflow::clip_x(),
                         ..default()
                     })
                     .with_children(|parent| {
