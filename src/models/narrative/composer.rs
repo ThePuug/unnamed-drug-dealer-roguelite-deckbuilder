@@ -19,7 +19,6 @@ pub struct StoryComposer {
 /// Context for filling fragments
 struct FragmentContext<'a> {
     buyer_scenario: Option<&'a BuyerScenario>,
-    played_cards: &'a [Card],
     outcome: HandOutcome,
     defaults: &'a NarrativeFragments,
     // Cached card lookups
@@ -46,7 +45,6 @@ impl<'a> FragmentContext<'a> {
 
         Self {
             buyer_scenario,
-            played_cards,
             outcome,
             defaults,
             product_card,
@@ -140,11 +138,6 @@ impl StoryComposer {
                 // These flow better without interruption
                 format!("{} {} {}", c1, conjunction.as_str(), c2)
             },
-            SentenceStructure::Complex { main_clause, subordinator, subordinate_clause } => {
-                let main = self.assemble_structure(main_clause, context);
-                let sub = self.assemble_structure(subordinate_clause, context);
-                format!("{} {} {}", main, subordinator.as_str(), sub)
-            },
             SentenceStructure::ReversedComplex { subordinator, subordinate_clause, main_clause } => {
                 let sub = self.assemble_structure(subordinate_clause, context);
                 let main = self.assemble_structure(main_clause, context);
@@ -178,18 +171,6 @@ impl StoryComposer {
                     // Lowercase start - just append with space (true prepositional)
                     format!("{} {}", c1, c2)
                 }
-            },
-            SentenceStructure::Parenthetical { clause1, subordinator, parenthetical, clause3 } => {
-                let c1 = self.assemble_structure(clause1, context);
-                let p = self.assemble_structure(parenthetical, context);
-                let c3 = self.assemble_structure(clause3, context);
-                format!("{}, {} {}, {}", c1, subordinator.as_str(), p, c3)
-            },
-            SentenceStructure::CompoundComplex { clause1, subordinator, subordinate, conjunction, clause2 } => {
-                let c1 = self.assemble_structure(clause1, context);
-                let sub = self.assemble_structure(subordinate, context);
-                let c2 = self.assemble_structure(clause2, context);
-                format!("{} {} {}, {} {}", c1, subordinator.as_str(), sub, conjunction.as_str(), c2)
             },
             SentenceStructure::MultiSentence { sentences } => {
                 // Assemble each sentence, capitalize and add period

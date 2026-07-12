@@ -25,7 +25,7 @@ mod tests {
 
         // Test each buyer scenario
         for buyer in &assets.buyers {
-            for (scenario_idx, scenario) in buyer.scenarios.iter().enumerate() {
+            for scenario in buyer.scenarios.iter() {
                 println!("\n--- Buyer: {} - Scenario: {} ---", buyer.display_name, scenario.display_name);
 
                 // Test each product

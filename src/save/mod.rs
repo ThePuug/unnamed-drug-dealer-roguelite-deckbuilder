@@ -69,13 +69,9 @@ impl SaveManager {
         }
     }
 
-    /// Check if a save file exists
-    pub fn save_exists(&self) -> bool {
-        self.save_path.exists()
-    }
-
     // SOW-023: reset_empire helper pruned - save_after_resolution_system calls
     // SaveData::reset_empire directly and saves through the normal path
+    // SOW-027: save_exists helper pruned - load_or_new is the only entry
 }
 
 impl Default for SaveManager {

@@ -306,9 +306,6 @@ pub struct DecayInfoDisplay;
 // ============================================================================
 
 #[derive(Component)]
-pub struct AccountCashDisplay;
-
-#[derive(Component)]
 pub struct AccountCashText;
 
 #[derive(Component)]
@@ -403,13 +400,10 @@ pub struct ShopLocationButton {
 #[derive(Component)]
 pub struct ShopCardsContainer;
 
-/// Card display in shop showing price and locked/unlocked status
+/// Card display in shop (marker - the despawn/rebuild query target; the
+/// purchase button carries the card identity)
 #[derive(Component)]
-pub struct ShopCardDisplay {
-    pub card_id: String,
-    pub price: u32,
-    pub is_unlocked: bool,
-}
+pub struct ShopCardDisplay;
 
 /// Purchase button on a shop card
 #[derive(Component)]
@@ -417,10 +411,6 @@ pub struct ShopPurchaseButton {
     pub card_id: String,
     pub price: u32,
 }
-
-/// Text showing the selected location name
-#[derive(Component)]
-pub struct ShopLocationNameText;
 
 /// SOW-024: Purchase button for a locked area ("THE BLOCK — $2,000")
 #[derive(Component)]

@@ -155,27 +155,11 @@ pub enum SentenceStructure {
         clause2: Box<SentenceStructure>,
     },
 
-    /// Parenthetical: "Clause1, subordinator clause2, clause3" (middle insertion)
-    /// Example: "Subject need, although complication, product and resolution"
-    Parenthetical {
-        clause1: Box<SentenceStructure>,
-        subordinator: ClauseRelation,
-        parenthetical: Box<SentenceStructure>,
-        clause3: Box<SentenceStructure>,
-    },
-
     /// Compound: "Clause1, conjunction clause2"
     Compound {
         clause1: Box<SentenceStructure>,
         conjunction: ClauseRelation,
         clause2: Box<SentenceStructure>,
-    },
-
-    /// Complex: "Main clause subordinator subordinate"
-    Complex {
-        main_clause: Box<SentenceStructure>,
-        subordinator: ClauseRelation,
-        subordinate_clause: Box<SentenceStructure>,
     },
 
     /// Reversed Complex: "Subordinator subordinate, main clause"
@@ -184,15 +168,6 @@ pub enum SentenceStructure {
         subordinator: ClauseRelation,
         subordinate_clause: Box<SentenceStructure>,
         main_clause: Box<SentenceStructure>,
-    },
-
-    /// Compound-Complex: "Clause1 subordinator subordinate, conjunction clause2"
-    CompoundComplex {
-        clause1: Box<SentenceStructure>,
-        subordinator: ClauseRelation,
-        subordinate: Box<SentenceStructure>,
-        conjunction: ClauseRelation,
-        clause2: Box<SentenceStructure>,
     },
 
     /// Multi-sentence: Multiple complete sentences joined with periods
@@ -220,30 +195,10 @@ impl FragmentSlot {
         }
     }
 
-    pub fn with_relation(role: super::patterns::NarrativeRole, relation: ClauseRelation) -> Self {
-        Self {
-            role,
-            relation_filter: Some(relation),
-            structure_filter: None,
-        }
-    }
-
     pub fn with_structure(role: super::patterns::NarrativeRole, structure: GrammaticalStructure) -> Self {
         Self {
             role,
             relation_filter: None,
-            structure_filter: Some(structure),
-        }
-    }
-
-    pub fn with_relation_and_structure(
-        role: super::patterns::NarrativeRole,
-        relation: ClauseRelation,
-        structure: GrammaticalStructure,
-    ) -> Self {
-        Self {
-            role,
-            relation_filter: Some(relation),
             structure_filter: Some(structure),
         }
     }

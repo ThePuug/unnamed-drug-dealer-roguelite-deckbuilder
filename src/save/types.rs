@@ -388,17 +388,6 @@ impl HeatTier {
     // COMPOSITION per (area x HeatTier), authored in narc_deck.ron. The tier
     // itself still selects which composition a dealer faces.
 
-    /// RFC-018: Get danger level description for UI
-    pub fn danger_name(&self) -> &'static str {
-        match self {
-            HeatTier::Cold => "Relaxed",
-            HeatTier::Warm => "Alert",
-            HeatTier::Hot => "Dangerous",
-            HeatTier::Blazing => "Severe",
-            HeatTier::Scorching => "Intense",
-            HeatTier::Inferno => "Deadly",
-        }
-    }
 }
 
 /// RFC-017: Card upgrade tier based on play count
@@ -502,23 +491,6 @@ pub enum UpgradeableStat {
 }
 
 impl UpgradeableStat {
-    /// Display name for UI
-    pub fn name(&self) -> &'static str {
-        match self {
-            Self::Price => "Price",
-            Self::Cover => "Cover",
-            Self::Evidence => "Evidence",
-            Self::Heat => "Heat",
-            Self::HeatPenalty => "Heat Penalty",
-            Self::PriceMultiplier => "Price Bonus",
-        }
-    }
-
-    /// Whether this stat improves by increasing (true) or decreasing (false)
-    pub fn improves_by_increase(&self) -> bool {
-        matches!(self, Self::Price | Self::Cover | Self::PriceMultiplier)
-    }
-
     /// Get available upgrade stats for a card type
     /// Returns the stats that can be upgraded for this card type
     pub fn available_for(card_type: &crate::models::card::CardType) -> Vec<Self> {
@@ -585,17 +557,6 @@ impl CardUpgrades {
         1.0 + (self.count_stat(stat) as f32 * 0.1)
     }
 
-    /// Current tier based on number of upgrades
-    pub fn current_tier(&self) -> UpgradeTier {
-        match self.upgrades.len() {
-            0 => UpgradeTier::Base,
-            1 => UpgradeTier::Tier1,
-            2 => UpgradeTier::Tier2,
-            3 => UpgradeTier::Tier3,
-            4 => UpgradeTier::Tier4,
-            _ => UpgradeTier::Tier5,
-        }
-    }
 }
 
 /// RFC-019: A pending upgrade choice waiting for player input
@@ -705,15 +666,6 @@ impl CharacterState {
         self.decks_played += 1;
     }
 
-    /// Add heat from hand resolution
-    pub fn add_heat(&mut self, amount: i32) {
-        if amount >= 0 {
-            self.heat = self.heat.saturating_add(amount as u32);
-        } else {
-            self.heat = self.heat.saturating_sub((-amount) as u32);
-        }
-    }
-
     /// RFC-017: Increment play count for a card
     pub fn increment_play_count(&mut self, card_name: &str) {
         let count = self.card_play_counts.entry(card_name.to_string()).or_insert(0);
@@ -730,25 +682,12 @@ impl CharacterState {
         UpgradeTier::from_play_count(self.get_play_count(card_name))
     }
 
-    /// RFC-019: Get upgrade history for a card
-    pub fn get_card_upgrades(&self, card_name: &str) -> Option<&CardUpgrades> {
-        self.card_upgrades.get(card_name)
-    }
-
     /// RFC-019: Add an upgrade choice for a card
     pub fn add_card_upgrade(&mut self, card_name: &str, stat: UpgradeableStat) {
         let upgrades = self.card_upgrades
             .entry(card_name.to_string())
             .or_insert_with(CardUpgrades::new);
         upgrades.add_upgrade(stat);
-    }
-
-    /// RFC-019: Get the stat multiplier for a specific stat on a card
-    pub fn get_stat_multiplier(&self, card_name: &str, stat: UpgradeableStat) -> f32 {
-        self.card_upgrades
-            .get(card_name)
-            .map(|u| u.stat_multiplier(stat))
-            .unwrap_or(1.0)
     }
 
     /// RFC-019: Check if a card has earned an upgrade that hasn't been applied yet
@@ -1198,16 +1137,6 @@ impl AccountState {
             "burner_phone".to_string(),
             "lookout".to_string(),
         ])
-    }
-
-    /// SOW-020: Check if a card is unlocked
-    pub fn is_card_unlocked(&self, card_id: &str) -> bool {
-        self.unlocked_cards.contains(card_id)
-    }
-
-    /// SOW-020: Unlock a card (called after purchase)
-    pub fn unlock_card(&mut self, card_id: &str) {
-        self.unlocked_cards.insert(card_id.to_string());
     }
 
     /// SOW-020: Check if a shop location is unlocked
@@ -1779,30 +1708,8 @@ mod tests {
         assert!(state.last_played > 0);
     }
 
-    #[test]
-    fn test_add_heat_positive() {
-        let mut state = CharacterState::new();
-        state.add_heat(10);
-        assert_eq!(state.heat, 10);
-        state.add_heat(5);
-        assert_eq!(state.heat, 15);
-    }
-
-    #[test]
-    fn test_add_heat_negative() {
-        let mut state = CharacterState::new();
-        state.heat = 20;
-        state.add_heat(-5);
-        assert_eq!(state.heat, 15);
-    }
-
-    #[test]
-    fn test_add_heat_no_underflow() {
-        let mut state = CharacterState::new();
-        state.heat = 5;
-        state.add_heat(-10);
-        assert_eq!(state.heat, 0);
-    }
+    // SOW-027: add_heat tests retired with the method - apply_session_heat
+    // is the live career-heat path and has its own coverage
 
     #[test]
     fn test_decay_calculation() {
@@ -2152,13 +2059,6 @@ mod tests {
     }
 
 
-    #[test]
-    fn test_heat_tier_danger_names() {
-        assert_eq!(HeatTier::Cold.danger_name(), "Relaxed");
-        assert_eq!(HeatTier::Warm.danger_name(), "Alert");
-        assert_eq!(HeatTier::Hot.danger_name(), "Dangerous");
-        assert_eq!(HeatTier::Blazing.danger_name(), "Severe");
-        assert_eq!(HeatTier::Scorching.danger_name(), "Intense");
-        assert_eq!(HeatTier::Inferno.danger_name(), "Deadly");
-    }
+    // SOW-027: danger_name test retired with the method (RFC-018 leftover -
+    // no UI surface ever consumed the danger adjectives)
 }

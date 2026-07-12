@@ -17,10 +17,7 @@ pub const CONVICTION_CARD_COLOR: Color = Color::srgb(0.9, 0.2, 0.2);   // Red
 // SOW-AAA: Unused dim color constants removed
 
 // Buyer Card Colors (specific for buyer deck display)
-pub const BUYER_LOCATION_COLOR: Color = Color::srgb(0.5, 0.7, 1.0);
-pub const BUYER_MODIFIER_COLOR: Color = Color::srgb(0.9, 0.7, 1.0);
 // SOW-AAA: BUYER_VISIBLE_HAND_COLOR removed (unused)
-pub const BUYER_DEFAULT_COLOR: Color = Color::srgb(0.5, 0.5, 0.5);
 
 // ============================================================================
 // UI Section Colors
@@ -28,7 +25,6 @@ pub const BUYER_DEFAULT_COLOR: Color = Color::srgb(0.5, 0.5, 0.5);
 
 pub const UI_ROOT_BG: Color = Color::srgb(0.1, 0.1, 0.15);             // Dark background
 // SOW-AAA: PLAY_AREA_BG removed (unused)
-pub const PLAYER_HAND_BG: Color = Color::srgb(0.2, 0.2, 0.25);         // Player hand panel
 
 // Scenario Card (Buyer challenge card)
 // SOW-022: SCENARIO_CARD_BG/TEXT removed (scenario card replaced by buyer bubble);
@@ -36,11 +32,8 @@ pub const PLAYER_HAND_BG: Color = Color::srgb(0.2, 0.2, 0.25);         // Player
 pub const SCENARIO_CARD_BORDER: Color = Color::srgb(0.9, 0.9, 0.4);    // Golden yellow
 
 // Play Area Colors (section backgrounds)
-pub const NARC_SECTION_COLOR: Color = Color::srgb(0.8, 0.3, 0.3);      // Red (threat)
-pub const BUYER_SECTION_COLOR: Color = Color::srgb(0.9, 0.9, 0.4);     // Yellow (buyer)
 
 // Buyer Visible Hand
-pub const BUYER_HAND_BORDER: Color = Color::srgb(1.0, 1.0, 0.0);       // Bright yellow border
 // SOW-AAA: DEALER_CARD_BORDER removed (unused)
 
 // ============================================================================
@@ -69,10 +62,7 @@ pub const RESTART_BUTTON_BG: Color = Color::srgb(0.8, 0.3, 0.3);       // Red
 // Border Colors
 // ============================================================================
 
-pub const CARD_BORDER_PLAYED: Color = Color::srgb(0.5, 0.5, 0.5);      // Dim border
-pub const CARD_BORDER_SELECTED: Color = Color::srgb(1.0, 1.0, 0.5);    // Bright border
 pub const CARD_BORDER_NORMAL: Color = Color::srgb(0.5, 0.5, 0.5);      // Normal border
-pub const CARD_BORDER_BRIGHT: Color = Color::srgb(0.9, 0.9, 0.9);      // Bright white
 
 // ============================================================================
 // Text Colors
@@ -90,15 +80,12 @@ pub const DECK_BUILDER_BG: Color = Color::srgb(0.1, 0.1, 0.1);         // Dark b
 pub const CARD_POOL_BG: Color = Color::srgb(0.2, 0.2, 0.2);            // Pool background
 pub const SELECTED_DECK_BG_VALID: Color = Color::srgb(0.2, 0.6, 0.2);  // Green (valid deck)
 pub const SELECTED_DECK_BG_INVALID: Color = Color::srgb(0.8, 0.2, 0.2); // Red (invalid deck)
-pub const CARD_AVAILABLE_BG: Color = Color::srgb(0.3, 0.3, 0.3);       // Available card
-pub const CARD_UNAVAILABLE_BG: Color = Color::srgb(0.5, 0.2, 0.2);     // Unavailable (no copies)
 // SOW-AAA: PRESET_BUTTON_BG removed (unused)
 
 // ============================================================================
 // Misc UI Colors
 // ============================================================================
 
-pub const PLACEHOLDER_BG: Color = Color::srgb(0.35, 0.35, 0.35);       // Placeholder card back
 // SOW-AAA: PLACEHOLDER_BORDER, PILE_INDICATOR_BG, STAT_BOX_BG, STAT_BOX_BORDER removed (unused)
 
 // ============================================================================
@@ -116,12 +103,9 @@ pub const CARD_HEIGHT_SMALL: f32 = 202.35;
 // Border/Spacing Constants
 // ============================================================================
 
-pub const CARD_BORDER_WIDTH: f32 = 2.0;
 // SOW-AAA: CARD_BORDER_WIDTH_THICK, CARD_BORDER_RADIUS removed (unused)
 
 // SOW-AAA: SPACING_TINY removed (unused)
-pub const SPACING_SMALL: f32 = 8.0;
-pub const SPACING_MEDIUM: f32 = 10.0;
 // SOW-AAA: SPACING_MEDIUM_LARGE, SPACING_LARGE, SPACING_XLARGE removed (unused)
 
 // ============================================================================

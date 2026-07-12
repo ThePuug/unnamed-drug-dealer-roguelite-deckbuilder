@@ -20,7 +20,6 @@ pub struct Satellite {
 pub enum Placement {
     Start,
     End,
-    AfterSubject,
     BeforeResolution,
 }
 
@@ -132,25 +131,6 @@ impl SentenceBuilder {
                         // Request prepositional structure for clean appending
                         SentenceStructure::Concatenated {
                             clause1: Box::new(sentence2),
-                            clause2: Box::new(SentenceStructure::Phrasal {
-                                clause: FragmentSlot::with_structure(sat.role, GrammaticalStructure::Prepositional),
-                            }),
-                        }
-                    };
-                },
-                Placement::AfterSubject => {
-                    // Attach to sentence 1 as closer
-                    sentence1 = if let Some(relation) = sat.relation {
-                        SentenceStructure::Compound {
-                            clause1: Box::new(sentence1),
-                            conjunction: relation,
-                            clause2: Box::new(sat_structure),
-                        }
-                    } else {
-                        // Prepositional phrase: "Subject need at X"
-                        // Request prepositional structure
-                        SentenceStructure::Concatenated {
-                            clause1: Box::new(sentence1),
                             clause2: Box::new(SentenceStructure::Phrasal {
                                 clause: FragmentSlot::with_structure(sat.role, GrammaticalStructure::Prepositional),
                             }),

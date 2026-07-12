@@ -27,25 +27,3 @@ pub struct GameAssets {
     pub card_back: Handle<Image>,  // Card back for facedown cards
     pub assets_loaded: bool,
 }
-
-impl GameAssets {
-    pub fn new() -> Self {
-        Self {
-            products: HashMap::new(),
-            locations: HashMap::new(),
-            narc_compositions: HashMap::new(),
-            cover: Vec::new(),
-            insurance: Vec::new(),
-            modifiers: Vec::new(),
-            buyers: Vec::new(),
-            shop_locations: Vec::new(), // SOW-024
-            narrative_defaults: NarrativeFragments::default(),
-            background_images: HashMap::new(),
-            actor_portraits: HashMap::new(),
-            card_template: Handle::default(),
-            card_placeholder: Handle::default(),
-            card_back: Handle::default(),
-            assets_loaded: false,
-        }
-    }
-}
