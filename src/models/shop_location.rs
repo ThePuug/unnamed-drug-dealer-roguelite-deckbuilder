@@ -40,6 +40,20 @@ pub fn validate_shop_locations(areas: &[ShopLocationDef]) -> Result<(), String> 
     Ok(())
 }
 
+/// SOW-024: The areas a run may take place in, in definition order.
+/// (INTERIM: run area is picked randomly from these until dealer stationing
+/// lands - see the stationing design update.)
+pub fn unlocked_area_ids<'a>(
+    areas: &'a [ShopLocationDef],
+    unlocked: &std::collections::HashSet<String>,
+) -> Vec<&'a str> {
+    areas
+        .iter()
+        .filter(|a| unlocked.contains(&a.id))
+        .map(|a| a.id.as_str())
+        .collect()
+}
+
 // ============================================================================
 // TESTS
 // ============================================================================
@@ -80,5 +94,20 @@ mod tests {
     fn all_locked_rejected() {
         let areas = vec![area("the_block", false, 2000)];
         assert!(validate_shop_locations(&areas).unwrap_err().contains("nowhere to operate"));
+    }
+
+    #[test]
+    fn unlocked_area_ids_filters_and_preserves_order() {
+        let areas = vec![
+            area("the_corner", true, 0),
+            area("the_block", false, 2000),
+            area("downtown", false, 5000),
+        ];
+        let mut unlocked = std::collections::HashSet::new();
+        unlocked.insert("the_corner".to_string());
+        assert_eq!(unlocked_area_ids(&areas, &unlocked), vec!["the_corner"]);
+
+        unlocked.insert("downtown".to_string());
+        assert_eq!(unlocked_area_ids(&areas, &unlocked), vec!["the_corner", "downtown"]);
     }
 }

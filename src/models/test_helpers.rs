@@ -190,6 +190,7 @@ fn create_mock_buyer_persona() -> BuyerPersona {
     use super::buyer::{BuyerDemand, BuyerScenario};
 
     BuyerPersona {
+        area: "the_corner".to_string(),
         display_name: "Test Buyer".to_string(),
         demand: BuyerDemand {
             products: vec!["Weed".to_string()],
