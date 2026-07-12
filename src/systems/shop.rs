@@ -350,6 +350,92 @@ pub fn shop_purchase_system(
     }
 }
 
+/// SOW-024: Buying a locked area - deduct global cash, unlock, rebuild the
+/// selector row, select the new turf, and announce it
+pub fn area_unlock_button_system(
+    mut commands: Commands,
+    interaction_query: Query<(&Interaction, &ShopAreaUnlockButton), Changed<Interaction>>,
+    mut save_data: Option<ResMut<SaveData>>,
+    save_manager: Option<Res<SaveManager>>,
+    mut shop_state: ResMut<ShopState>,
+    selector_query: Query<Entity, With<ShopLocationSelector>>,
+    children_query: Query<&Children>,
+    mut feedback_query: Query<&mut Text, With<ShopFeedbackText>>,
+    game_assets: Res<GameAssets>,
+) {
+    for (interaction, button) in interaction_query.iter() {
+        if *interaction != Interaction::Pressed {
+            continue;
+        }
+
+        let Some(ref mut data) = save_data else {
+            continue;
+        };
+
+        match data.account.purchase_location(&button.location_id, button.price as u64) {
+            Ok(()) => {
+                let area_name = game_assets
+                    .shop_locations
+                    .iter()
+                    .find(|a| a.id == button.location_id)
+                    .map(|a| a.name.clone())
+                    .unwrap_or_else(|| button.location_id.clone());
+                info!("Unlocked area {} for ${}", area_name, button.price);
+
+                if let Some(ref manager) = save_manager {
+                    if let Err(e) = manager.save(data) {
+                        warn!("Failed to save after area purchase: {:?}", e);
+                    }
+                }
+
+                // Rebuild the selector row to reflect the new unlock
+                if let Ok(selector) = selector_query.single() {
+                    if let Ok(children) = children_query.get(selector) {
+                        for child in children.iter() {
+                            commands.entity(child).despawn();
+                        }
+                    }
+                    let unlocked = data.account.unlocked_locations.clone();
+                    let areas = game_assets.shop_locations.clone();
+                    commands.entity(selector).with_children(move |parent| {
+                        crate::ui::setup::spawn_area_selector_buttons(parent, &areas, &unlocked);
+                    });
+                }
+
+                // Select the new turf and announce it
+                shop_state.selected_location = button.location_id.clone();
+                if let Ok(mut feedback) = feedback_query.single_mut() {
+                    **feedback = format!("New turf: {area_name}");
+                }
+            }
+            Err(reason) => {
+                info!("Cannot unlock {}: {}", button.location_id, reason);
+            }
+        }
+    }
+}
+
+/// SOW-024: Locked-area purchase buttons read as buyable only when affordable
+pub fn update_area_unlock_button_visuals(
+    save_data: Option<Res<SaveData>>,
+    mut button_query: Query<(&ShopAreaUnlockButton, &mut BackgroundColor)>,
+) {
+    let Some(save_data) = save_data else {
+        return;
+    };
+    if !save_data.is_changed() {
+        return;
+    }
+
+    for (button, mut bg) in button_query.iter_mut() {
+        *bg = if save_data.account.cash_on_hand >= button.price as u64 {
+            BackgroundColor(theme::CONTINUE_BUTTON_BG)
+        } else {
+            BackgroundColor(theme::BUTTON_DISABLED_BG)
+        };
+    }
+}
+
 /// System to update location button visuals
 pub fn update_location_button_visuals(
     shop_state: Res<ShopState>,

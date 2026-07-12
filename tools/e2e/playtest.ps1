@@ -22,6 +22,7 @@ param(
   [int]$Hands = 2,
   [int]$SelectDealer = -1,
   [switch]$Hire,
+  [string]$BuyArea = "",   # SOW-024: buy this area in the shop before the run (e.g. the_block)
   [string]$OutDir = "$env:TEMP\ddd-playtest"
 )
 
@@ -59,6 +60,19 @@ function Outcome-Count {
 }
 
 & $drv -Action shot -OutFile (Join-Path $OutDir "00-deckbuilder.png") | Out-Null
+
+# 3a. SOW-024: optional territory purchase (shop tab -> unlock button -> back)
+if ($BuyArea -ne "") {
+  & $drv -Action click -X 260 -Y 40 | Out-Null   # SHOP tab (reveals selector)
+  Start-Sleep -Milliseconds 800
+  & $drv -Action shot -OutFile (Join-Path $OutDir "01-shop-locked.png") | Out-Null
+  # Locked-area unlock button sits after the unlocked Corner button
+  & $drv -Action click -X 605 -Y 40 | Out-Null
+  Start-Sleep -Milliseconds 1000
+  & $drv -Action shot -OutFile (Join-Path $OutDir "02-after-unlock.png") | Out-Null
+  & $drv -Action click -X 95 -Y 40 | Out-Null    # YOUR CARDS tab back
+  Start-Sleep -Milliseconds 500
+}
 
 # 3. Optional roster actions before the run
 if ($Hire) {
@@ -111,9 +125,18 @@ for ($hand = 1; $hand -le $Hands; $hand++) {
 
   Start-Sleep -Milliseconds 800
   if ($outcome -eq "Busted") {
-    # only GO HOME (END RUN / NEW EMPIRE) is available
+    # Only END RUN / NEW EMPIRE is available. A kingpin GAME OVER panel is
+    # taller (the fallen-empires board) so the button sits lower - try the
+    # standard position, poll the log for the DeckBuilding return, then the
+    # lower position (SOW-023 papercut fix).
+    function DB-Count { @(Select-String -Path $log -Pattern "DeckBuilder").Count }
+    $db = DB-Count
     & $drv -Action click -X 1056 -Y 694 | Out-Null
-    Start-Sleep 2
+    foreach ($i in 1..6) { if ((DB-Count) -gt $db) { break }; Start-Sleep -Milliseconds 500 }
+    if ((DB-Count) -le $db) {
+      & $drv -Action click -X 1056 -Y 732 | Out-Null   # GAME OVER board layout
+      Start-Sleep 2
+    }
     break
   } elseif ($hand -ge $Hands) {
     & $drv -Action click -X 1056 -Y 694 | Out-Null   # GO HOME (bank it)
@@ -132,7 +155,7 @@ Start-Sleep 2
 $summary = @()
 $summary += "scenario: $Scenario"
 $summary += "outcomes: " + ($outcomes -join ", ")
-$summary += (Select-String -Path $log -Pattern "transferred|jailed|GAME OVER|hired|released" | ForEach-Object { $_.Line }) | Select-Object -Last 10
+$summary += (Select-String -Path $log -Pattern "transferred|jailed|GAME OVER|hired|released|Run area|Unlocked area" | ForEach-Object { $_.Line }) | Select-Object -Last 10
 $summaryPath = Join-Path $OutDir "summary.txt"
 $summary | Set-Content $summaryPath -Encoding utf8
 Write-Output "--- summary ---"

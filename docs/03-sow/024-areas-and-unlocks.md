@@ -2,7 +2,7 @@
 
 ## Status
 
-**Planned** - 2026-07-12
+**Merged** - 2026-07-12
 
 ## References
 
@@ -36,24 +36,26 @@
 - Buying The Block: cash decreases, unlock persists across save/load,
   double-purchase impossible
 
-### Phase 2: Buyer area-gating
+### Phase 2: Two-stage run selection (REFRAMED - territories)
 
-**Goal:** Who you can sell to depends on where you operate.
+**Goal:** Who you can sell to depends on WHERE the run happens.
 
 **Deliverables:**
 - `area` field on buyer personas (`buyers.ron`, serde default `the_corner`);
-  Wall Street Wolf moves to `the_block`
-- Run-start persona selection filters to unlocked areas
-- Load-time validation: persona areas must exist in shop_locations (SOW-021
-  demand-string pattern)
+  Wall Street Wolf is Block clientele
+- Two-stage run start: pick the run's AREA (INTERIM: random among unlocked -
+  replaced by dealer stationing in a follow-up SOW), then draw the persona
+  from that area's clientele ONLY (no pooled draw)
+- Run area logged for e2e observability
+- Load-time validation: persona areas must exist AND every area has clientele
 
 **Architectural Constraints:**
 - A fresh empire (Corner only) must always have >= 1 eligible persona
   (validation enforces)
 
 **Success Criteria:**
-- Fresh empire never draws the Wolf; after buying The Block the Wolf appears
-  in the rotation
+- Fresh empire runs are always Corner-area (never the Wolf); after buying
+  The Block, Block-area runs occur and draw the Wolf
 
 ### Phase 3: Shop UI purchase flow
 
@@ -92,10 +94,88 @@ regression to Corner-only fresh empires.
 
 ## Discussion
 
-*Populated during implementation.*
+### ANSWERED by Reed (2026-07-12) - territory reframe
+
+Areas are territories on a (future) map with their own narc behavior,
+customers, and products; unlocking buys ACCESS - customers don't relocate.
+Run selection is two-stage (area first, then that area's clientele). The
+random-among-unlocked area pick is INTERIM: dealer stationing (run area =
+the active dealer's station, per-dealer-per-area street cred gating shop
+unlocks) lands in the next SOW - see
+`design-updates/2026-07-12-stationing-and-street-cred.md` in the studio
+repo. Per-area narc decks, product pools, and the deck-power gradient are
+explicitly out of this SOW.
+
+### Implementation Note: shop_locations.ron becomes real (Phase 1)
+
+The RON file existed since SOW-020 but was never loaded - the shop selector
+was hard-coded. It is now the loaded, validated source of truth for areas
+(ids, names, prices, starting unlock). The Block prices at $2,000: RFC-020
+only recorded an "achievement unlock (future RFC)" placeholder, superseded
+by RFC-024's cash purchase.
+
+### Implementation Note: harness coordinates after SOW-023 (Phase 4)
+
+The SOW-023 roster strip sits between the tabs and the card pool, which
+invalidated the harness's old tab coordinates - the first mogul e2e clicked
+"HIRE" instead of "SHOP" and cheerfully hired Slim for $500. Corrected tab
+row targets: SHOP (260, 40), YOUR CARDS (95, 40), Block unlock button
+(605, 40). The Busted-overlay dismissal is now two-position with log
+polling (END RUN at y=694; kingpin GAME OVER's fallen-empires board pushes
+NEW EMPIRE to y=732), closing the SOW-023 papercut.
+
+### Implementation Note: e2e evidence (Phase 4)
+
+`mogul` scenario, isolated save: SHOP tab -> "THE BLOCK — $2,000" ->
+purchase logged, selector rebuilt with The Block selected, "New turf: The
+Block" feedback, Block stock browsable (the formerly dead ~$49k of
+content), cash $3,000 -> $1,000. Relaunch on the same save: unlock
+persisted; five fold-and-restart samples drew "the_block - Wall Street
+Wolf" 3x and Corner clientele 2x. Fresh-empire never-Wolf is pinned by the
+shipped-content unit test plus the filter tests.
+
+Roadmap Iteration 3 entry intentionally left to the coordinator (parallel
+edits on main).
 
 ---
 
 ## Acceptance Review
 
-*Populated after implementation.*
+### Scope Completion: 100%
+
+- ✅ Phase 1: Area purchase model (`shop_locations.ron` now the loaded,
+  validated source of truth; `unlock_location` finally has its caller)
+- ✅ Phase 2: Two-stage territory run selection (area → that area's clientele)
+- ✅ Phase 3: Shop purchase flow ("THE BLOCK — $2,000", New-turf feedback)
+- ✅ Phase 4: `mogul` forge scenario + harness fixes (roster-strip tab
+  coordinates, outcome-aware overlay dismissal closing the SOW-023 papercut)
+
+### Architectural Compliance
+
+162 tests (13 new); zero new warnings (staged dead-code APIs gained callers).
+Content-driven areas with load-time validation per the authorability rule;
+purchase/gating logic pure and unit-tested.
+
+### Player Experience Validation
+
+e2e on isolated saves: Block purchase logged and persisted across relaunch,
+selector rebuilt, formerly-dead Block stock browsable (~$49k of authored
+content revived), cash $3,000 → $1,000; five run-start samples drew Block
+clientele (Wall Street Wolf ×3) and Corner clientele ×2; fresh-empire
+never-Wolf pinned by tests. User playtest of the purchase flow on main is
+welcome post-merge.
+
+### Balance flag for SOW-025+
+
+The Wolf's ×2.8 payout against current narc pressure is unchecked — tuning
+belongs with the stationing/authoring work.
+
+---
+
+## Sign-Off
+
+**Reviewed By:** ARCHITECT review + e2e evidence (design directed by Reed
+throughout; territory reframe + stationing-interim folded in mid-flight)
+**Date:** 2026-07-12
+**Decision:** ✅ **ACCEPTED**
+**Status:** Merged to main

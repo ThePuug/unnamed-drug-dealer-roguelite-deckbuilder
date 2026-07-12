@@ -180,6 +180,43 @@ fn load_game_assets(mut commands: Commands, asset_server: Res<AssetServer>, mut 
         }
     }
 
+    // SOW-024: Load areas (shop locations) - loaded before buyers so persona
+    // area references can be validated against real area ids
+    match load_shop_locations("assets/data/shop_locations.ron") {
+        Ok(areas) => {
+            crate::models::shop_location::validate_shop_locations(&areas)
+                .expect("Area validation failed");
+
+            // Every card's shop_location must be a real area id (same
+            // fail-loud-in-debug treatment as SOW-021 demand strings)
+            let area_ids: Vec<&str> = areas.iter().map(|a| a.id.as_str()).collect();
+            for card in game_assets
+                .products
+                .values()
+                .chain(game_assets.locations.values())
+                .chain(game_assets.cover.iter())
+                .chain(game_assets.insurance.iter())
+                .chain(game_assets.modifiers.iter())
+            {
+                if let Some(loc) = &card.shop_location {
+                    if !area_ids.contains(&loc.as_str()) {
+                        #[cfg(debug_assertions)]
+                        panic!("Card '{}' references unknown area '{}'", card.name, loc);
+                        #[cfg(not(debug_assertions))]
+                        error!("Card '{}' references unknown area '{}' (unpurchasable)", card.name, loc);
+                    }
+                }
+            }
+
+            info!("Loaded {} areas", areas.len());
+            game_assets.shop_locations = areas;
+        }
+        Err(e) => {
+            error!("Failed to load shop_locations.ron: {}", e);
+            panic!("Critical asset loading failure - fix shop_locations.ron");
+        }
+    }
+
     // Load buyers and resolve their reaction deck IDs
     match load_and_validate_buyers("assets/buyers.ron") {
         Ok(mut buyers) => {
@@ -217,6 +254,16 @@ fn load_game_assets(mut commands: Commands, asset_server: Res<AssetServer>, mut 
                     #[cfg(not(debug_assertions))]
                     error!("Demand string validation failed (demand cannot pay out): {}", e);
                 }
+            }
+
+            // SOW-024: persona areas must be real, and every area must have
+            // clientele (a run in an empty area would have no buyer to draw).
+            // Same fail-loud-in-debug treatment as demand strings.
+            if let Err(e) = validate_persona_areas(&buyers, &game_assets.shop_locations) {
+                #[cfg(debug_assertions)]
+                panic!("Persona area validation failed: {}", e);
+                #[cfg(not(debug_assertions))]
+                error!("Persona area validation failed: {}", e);
             }
 
             game_assets.buyers = buyers;
@@ -277,6 +324,46 @@ fn load_and_validate_cards(path: &str, card_type_name: &str) -> Result<Vec<Card>
 
     info!("Parsed {} {} cards from {}", cards.len(), card_type_name, path);
     Ok(cards)
+}
+
+/// SOW-024: Every persona's area must exist, and every area must have at
+/// least one persona (unlocking it must buy access to actual clientele)
+fn validate_persona_areas(
+    buyers: &[BuyerPersona],
+    areas: &[crate::models::shop_location::ShopLocationDef],
+) -> Result<(), String> {
+    for buyer in buyers {
+        if !areas.iter().any(|a| a.id == buyer.area) {
+            return Err(format!(
+                "persona '{}' lives in unknown area '{}'",
+                buyer.display_name, buyer.area
+            ));
+        }
+    }
+    for area in areas {
+        if !buyers.iter().any(|b| b.area == area.id) {
+            return Err(format!(
+                "area '{}' has no clientele - runs there would have no buyer",
+                area.id
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// SOW-024: Load areas (shop locations) from RON file
+fn load_shop_locations(path: &str) -> Result<Vec<crate::models::shop_location::ShopLocationDef>, String> {
+    let content = fs::read_to_string(path)
+        .map_err(|e| format!("Failed to read {}: {}", path, e))?;
+
+    let areas: Vec<crate::models::shop_location::ShopLocationDef> = ron::from_str(&content)
+        .map_err(|e| format!("Failed to parse {} - Check RON syntax:\n{}", path, e))?;
+
+    if areas.is_empty() {
+        return Err(format!("{} is empty - must have at least one area", path));
+    }
+
+    Ok(areas)
 }
 
 /// Load and validate buyer personas from RON file
@@ -466,6 +553,7 @@ mod tests {
 
     fn test_buyer(scenario_products: Vec<&str>, scenario_locations: Vec<&str>) -> BuyerPersona {
         BuyerPersona {
+            area: "the_corner".to_string(),
             display_name: "Test Buyer".to_string(),
             demand: BuyerDemand {
                 products: vec!["Weed".to_string()],
@@ -519,6 +607,49 @@ mod tests {
         let mut buyer = test_buyer(vec!["Weed"], vec!["Safe House"]);
         buyer.demand.locations = vec!["Private Residence".to_string()];
         assert!(validate_buyer_demand_strings(&buyer, PRODUCTS, LOCATIONS).is_err());
+    }
+
+    #[test]
+    fn test_persona_area_validation() {
+        use crate::models::shop_location::ShopLocationDef;
+        let area = |id: &str, unlocked: bool| ShopLocationDef {
+            id: id.to_string(),
+            name: id.to_string(),
+            description: String::new(),
+            unlocked,
+            price: if unlocked { 0 } else { 2000 },
+        };
+
+        // OK: one area, one persona living there (test_buyer defaults to the_corner)
+        let corner_only = vec![area("the_corner", true)];
+        let buyer = test_buyer(vec!["Weed"], vec!["Safe House"]);
+        assert!(validate_persona_areas(&[buyer.clone()], &corner_only).is_ok());
+
+        // Unknown persona area rejected
+        let mut lost = buyer.clone();
+        lost.area = "downtown".to_string();
+        assert!(validate_persona_areas(&[lost], &corner_only)
+            .unwrap_err()
+            .contains("unknown area"));
+
+        // Area without clientele rejected
+        let with_block = vec![area("the_corner", true), area("the_block", false)];
+        assert!(validate_persona_areas(&[buyer], &with_block)
+            .unwrap_err()
+            .contains("no clientele"));
+    }
+
+    #[test]
+    fn test_shipped_persona_areas_all_resolve() {
+        // SOW-024 acceptance criterion on the shipped content: every persona
+        // area exists and every area has clientele
+        let areas = load_shop_locations("assets/data/shop_locations.ron").expect("areas load");
+        crate::models::shop_location::validate_shop_locations(&areas).expect("areas valid");
+        let buyers = load_and_validate_buyers("assets/buyers.ron").expect("buyers load");
+        validate_persona_areas(&buyers, &areas).expect("shipped persona areas resolve");
+        // And the reframe's headline: the Wolf is Block clientele
+        let wolf = buyers.iter().find(|b| b.display_name == "Wall Street Wolf").unwrap();
+        assert_eq!(wolf.area, "the_block");
     }
 
     #[test]

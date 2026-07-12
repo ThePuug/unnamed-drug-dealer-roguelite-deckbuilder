@@ -1,8 +1,8 @@
 # Progression & Meta-Game - Feature Matrix
 
 **Spec:** [progression-meta.md](progression-meta.md)
-**Last Updated:** 2025-11-29
-**Overall Status:** 26/35 features complete (74%)
+**Last Updated:** 2026-07-12
+**Overall Status:** 27/35 features complete (77%)
 
 ---
 
@@ -11,7 +11,7 @@
 | Category | Complete | Total | % |
 |----------|:--------:|:-----:|:-:|
 | Cash System | 5 | 5 | 100% |
-| Location System | 5 | 6 | 83% |
+| Location System | 6 | 6 | 100% |
 | Card Unlock System | 6 | 6 | 100% |
 | Per-Run Card Upgrades | 7 | 7 | 100% |
 | Character System | 3 | 7 | 43% |
@@ -32,13 +32,13 @@
 
 ---
 
-## Location System - 5/6 (83%)
+## Location System - 6/6 (100%)
 
 | Feature | Status | Notes |
 |---------|:------:|-------|
 | Starting location (The Corner) | ✅ | SOW-020 |
 | Location as card shops | ✅ | SOW-020 |
-| Achievement-gated unlocks | ❌ | Deferred to future RFC |
+| Area (territory) purchase unlocks | ✅ | SOW-024: cash purchase supersedes the achievement placeholder (RFC-024); The Block $2,000, buyers area-gated, two-stage run selection |
 | Location permanence | ✅ | SOW-020 |
 | Multi-location shopping | ✅ | SOW-020 |
 | Location UI (shop interface) | ✅ | SOW-020 |
@@ -118,7 +118,7 @@
 ## Remaining Work for Launch
 
 **Priority 1 - Core Meta Loop:**
-- ~~Location System~~ ✅ (5/6 complete, achievement-gating deferred)
+- ~~Location System~~ ✅ (6/6 complete - SOW-024 area purchases)
 - ~~Card Unlock System~~ ✅ (6/6 complete)
 - Achievements (4 features)
 

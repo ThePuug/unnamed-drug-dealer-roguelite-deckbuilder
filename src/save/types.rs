@@ -1039,6 +1039,18 @@ impl AccountState {
         self.unlocked_locations.insert(location_id.to_string());
     }
 
+    /// SOW-024: Buy an area with global cash. Error strings are display-ready.
+    pub fn purchase_location(&mut self, location_id: &str, price: u64) -> Result<(), &'static str> {
+        if self.is_location_unlocked(location_id) {
+            return Err("already unlocked");
+        }
+        if !self.spend(price) {
+            return Err("insufficient funds");
+        }
+        self.unlock_location(location_id);
+        Ok(())
+    }
+
     /// Add profit from a successful hand
     pub fn add_profit(&mut self, profit: u32) {
         let profit = profit as u64;
@@ -1331,6 +1343,40 @@ mod tests {
         assert_eq!(revenues, vec![900, 600, 300]);
         // latest entry (index 3, revenue 600) can be identified for the marker
         assert!(top.contains(&3));
+    }
+
+    #[test]
+    fn test_purchase_location() {
+        // SOW-024: buy once, double-buy rejected, insufficient funds rejected
+        let mut account = AccountState::new();
+        account.cash_on_hand = 2500;
+
+        assert!(!account.is_location_unlocked("the_block"));
+        assert_eq!(account.purchase_location("the_block", 2000), Ok(()));
+        assert!(account.is_location_unlocked("the_block"));
+        assert_eq!(account.cash_on_hand, 500);
+
+        // Double purchase: rejected, cash untouched
+        assert_eq!(account.purchase_location("the_block", 2000), Err("already unlocked"));
+        assert_eq!(account.cash_on_hand, 500);
+
+        // Unaffordable: rejected, nothing unlocked
+        assert_eq!(account.purchase_location("downtown", 2000), Err("insufficient funds"));
+        assert!(!account.is_location_unlocked("downtown"));
+        assert_eq!(account.cash_on_hand, 500);
+    }
+
+    #[test]
+    fn test_empire_reset_wipes_area_unlocks() {
+        // SOW-024: a fallen empire re-expands - unlocks die with the account
+        let mut save = SaveData::new();
+        save.account.cash_on_hand = 5000;
+        save.account.purchase_location("the_block", 2000).unwrap();
+        assert!(save.account.is_location_unlocked("the_block"));
+
+        save.reset_empire();
+        assert!(!save.account.is_location_unlocked("the_block"));
+        assert!(save.account.is_location_unlocked("the_corner")); // fresh default
     }
 
     #[test]

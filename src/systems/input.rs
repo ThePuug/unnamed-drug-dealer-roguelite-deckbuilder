@@ -409,9 +409,32 @@ pub fn start_run_button_system(
                 commands.entity(entity).despawn();
             }
 
-            // SOW-013-B: Select random Buyer persona from loaded assets
+            // SOW-024 (two-stage, per Reed): pick the run's AREA first, then
+            // draw the persona from that area's clientele only - customers
+            // don't relocate when you expand. INTERIM: random among unlocked
+            // areas until dealer stationing lands (stationing design update).
+            let unlocked = save_data
+                .as_ref()
+                .map(|save| save.account.unlocked_locations.clone())
+                .unwrap_or_else(|| std::collections::HashSet::from(["the_corner".to_string()]));
+            let run_areas =
+                crate::models::shop_location::unlocked_area_ids(&game_assets.shop_locations, &unlocked);
+            let run_area = run_areas
+                .choose(&mut rand::rng())
+                .copied()
+                .unwrap_or("the_corner");
+
             let buyer_personas = create_buyer_personas(&game_assets);
-            let mut random_buyer = buyer_personas.choose(&mut rand::rng()).unwrap().clone();
+            let area_personas = crate::data::personas_in_area(&buyer_personas, run_area);
+            // Load-time validation guarantees clientele per area; fall back to
+            // the full pool defensively rather than crash a run
+            let mut random_buyer = if let Some(buyer) = area_personas.choose(&mut rand::rng()) {
+                (**buyer).clone()
+            } else {
+                bevy::log::warn!("area '{run_area}' has no clientele at runtime - drawing from all personas");
+                buyer_personas.choose(&mut rand::rng()).unwrap().clone()
+            };
+            bevy::log::info!("Run area: {} - buyer: {}", run_area, random_buyer.display_name);
 
             // SOW-010: Randomly select one of the Buyer's 2 scenarios
             if !random_buyer.scenarios.is_empty() {

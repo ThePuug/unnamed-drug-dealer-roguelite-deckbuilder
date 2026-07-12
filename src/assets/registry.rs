@@ -16,6 +16,7 @@ pub struct GameAssets {
     pub insurance: Vec<Card>,          // Player Insurance cards
     pub modifiers: Vec<Card>,          // Player Deal Modifiers
     pub buyers: Vec<BuyerPersona>,
+    pub shop_locations: Vec<crate::models::shop_location::ShopLocationDef>, // SOW-024: unlockable areas
     pub narrative_defaults: NarrativeFragments, // Default fragments for cards without custom ones (includes resolution_clauses)
     pub background_images: HashMap<String, Handle<Image>>, // Location name -> background image
     pub actor_portraits: HashMap<String, Handle<Image>>, // Actor name -> portrait image
@@ -35,6 +36,7 @@ impl GameAssets {
             insurance: Vec::new(),
             modifiers: Vec::new(),
             buyers: Vec::new(),
+            shop_locations: Vec::new(), // SOW-024
             narrative_defaults: NarrativeFragments::default(),
             background_images: HashMap::new(),
             actor_portraits: HashMap::new(),

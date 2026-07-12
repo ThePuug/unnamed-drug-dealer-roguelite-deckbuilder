@@ -24,11 +24,19 @@ pub struct BuyerScenario {
     pub narrative_fragments: Option<NarrativeFragments>, // SOW-012: Story fragments for this scenario
 }
 
+/// SOW-024: fresh-empire home turf is every persona's default area
+fn default_persona_area() -> String {
+    "the_corner".to_string()
+}
+
 /// Buyer persona - merges Dealer scenario deck + Customer modifiers into one entity
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BuyerPersona {
     pub display_name: String,                // "Frat Bro", "Desperate Housewife"
     pub demand: BuyerDemand,                 // SOW-010: Deprecated - scenarios define demands now
+    /// SOW-024: home territory - personas are drawn only for runs in their area
+    #[serde(default = "default_persona_area")]
+    pub area: String,
     pub base_multiplier: f32,                // ×1.0 to ×3.0 range (when demand met)
     pub reduced_multiplier: f32,             // When demand not met (typically ×1.0)
     pub evidence_threshold: Option<u32>,     // Buyer bails if Evidence exceeds (None = never bails)

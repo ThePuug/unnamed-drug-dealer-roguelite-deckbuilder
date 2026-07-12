@@ -15,16 +15,30 @@ something to buy besides dealers and bail.
 
 ## Design
 
-### Areas gate three things
+### Areas are TERRITORIES (reframed per Reed, 2026-07-12)
 
-An **area** (today: `the_corner`, `the_block`; more later) gates:
-1. **A shop** — already true (`shop_locations.ron`, SOW-020).
-2. **Buyers** — new: each persona belongs to an area (`area` field in
-   `buyers.ron`, defaulting to `the_corner`). Run-start persona selection
-   draws only from unlocked areas. Initial split: Frat Bro + Desperate
-   Housewife on the Corner; **Wall Street Wolf moves to the Block** — his
-   ×2.8 payout becomes the pull that makes expansion worth the price.
+An **area** (today: `the_corner`, `the_block`; more later) is a territory on
+a (future) city map, with its own narc behavior, its own customers, and its
+own products. **Unlocking an area buys ACCESS to what is already there** —
+customers don't relocate when you expand. Wall Street Wolf doesn't "move to"
+the Block; he IS Block clientele you can now reach (his ×2.8 payout is the
+pull that makes expansion worth the price).
+
+Each area gates:
+1. **A shop** — already true (`shop_locations.ron`, SOW-020; this RFC makes
+   that file the loaded source of truth with prices).
+2. **Customers** — each persona belongs to an area (`area` field in
+   `buyers.ron`, default `the_corner`). **Run selection is two-stage**: pick
+   the run's area first, then draw the persona from that area's clientele
+   only. INTERIM: the area is picked randomly among unlocked areas — dealer
+   stationing (run area = the active dealer's station, with per-dealer
+   street cred) replaces this in a follow-up SOW (see the stationing design
+   update in the studio repo).
 3. **Cards** — already true via shop stock (block-priced cards).
+
+**Out of scope here, reserved for the map/stationing SOWs:** per-area narc
+deck profiles, per-area product pools, and the deck-power gradient that makes
+under-equipped dealers struggle in richer territories.
 
 ### Buying an area
 
