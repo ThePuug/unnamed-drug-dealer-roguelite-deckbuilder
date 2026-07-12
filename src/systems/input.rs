@@ -536,6 +536,8 @@ pub fn roster_button_system(
     bail_query: Query<(&Interaction, &RosterBailButton), Changed<Interaction>>,
     hire_query: Query<&Interaction, (Changed<Interaction>, With<RosterHireButton>)>,
     move_query: Query<(&Interaction, &RosterMoveButton), Changed<Interaction>>,
+    lay_low_query: Query<(&Interaction, &RosterLayLowButton), Changed<Interaction>>,
+    lawyer_query: Query<(&Interaction, &RosterLawyerButton), Changed<Interaction>>,
     save_data: Option<ResMut<crate::save::SaveData>>,
     save_manager: Option<Res<crate::save::SaveManager>>,
 ) {
@@ -587,6 +589,36 @@ pub fn roster_button_system(
         }
     }
 
+    // SOW-027: lay low (lay_low no-ops when ineligible or unaffordable)
+    for (interaction, button) in lay_low_query.iter() {
+        if *interaction == Interaction::Pressed {
+            let laying = save_data.lay_low(button.dealer_index);
+            if laying {
+                bevy::log::info!(
+                    "{} is laying low",
+                    save_data.dealers[button.dealer_index].name
+                );
+            }
+            dirty |= laying;
+        }
+    }
+
+    // SOW-027: crooked lawyer (hire_lawyer no-ops when ineligible or
+    // unaffordable)
+    for (interaction, button) in lawyer_query.iter() {
+        if *interaction == Interaction::Pressed {
+            let cooled = save_data.hire_lawyer(button.dealer_index);
+            if cooled {
+                bevy::log::info!(
+                    "{} lawyered up - heat now {}",
+                    save_data.dealers[button.dealer_index].name,
+                    save_data.dealers[button.dealer_index].character.heat
+                );
+            }
+            dirty |= cooled;
+        }
+    }
+
     if dirty {
         if let Err(e) = save_manager.save(&save_data) {
             bevy::log::warn!("Failed to save roster change: {:?}", e);
@@ -614,6 +646,9 @@ pub fn update_start_run_button_system(
         (theme::CONTINUE_BUTTON_BG, "START RUN")
     } else if dealer.relocating_remaining().is_some() {
         (theme::BUTTON_DISABLED_BG, "MOVING")
+    } else if dealer.laying_low_remaining().is_some() {
+        // SOW-027: committed to the package - can't run until it ticks out
+        (theme::BUTTON_DISABLED_BG, "LAYING LOW")
     } else {
         (theme::BUTTON_DISABLED_BG, "JAILED")
     };

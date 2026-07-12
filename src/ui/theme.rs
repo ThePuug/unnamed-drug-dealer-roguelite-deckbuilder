@@ -298,6 +298,11 @@ pub const ROSTER_BAIL_BG: Color = Color::srgb(0.55, 0.35, 0.2);
 pub const ROSTER_STATION_TEXT: Color = Color::srgb(0.6, 0.7, 0.85);          // "THE BLOCK · CRED 5"
 pub const ROSTER_STATUS_MOVING: Color = Color::srgb(0.55, 0.75, 1.0);        // relocation countdown
 pub const ROSTER_MOVE_BG: Color = Color::srgb(0.3, 0.4, 0.6);                // MOVE button
+
+// SOW-027: heat coolers
+pub const ROSTER_STATUS_LAYING_LOW: Color = Color::srgb(0.45, 0.85, 0.75);   // lay-low countdown
+pub const ROSTER_LAY_LOW_BG: Color = Color::srgb(0.2, 0.5, 0.45);            // LAY LOW button
+pub const ROSTER_LAWYER_BG: Color = Color::srgb(0.45, 0.3, 0.55);            // LAWYER button
 pub const SHOP_CRED_LOCK_TEXT: Color = Color::srgb(1.0, 0.55, 0.45);         // "NEEDS CRED n"
 pub const SHOP_CREDIT_LINE_TEXT: Color = Color::srgb(0.85, 0.75, 0.45);      // "unlocked by Ray"
 

@@ -362,6 +362,19 @@ pub struct RosterMoveButton {
     pub to_area: String,
 }
 
+/// SOW-027: send an available dealer underground (cash + downtime, sheds
+/// heat on resurfacing)
+#[derive(Component)]
+pub struct RosterLayLowButton {
+    pub dealer_index: usize,
+}
+
+/// SOW-027: pay the crooked lawyer - immediate heat relief, no downtime
+#[derive(Component)]
+pub struct RosterLawyerButton {
+    pub dealer_index: usize,
+}
+
 // ============================================================================
 // SOW-020: Shop UI Components
 // ============================================================================
