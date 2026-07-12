@@ -2,7 +2,7 @@
 
 ## Status
 
-**Review** - 2026-07-12 (implemented on branch `sow-027-heat-economy`, all 4 phases)
+**Merged** - 2026-07-12
 
 ## References
 
@@ -204,4 +204,40 @@ measured from a screenshot (game-drive echoes the fit/dpi mapping).
 
 ## Acceptance Review
 
-*Populated by ARCHITECT after review.*
+### Scope Completion: 100% (+ zero-warnings scope addition)
+
+All 4 phases plus the repo-wide warnings sweep (39 → 0 for build AND test,
+deletion over allow, no exceptions needed).
+
+### Measured acceptance: MET
+
+- Fresh floor: 3 blind sessions end at **Warm (35)** / **Hot (85)** across
+  two sweeps, no busts — down from Inferno-184 with fresh GAME OVERs.
+- Target-play pacing unregressed (payouts untouched; blind Safe-deal banking
+  $19-75 brackets the SOW-026 band).
+- Wolf ×2.8 read delivered: headline payout is unreachable without the
+  $5,000 Coke demand investment — the intended mid-game gate; the Block is
+  pure heat pressure until then, which the coolers monetize. Content flag
+  recorded: a mid-price Block demand product would give ×2.8 a first rung.
+
+### Architectural Compliance
+
+172 tests (delta explained: 4 dead-method pins deleted with their methods,
+new composition/cooler/upgrade tests added). Telegraph == card face ==
+totals == resolution by construction (multiplier retirement). Sparse
+inheritable composition format with effective-table debug logging answers
+Reed's authoring concern. Zero-warnings is the repo baseline going forward.
+
+### Notable fix
+
+Roster action stack overflow (buttons sliding under the neighboring card,
+stealing clicks) — identity column now shrinks+clips.
+
+---
+
+## Sign-Off
+
+**Reviewed By:** ARCHITECT review + measured pacing evidence
+**Date:** 2026-07-12
+**Decision:** ✅ **ACCEPTED**
+**Status:** Merged to main
