@@ -19,17 +19,27 @@ period when busted. **Cash is global.** The product needs:
 | P4 Unlockable areas | New areas gate shops/customers/cards | `shop_locations.ron` (the_corner, the_block); buyers not yet area-gated |
 | P5 History | Stories accumulate into a legacy | `story_history` per character + narrative engine; only visible in a deck-builder overlay |
 
-## Sequencing
+## Sequencing (revised 2026-07-12 after the map/stationing design iteration)
 
-1. **SOW-023 Kingpin & Dealers Foundation** (P1) — the structural change every
-   other pillar hangs off (dealers own heat → P2; dealers jailed → roster
-   pressure → P3 spending; per-dealer stories → P5 ledger).
-2. **SOW-024 Areas & Unlocks** (P3+P4) — revive The Block via
-   `unlock_location`, area-gate buyers, area purchase from global cash.
-3. **SOW-025 Heat Pressure Tuning** (P2) — narc deck scaling beyond stat
-   multipliers (deck composition by tier), conviction pressure, and the
-   dead RFC-019 "Heat" upgrade decision.
-4. **SOW-026 Kingpin Ledger** (P5) — surfacing per-dealer and empire history.
+1. ✅ **SOW-023 Kingpin & Dealers Foundation** (P1) — merged.
+2. ✅ **SOW-024 Areas & Unlocks** (P3+P4) — merged; territories with interim
+   random-area run selection.
+3. **SOW-025 Street Cred & Stationing** — dealers stationed per area (run
+   area = station, replacing the interim pick), move = cash + downtime,
+   +1 cred per Safe deal, cred-gated shop unlocks with "unlocked by <dealer>"
+   credit line. Locked decisions: studio repo
+   `design-updates/2026-07-12-stationing-and-street-cred.md`.
+4. **SOW-026 Content Authoring Pass** — lean start (Weed-only), shop stock as
+   the progression ladder with cash+cred requirements, per-area buyer demands
+   (the difficulty gradient is authoring, per Reed).
+5. **SOW-027 Heat Economy** (P2) — pressure: per-AREA narc deck composition
+   (GDD scaling, territory-flavored) × per-dealer heat; relief: Lay Low +
+   crooked lawyer (easy areas already serve as authored cooling venues);
+   RFC-019 dead Heat-upgrade decision; Wolf ×2.8 balance check.
+6. **SOW-028 City Map Screen** — area picker/preview + move UI once areas
+   differ enough to preview.
+7. **SOW-029 Kingpin Ledger** (P5) — empire/dealer history + full
+   fallen-empires arcade board.
 
 ## Current-state debts the roadmap must absorb
 
@@ -40,6 +50,18 @@ period when busted. **Cash is global.** The product needs:
   live character) and outcome-aware overlay buttons.
 
 ## Iteration Log
+
+### Iteration 3 — 2026-07-12
+
+- SOW-024 merged: The Block purchasable ($2,000), its ~$49k of authored stock
+  revived, two-stage territory run selection (Wolf e2e-confirmed as Block
+  clientele), shop_locations.ron promoted to validated source of truth,
+  harness tab/overlay coordinates fixed.
+- Design iterated with Reed mid-flight: areas are TERRITORIES; the difficulty
+  gradient is authoring-first (lean start, shop ladder); dealers get
+  stationing + per-area street cred (decisions locked in the studio repo).
+  Roadmap resequenced above.
+- Next: SOW-025 Street Cred & Stationing.
 
 ### Iteration 2 — 2026-07-12
 
