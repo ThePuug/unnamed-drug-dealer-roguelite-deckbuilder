@@ -10,7 +10,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 /// older saves are rejected and the game starts a fresh account)
 /// RFC-023: Bumped 2 -> 3 (single character replaced by dealer roster;
 /// pre-release wipe convention - older saves start fresh)
-pub const SAVE_VERSION: u32 = 3;
+// SOW-025: v4 adds dealer stations + street cred (pre-release wipe convention)
+pub const SAVE_VERSION: u32 = 4;
 
 /// Maximum sanity values for validation
 const MAX_HEAT: u32 = 10_000;
@@ -183,6 +184,47 @@ impl SaveData {
             .filter(|(idx, _)| *idx != runner)
             .filter_map(|(_, d)| d.tick_sentence().then(|| d.name.clone()))
             .collect()
+    }
+
+    #[allow(dead_code)] // consumed in SOW-025 Phases 2-3
+    /// SOW-025: relocate a dealer to another area. Costs the flat move fee
+    /// from global cash plus one run of downtime ("getting established").
+    /// The station changes immediately; the dealer is unavailable until the
+    /// relocation ticks out. Returns false (no mutation) if the dealer is
+    /// unavailable, already stationed there, or the fee is unaffordable.
+    pub fn move_dealer(&mut self, dealer_idx: usize, to_area: &str) -> bool {
+        let Some(dealer) = self.dealers.get(dealer_idx) else {
+            return false;
+        };
+        if !dealer.is_available() || dealer.station == to_area {
+            return false;
+        }
+        if !self.account.spend(MOVE_FEE) {
+            return false;
+        }
+        let dealer = &mut self.dealers[dealer_idx];
+        dealer.station = to_area.to_string();
+        dealer.status = DealerStatus::Relocating { runs_remaining: 1 };
+        true
+    }
+
+    #[allow(dead_code)] // consumed in SOW-025 Phase 3
+    /// SOW-025: the flat relocation fee (exposed for UI labels)
+    pub fn move_fee(&self) -> u64 {
+        MOVE_FEE
+    }
+
+    #[allow(dead_code)] // consumed in SOW-025 Phase 3
+    /// SOW-025: the roster's best street cred for an area - any dealer's
+    /// reputation opens doors there. Returns (dealer index, cred); the shop
+    /// shows WHO is effectively unlocking ("unlocked by <name>").
+    pub fn best_cred(&self, area: &str) -> Option<(usize, u32)> {
+        self.dealers
+            .iter()
+            .enumerate()
+            .map(|(i, d)| (i, d.cred_in(area)))
+            .max_by_key(|(_, cred)| *cred)
+            .filter(|(_, cred)| *cred > 0)
     }
 
     /// Pay to release a jailed dealer before the sentence ends. Costs
@@ -790,6 +832,17 @@ const BAIL_COST_PER_RUN: u64 = 300;
 /// First hire beyond the kingpin costs $500; each subsequent hire doubles
 const HIRE_BASE_COST: u64 = 500;
 
+/// SOW-025: flat relocation fee (tuning candidate - see SOW-025 Discussion)
+const MOVE_FEE: u64 = 250;
+
+/// SOW-025: where every fresh dealer starts (the home turf; matches the
+/// area flagged `unlocked: true` in shop_locations.ron)
+pub const DEFAULT_STATION: &str = "the_corner";
+
+fn default_station() -> String {
+    DEFAULT_STATION.to_string()
+}
+
 /// Street names for recruited dealers
 pub const DEALER_NAME_POOL: [&str; 12] = [
     "Slim", "Mouse", "Ghost", "Dice", "Rico", "Tex",
@@ -814,6 +867,11 @@ pub enum DealerStatus {
         sentence_total: u32,
         heat_at_bust: i32,
     },
+    /// SOW-025: mid-move - getting established in the new station.
+    /// Ticks down like a sentence; no heat effects (moving is cash + time).
+    Relocating {
+        runs_remaining: u32,
+    },
 }
 
 /// A dealer in the kingpin's roster: an identity plus the career record that
@@ -833,6 +891,13 @@ pub struct DealerState {
     /// heat zeroes but the record doesn't; future difficulty hook)
     #[serde(default)]
     pub prior_convictions: u32,
+    /// SOW-025: the area this dealer works - their runs happen here
+    #[serde(default = "default_station")]
+    pub station: String,
+    /// SOW-025: reputation per area, earned +1 per successful deal there.
+    /// NEVER decays - jail, moves, time: nothing erases what you built.
+    #[serde(default)]
+    pub street_cred: HashMap<String, u32>,
     /// Career record: heat, play counts, upgrades, stories (RFC-017/018/019)
     pub character: CharacterState,
 }
@@ -864,6 +929,8 @@ impl DealerState {
             status: DealerStatus::Available,
             is_kingpin: true,
             prior_convictions: 0,
+            station: default_station(),
+            street_cred: HashMap::new(),
             character: CharacterState::new(),
         }
     }
@@ -889,7 +956,29 @@ impl DealerState {
             status: DealerStatus::Available,
             is_kingpin: false,
             prior_convictions: 0,
+            station: default_station(),
+            street_cred: HashMap::new(),
             character: CharacterState::new(),
+        }
+    }
+
+    #[allow(dead_code)] // consumed in SOW-025 Phase 2
+    /// SOW-025: +1 street cred in an area (one successful deal there)
+    pub fn add_cred(&mut self, area: &str) {
+        *self.street_cred.entry(area.to_string()).or_insert(0) += 1;
+    }
+
+    /// SOW-025: this dealer's reputation in an area
+    pub fn cred_in(&self, area: &str) -> u32 {
+        self.street_cred.get(area).copied().unwrap_or(0)
+    }
+
+    #[allow(dead_code)] // consumed in SOW-025 Phase 3
+    /// SOW-025: remaining relocation downtime in runs (None if not moving)
+    pub fn relocating_remaining(&self) -> Option<u32> {
+        match self.status {
+            DealerStatus::Relocating { runs_remaining } => Some(runs_remaining),
+            _ => None,
         }
     }
 
@@ -925,23 +1014,36 @@ impl DealerState {
     }
 
     /// One completed run elsewhere in the empire counts toward this
-    /// dealer's sentence. Auto-releases at zero. Returns true on release.
+    /// dealer's downtime - a jail sentence OR a relocation (SOW-025).
+    /// Auto-releases/arrives at zero. Returns true when the dealer
+    /// becomes available.
     pub fn tick_sentence(&mut self) -> bool {
-        if let DealerStatus::Jailed { ref mut runs_remaining, .. } = self.status {
-            *runs_remaining = runs_remaining.saturating_sub(1);
-            if *runs_remaining == 0 {
-                self.release();
-                return true;
+        match self.status {
+            DealerStatus::Jailed { ref mut runs_remaining, .. } => {
+                *runs_remaining = runs_remaining.saturating_sub(1);
+                if *runs_remaining == 0 {
+                    self.release();
+                    return true;
+                }
+                false
             }
+            DealerStatus::Relocating { ref mut runs_remaining } => {
+                *runs_remaining = runs_remaining.saturating_sub(1);
+                if *runs_remaining == 0 {
+                    self.status = DealerStatus::Available;
+                    return true;
+                }
+                false
+            }
+            DealerStatus::Available => false,
         }
-        false
     }
 
     /// Remaining sentence in runs (None if not jailed)
     pub fn jail_remaining(&self) -> Option<u32> {
         match self.status {
             DealerStatus::Jailed { runs_remaining, .. } => Some(runs_remaining),
-            DealerStatus::Available => None,
+            _ => None,
         }
     }
 
@@ -953,8 +1055,13 @@ impl DealerState {
         if self.name.is_empty() {
             return Err(SaveError::ValidationError("Dealer has empty name".into()));
         }
-        if self.is_kingpin && self.status != DealerStatus::Available {
+        // SOW-025: the kingpin can relocate like anyone - only jail is
+        // impossible (kingpin busts end the empire instead)
+        if self.is_kingpin && matches!(self.status, DealerStatus::Jailed { .. }) {
             return Err(SaveError::ValidationError("Kingpin cannot be jailed".into()));
+        }
+        if self.station.is_empty() {
+            return Err(SaveError::ValidationError("Dealer has empty station".into()));
         }
         self.character.validate()
     }
@@ -1377,6 +1484,108 @@ mod tests {
         save.reset_empire();
         assert!(!save.account.is_location_unlocked("the_block"));
         assert!(save.account.is_location_unlocked("the_corner")); // fresh default
+    }
+
+    #[test]
+    fn test_move_dealer_costs_fee_and_downtime() {
+        // SOW-025: relocation = cash + 1 run of unavailability
+        let mut save = SaveData::new();
+        save.account.cash_on_hand = 1000;
+
+        assert!(save.move_dealer(0, "the_block"));
+        assert_eq!(save.account.cash_on_hand, 750); // $250 fee
+        assert_eq!(save.dealers[0].station, "the_block"); // station changes immediately
+        assert_eq!(save.dealers[0].relocating_remaining(), Some(1));
+        assert!(!save.dealers[0].is_available()); // can't be sent out mid-move
+
+        // One completed run elsewhere -> arrived
+        assert!(save.dealers[0].tick_sentence());
+        assert!(save.dealers[0].is_available());
+        assert_eq!(save.dealers[0].station, "the_block");
+    }
+
+    #[test]
+    fn test_move_dealer_rejections() {
+        let mut save = SaveData::new();
+        save.account.cash_on_hand = 100; // can't afford the $250 fee
+        assert!(!save.move_dealer(0, "the_block"));
+        assert_eq!(save.dealers[0].station, DEFAULT_STATION);
+
+        save.account.cash_on_hand = 1000;
+        assert!(!save.move_dealer(0, DEFAULT_STATION)); // already stationed there
+        assert!(!save.move_dealer(9, "the_block")); // out of range
+
+        assert!(save.move_dealer(0, "the_block"));
+        assert!(!save.move_dealer(0, "the_corner")); // mid-relocation = unavailable
+        assert_eq!(save.account.cash_on_hand, 750); // only one fee charged
+    }
+
+    #[test]
+    fn test_street_cred_accrues_and_never_decays() {
+        // SOW-025: +1 per successful deal; nothing (jail, moves) erases it
+        let mut dealer = DealerState::recruit(&[]);
+        dealer.add_cred("the_block");
+        dealer.add_cred("the_block");
+        dealer.add_cred("the_corner");
+        assert_eq!(dealer.cred_in("the_block"), 2);
+        assert_eq!(dealer.cred_in("the_corner"), 1);
+        assert_eq!(dealer.cred_in("nowhere"), 0);
+
+        // Jail round-trip: cred untouched
+        dealer.character.heat = 50;
+        dealer.jail();
+        dealer.release();
+        assert_eq!(dealer.cred_in("the_block"), 2);
+
+        // Move: cred untouched (reputation, not presence)
+        let mut save = SaveData::new();
+        save.account.cash_on_hand = 1000;
+        save.dealers.push(dealer);
+        assert!(save.move_dealer(1, "the_block"));
+        assert_eq!(save.dealers[1].cred_in("the_block"), 2);
+    }
+
+    #[test]
+    fn test_best_cred_names_the_unlocking_dealer() {
+        // SOW-025: any dealer's cred opens the door; the highest is credited
+        let mut save = SaveData::new();
+        assert!(save.best_cred("the_block").is_none()); // nobody known yet
+
+        save.dealers.push(DealerState::recruit(&save.dealers));
+        save.dealers[0].add_cred("the_block");
+        save.dealers[1].add_cred("the_block");
+        save.dealers[1].add_cred("the_block");
+        let (idx, cred) = save.best_cred("the_block").unwrap();
+        assert_eq!((idx, cred), (1, 2));
+    }
+
+    #[test]
+    fn test_kingpin_can_relocate_but_never_jail() {
+        let mut save = SaveData::new();
+        save.account.cash_on_hand = 1000;
+        assert!(save.move_dealer(0, "the_block"));
+        assert!(save.validate().is_ok()); // relocating kingpin is legal
+
+        let mut jailed_kingpin = DealerState::kingpin();
+        jailed_kingpin.status = DealerStatus::Jailed {
+            runs_remaining: 1,
+            sentence_total: 1,
+            heat_at_bust: 10,
+        };
+        assert!(jailed_kingpin.validate().is_err()); // jailed kingpin is not
+    }
+
+    #[test]
+    fn test_empire_reset_returns_stations_and_wipes_cred() {
+        let mut save = SaveData::new();
+        save.account.cash_on_hand = 1000;
+        save.dealers[0].add_cred("the_block");
+        assert!(save.move_dealer(0, "the_block"));
+
+        save.reset_empire();
+        assert_eq!(save.dealers[0].station, DEFAULT_STATION);
+        assert_eq!(save.dealers[0].cred_in("the_block"), 0);
+        assert!(save.dealers[0].is_available());
     }
 
     #[test]
