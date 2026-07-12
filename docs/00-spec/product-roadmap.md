@@ -34,8 +34,8 @@ period when busted. **Cash is global.** The product needs:
 6. ✅ **SOW-028 Third Zone: The Strip + zone coherence** — merged; Pimp
    persona, Ecstasy/Ice re-zoned to the Strip, Housewife → Block first
    rung (Wolf ×2.8 gap closed), Corner fresh floor re-tuned to Cold.
-7. **SOW-029 City Map Screen** — area picker/preview + move UI, with three
-   real nodes to show.
+7. ✅ **SOW-029 City Map Screen** — merged; map overlay with three live
+   node cards, unlock + relocation from the map, two-click rotation.
 8. **SOW-030 Kingpin Ledger** (P5) — empire/dealer history + full
    fallen-empires arcade board.
 9. **SOW-031 Suppliers & Fronts** (Reed-confirmed v2) — named supplier NPC
@@ -56,6 +56,36 @@ dealer. Original debt list fully absorbed: jail-as-wager shipped (023),
 RFC-019 resolved (027), harness isolation/outcome-awareness shipped (023/024).
 
 ## Iteration Log
+
+### Iteration 8 — 2026-07-12
+
+- SOW-029 merged (196 tests, zero warnings, +21 pure view-model tests):
+  CITY MAP overlay with three node cards (status/price with live
+  affordability, clientele + payout band, fiction-voice narc hints,
+  stationed-dealer chips with heat/cred, best-cred ★), zone unlock and
+  dealer relocation from the map through the existing SOW-024/025 code
+  paths, two-click burn-then-cool rotation. e2e: full
+  unlock→relocate→run-at-new-station loop verified live.
+- Pre-merge adversarial review (16 agents) caught 2 HIGH defects before
+  they shipped: a launch panic on pending-upgrade saves (bare ResMut on
+  a conditionally-inserted resource) and overlay click fall-through
+  (Node defaults FocusPolicy::Pass — the opaque canvas was visual only).
+  Both fixed + re-verified live. Lesson recorded: overlays over a live
+  screen need FocusPolicy::Block; state-wide resources need
+  init_resource, not OnEnter inserts that can early-return.
+- Process: all three repos pushed to GitHub (Reed caught local-only
+  history); push is now part of every closeout. "Fork" jargon dropped.
+- Art asks ledger created (studio repo art-backlog.md, full 4-way
+  sweep): 13 items — notable finds beyond the known asks: the Kingpin
+  wears barista.png, pimp.png double-booked buyer/dealer-pool (fix
+  queued SOW-030), watermark retouch pass, per-card art as the largest
+  untouched surface.
+- Carried: StoryHistoryOverlay focus gap (pre-existing) → stabilization;
+  zone strings → RON in SOW-031; Strip session-3 heat awaits Reed's
+  playtest.
+- Next: SOW-030 Kingpin Ledger (design: studio repo
+  2026-07-12-kingpin-ledger.md — derive-not-record, summary-first,
+  browsable fallen-empires board, map node history line).
 
 ### Iteration 7 — 2026-07-12
 
