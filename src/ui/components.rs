@@ -401,3 +401,14 @@ pub struct ShopPurchaseButton {
 /// Text showing the selected location name
 #[derive(Component)]
 pub struct ShopLocationNameText;
+
+/// SOW-024: Purchase button for a locked area ("THE BLOCK — $2,000")
+#[derive(Component)]
+pub struct ShopAreaUnlockButton {
+    pub location_id: String,
+    pub price: u32,
+}
+
+/// SOW-024: One-line expansion feedback ("New turf: The Block")
+#[derive(Component)]
+pub struct ShopFeedbackText;

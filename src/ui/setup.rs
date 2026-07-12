@@ -7,11 +7,80 @@ use super::theme;
 use super::components::*;
 use crate::models::fonts::EmojiFont;
 
+/// SOW-024: Spawn the area selector row - unlocked areas as select buttons,
+/// locked areas as purchase buttons showing their price. Shared by
+/// setup_deck_builder and the post-purchase refresh in shop.rs.
+pub fn spawn_area_selector_buttons(
+    parent: &mut ChildSpawnerCommands,
+    areas: &[crate::models::shop_location::ShopLocationDef],
+    unlocked: &std::collections::HashSet<String>,
+) {
+    let mut first_unlocked = true;
+    for area in areas {
+        if unlocked.contains(&area.id) {
+            let bg = if first_unlocked {
+                theme::CONTINUE_BUTTON_BG // Active by default
+            } else {
+                theme::BUTTON_NEUTRAL_BG
+            };
+            first_unlocked = false;
+
+            parent.spawn((
+                Button,
+                Node {
+                    width: Val::Px(140.0),
+                    height: Val::Px(40.0),
+                    justify_content: JustifyContent::Center,
+                    align_items: AlignItems::Center,
+                    ..default()
+                },
+                BackgroundColor(bg),
+                ShopLocationButton { location_id: area.id.clone() },
+            ))
+            .with_children(|btn| {
+                btn.spawn((
+                    Text::new(&area.name),
+                    TextFont::from_font_size(14.0),
+                    TextColor(Color::WHITE),
+                ));
+            });
+        } else {
+            // Locked: a purchase invitation (affordability styling is kept
+            // current by update_area_unlock_button_visuals)
+            parent.spawn((
+                Button,
+                Node {
+                    width: Val::Px(210.0),
+                    height: Val::Px(40.0),
+                    justify_content: JustifyContent::Center,
+                    align_items: AlignItems::Center,
+                    border: UiRect::all(Val::Px(1.0)),
+                    ..default()
+                },
+                BackgroundColor(theme::BUTTON_DISABLED_BG),
+                BorderColor::all(theme::BUTTON_NEUTRAL_BG),
+                ShopAreaUnlockButton {
+                    location_id: area.id.clone(),
+                    price: area.price,
+                },
+            ))
+            .with_children(|btn| {
+                btn.spawn((
+                    Text::new(format!("{} — ${}", area.name.to_uppercase(), area.price)),
+                    TextFont::from_font_size(13.0),
+                    TextColor(Color::WHITE),
+                ));
+            });
+        }
+    }
+}
+
 pub fn setup_deck_builder(
     mut commands: Commands,
     save_data: Option<Res<crate::save::SaveData>>,
     emoji_font: Res<EmojiFont>,
     deferred: Res<crate::systems::UpgradeChoiceDeferred>,
+    game_assets: Res<crate::assets::GameAssets>, // SOW-024: area selector is data-driven
 ) {
     // RFC-019: Don't spawn DeckBuilder UI if we're about to redirect to UpgradeChoice
     // SOW-021: unless the player chose DECIDE LATER - then the deck builder MUST
@@ -114,46 +183,23 @@ pub fn setup_deck_builder(
                 ShopLocationSelector,
             ))
             .with_children(|locs| {
-                // Shop location definitions
-                let locations = [
-                    ("the_corner", "The Corner"),
-                    ("the_block", "The Block"),
-                ];
-
-                for (idx, (id, name)) in locations.iter().enumerate() {
-                    // Only spawn button if location is unlocked
-                    if !unlocked_locations.contains(*id) {
-                        continue;
-                    }
-
-                    let is_first = idx == 0 || locations[..idx].iter().all(|(loc_id, _)| !unlocked_locations.contains(*loc_id));
-                    let bg = if is_first {
-                        theme::CONTINUE_BUTTON_BG // Active by default
-                    } else {
-                        theme::BUTTON_NEUTRAL_BG
-                    };
-
-                    locs.spawn((
-                        Button,
-                        Node {
-                            width: Val::Px(140.0),
-                            height: Val::Px(40.0),
-                            justify_content: JustifyContent::Center,
-                            align_items: AlignItems::Center,
-                            ..default()
-                        },
-                        BackgroundColor(bg),
-                        ShopLocationButton { location_id: id.to_string() },
-                    ))
-                    .with_children(|btn| {
-                        btn.spawn((
-                            Text::new(*name),
-                            TextFont::from_font_size(14.0),
-                            TextColor(Color::WHITE),
-                        ));
-                    });
-                }
+                // SOW-024: data-driven from shop_locations.ron; locked areas
+                // render as purchase buttons ("THE BLOCK — $2,000")
+                spawn_area_selector_buttons(locs, &game_assets.shop_locations, &unlocked_locations);
             });
+
+            // SOW-024: one-line expansion feedback ("New turf: The Block")
+            tabs.spawn((
+                Text::new(""),
+                TextFont::from_font_size(14.0),
+                TextColor(theme::SELECTED_DECK_BG_VALID),
+                Node {
+                    margin: UiRect::left(Val::Px(14.0)),
+                    align_self: AlignSelf::Center,
+                    ..default()
+                },
+                ShopFeedbackText,
+            ));
         });
 
         // SOW-023: Operations roster - who's on the payroll, who's in jail,

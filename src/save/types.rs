@@ -1040,7 +1040,6 @@ impl AccountState {
     }
 
     /// SOW-024: Buy an area with global cash. Error strings are display-ready.
-    #[allow(dead_code)] // consumed by the Phase 3 shop UI (marker removed there)
     pub fn purchase_location(&mut self, location_id: &str, price: u64) -> Result<(), &'static str> {
         if self.is_location_unlocked(location_id) {
             return Err("already unlocked");

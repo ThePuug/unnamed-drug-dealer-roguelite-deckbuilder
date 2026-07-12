@@ -36,24 +36,26 @@
 - Buying The Block: cash decreases, unlock persists across save/load,
   double-purchase impossible
 
-### Phase 2: Buyer area-gating
+### Phase 2: Two-stage run selection (REFRAMED - territories)
 
-**Goal:** Who you can sell to depends on where you operate.
+**Goal:** Who you can sell to depends on WHERE the run happens.
 
 **Deliverables:**
 - `area` field on buyer personas (`buyers.ron`, serde default `the_corner`);
-  Wall Street Wolf moves to `the_block`
-- Run-start persona selection filters to unlocked areas
-- Load-time validation: persona areas must exist in shop_locations (SOW-021
-  demand-string pattern)
+  Wall Street Wolf is Block clientele
+- Two-stage run start: pick the run's AREA (INTERIM: random among unlocked -
+  replaced by dealer stationing in a follow-up SOW), then draw the persona
+  from that area's clientele ONLY (no pooled draw)
+- Run area logged for e2e observability
+- Load-time validation: persona areas must exist AND every area has clientele
 
 **Architectural Constraints:**
 - A fresh empire (Corner only) must always have >= 1 eligible persona
   (validation enforces)
 
 **Success Criteria:**
-- Fresh empire never draws the Wolf; after buying The Block the Wolf appears
-  in the rotation
+- Fresh empire runs are always Corner-area (never the Wolf); after buying
+  The Block, Block-area runs occur and draw the Wolf
 
 ### Phase 3: Shop UI purchase flow
 
@@ -92,7 +94,25 @@ regression to Corner-only fresh empires.
 
 ## Discussion
 
-*Populated during implementation.*
+### ANSWERED by Reed (2026-07-12) - territory reframe
+
+Areas are territories on a (future) map with their own narc behavior,
+customers, and products; unlocking buys ACCESS - customers don't relocate.
+Run selection is two-stage (area first, then that area's clientele). The
+random-among-unlocked area pick is INTERIM: dealer stationing (run area =
+the active dealer's station, per-dealer-per-area street cred gating shop
+unlocks) lands in the next SOW - see
+`design-updates/2026-07-12-stationing-and-street-cred.md` in the studio
+repo. Per-area narc decks, product pools, and the deck-power gradient are
+explicitly out of this SOW.
+
+### Implementation Note: shop_locations.ron becomes real (Phase 1)
+
+The RON file existed since SOW-020 but was never loaded - the shop selector
+was hard-coded. It is now the loaded, validated source of truth for areas
+(ids, names, prices, starting unlock). The Block prices at $2,000: RFC-020
+only recorded an "achievement unlock (future RFC)" placeholder, superseded
+by RFC-024's cash purchase.
 
 ---
 
