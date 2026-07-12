@@ -143,7 +143,7 @@ pub fn hand_hover_system(
     }
 }
 
-/// SOW-022: Deck/discard stacks + card-back chip icons
+/// SOW-022: Deck/discard stacks
 pub fn update_deck_discard_system(
     hand_state_query: Query<&HandState, Changed<HandState>>,
     mut texts: Query<&mut Text>,
@@ -151,8 +151,6 @@ pub fn update_deck_discard_system(
     discard_text_query: Query<Entity, With<DiscardCountText>>,
     mut images: Query<&mut ImageNode>,
     deck_image_query: Query<Entity, With<DeckStackImage>>,
-    narc_icon_query: Query<Entity, With<NarcCountChipIcon>>,
-    buyer_icon_query: Query<Entity, With<BuyerCountChipIcon>>,
     top_slot_query: Query<Entity, With<DiscardTopCardSlot>>,
     children_query: Query<&Children>,
     mut commands: Commands,
@@ -173,12 +171,8 @@ pub fn update_deck_discard_system(
         }
     }
 
-    // Card-back images (idempotent handle assignment)
-    for entity in deck_image_query
-        .iter()
-        .chain(narc_icon_query.iter())
-        .chain(buyer_icon_query.iter())
-    {
+    // Deck stack card-back image (idempotent handle assignment)
+    if let Ok(entity) = deck_image_query.single() {
         if let Ok(mut image) = images.get_mut(entity) {
             if image.image != game_assets.card_back {
                 image.image = game_assets.card_back.clone();
@@ -263,11 +257,10 @@ fn spawn_bubble_stat_rows(
     }
 }
 
-/// SOW-022: Narc count chip + intent bubble (telegraph / last played)
+/// SOW-022: Narc intent bubble (telegraph / last played)
 pub fn update_narc_intent_system(
     hand_state_query: Query<&HandState, Changed<HandState>>,
     mut texts: Query<&mut Text>,
-    narc_count_query: Query<Entity, With<NarcCardCountText>>,
     title_query: Query<Entity, With<NarcIntentTitleText>>,
     mut bubble_query: Query<&mut Node, With<NarcIntentBubble>>,
     stats_row_query: Query<Entity, With<NarcIntentStatsRow>>,
@@ -278,17 +271,6 @@ pub fn update_narc_intent_system(
     let Ok(hand_state) = hand_state_query.single() else {
         return;
     };
-
-    // Face-down count chip
-    if let Ok(entity) = narc_count_query.single() {
-        if let Ok(mut text) = texts.get_mut(entity) {
-            let count = hand_state.cards(Owner::Narc).hand.iter().flatten().count();
-            let label = count.to_string();
-            if **text != label {
-                **text = label;
-            }
-        }
-    }
 
     let Ok(mut bubble_node) = bubble_query.single_mut() else {
         return;
@@ -371,22 +353,51 @@ pub fn update_buyer_played_bubble_system(
     }
 }
 
-/// SOW-022: Buyer cluster - name, wants bubble, heat-cap chip, count chip
+/// SOW-022: Buyer cluster - name, scenario placard (wants / payout /
+/// confidence face / hover detail)
 pub fn update_buyer_panel_system(
     hand_state_query: Query<&HandState, Changed<HandState>>,
     mut texts: Query<&mut Text>,
-    buyer_count_query: Query<Entity, With<BuyerCardCountText>>,
     name_query: Query<Entity, With<BuyerNameText>>,
     scenario_query: Query<Entity, With<BuyerScenarioNameText>>,
     demand_query: Query<Entity, With<BuyerDemandText>>,
     payout_query: Query<Entity, With<BuyerPayoutText>>,
-    cap_text_query: Query<Entity, With<BuyerHeatCapText>>,
     detail_query: Query<Entity, With<BuyerDetailText>>,
-    mut cap_chip_query: Query<&mut Node, With<BuyerHeatCapChip>>,
+    confidence_emoji_query: Query<Entity, With<BuyerConfidenceEmoji>>,
+    confidence_text_query: Query<Entity, With<BuyerConfidenceText>>,
+    mut text_colors: Query<&mut TextColor>,
 ) {
     let Ok(hand_state) = hand_state_query.single() else {
         return;
     };
+
+    // Confidence face: how close the buyer is to bailing (worst of the
+    // heat / evidence bail axes)
+    let confidence = view::buyer_confidence(hand_state);
+    if let Some(confidence) = confidence {
+        let color = match confidence {
+            view::BuyerConfidence::Confident => theme::SAFE_CHIP_TEXT,
+            view::BuyerConfidence::Nervous => theme::STANDING_HEAT_VALUE,
+            view::BuyerConfidence::Scared => theme::RISK_CHIP_TEXT,
+        };
+        for (entity_result, value) in [
+            (confidence_emoji_query.single(), confidence.emoji()),
+            (confidence_text_query.single(), confidence.label()),
+        ] {
+            if let Ok(entity) = entity_result {
+                if let Ok(mut text) = texts.get_mut(entity) {
+                    if **text != value {
+                        **text = value.to_string();
+                    }
+                }
+                if let Ok(mut text_color) = text_colors.get_mut(entity) {
+                    if text_color.0 != color {
+                        text_color.0 = color;
+                    }
+                }
+            }
+        }
+    }
 
     let mut set_text = |entity_result: Result<Entity, _>, value: String| {
         if let Ok(entity) = entity_result {
@@ -397,10 +408,6 @@ pub fn update_buyer_panel_system(
             }
         }
     };
-
-    // Card count chip
-    let count = hand_state.cards(Owner::Buyer).hand.iter().flatten().count();
-    set_text(buyer_count_query.single(), count.to_string());
 
     let Some(persona) = &hand_state.buyer_persona else {
         return;
@@ -420,27 +427,19 @@ pub fn update_buyer_panel_system(
         );
         set_text(demand_query.single(), scenario.products.join(" / "));
 
+        // Exact bail thresholds are scenario detail - they live in the hover
+        // panel now that the confidence face summarizes them at a glance
         let mut detail = scenario.description.clone();
         if !scenario.locations.is_empty() {
             detail.push_str(&format!("\n\nPREFERS: {}", scenario.locations.join(", ")));
+        }
+        if let Some(heat_cap) = scenario.heat_threshold {
+            detail.push_str(&format!("\nBAILS AT HEAT {heat_cap}"));
         }
         if let Some(evidence_cap) = persona.evidence_threshold {
             detail.push_str(&format!("\nBAILS AT EVIDENCE {evidence_cap}"));
         }
         set_text(detail_query.single(), detail);
-
-        // Heat-cap chip: shown only when the scenario has a cap
-        if let Ok(mut chip_node) = cap_chip_query.single_mut() {
-            match scenario.heat_threshold {
-                Some(cap) => {
-                    chip_node.display = Display::Flex;
-                    set_text(cap_text_query.single(), cap.to_string());
-                }
-                None => {
-                    chip_node.display = Display::None;
-                }
-            }
-        }
     }
 }
 

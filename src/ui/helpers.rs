@@ -160,10 +160,12 @@ fn get_card_stats_with_multiplier(card_type: &CardType, multiplier: f32) -> Vec<
             ]
         },
         CardType::Conviction { heat_threshold } => {
-            // RFC-018: Narc cards get upgrades based on character heat tier
-            let upgraded_threshold = (*heat_threshold as f32 * multiplier).round() as u32;
+            // SOW-022 follow-up: show the RAW threshold - resolution checks it
+            // unmultiplied (resolution.rs), and scaling it up would advertise a
+            // LATER bust (weaker narc), the opposite of RFC-018's intent. The
+            // card face previously contradicted the intent bubble's "busts at N".
             vec![
-                StatInfo { emoji: "⚠", label: "Threshold", value: format!("+{}", upgraded_threshold) },
+                StatInfo { emoji: "⚠", label: "Threshold", value: format!("+{}", heat_threshold) },
             ]
         },
         CardType::Cover { cover, heat } => {

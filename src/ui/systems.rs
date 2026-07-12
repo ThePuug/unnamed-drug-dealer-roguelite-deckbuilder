@@ -487,6 +487,13 @@ pub fn scale_ui_to_fit_system(
 
     let window_width = window.width();
     let window_height = window.height();
+
+    // SOW-022 follow-up: a minimized window reports 0x0, which would set
+    // UiScale to 0 and cascade NaNs through text/layout math (crash on
+    // minimize). Keep the last good scale until the window is visible again.
+    if window_width < 1.0 || window_height < 1.0 {
+        return;
+    }
     let window_aspect = window_width / window_height;
 
     // Calculate scale to fit screen while maintaining aspect ratio
@@ -578,6 +585,12 @@ pub fn update_background_system(
     if image_node.image != *image_handle {
         image_node.image = image_handle.clone();
         info!("Background: {}", location_card.name);
+    }
+
+    // Guard against a minimized (0x0) window - the aspect math below would
+    // produce NaN node sizes
+    if window.width() < 1.0 || window.height() < 1.0 || ui_scale.0 <= 0.0 {
+        return;
     }
 
     // Account for UiScale when calculating dimensions

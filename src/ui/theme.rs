@@ -149,6 +149,9 @@ pub const VIGNETTE_OUTER: Color = Color::srgba(0.016, 0.020, 0.035, 0.95);
 
 // Shared v2 text tones
 pub const V2_LABEL: Color = Color::srgb(0.486, 0.525, 0.627);                      // #7c86a0 section labels
+/// Translucent scrim behind floating text/bars so they stay legible on
+/// bright location art (the vignette alone isn't enough on light scenes)
+pub const V2_SCRIM_BG: Color = Color::srgba(0.02, 0.03, 0.06, 0.6);
 
 // YOUR STANDING panel
 pub const STANDING_PANEL_BG: Color = Color::srgba(0.035, 0.043, 0.067, 0.88);
@@ -205,15 +208,8 @@ pub const BUYER_BUBBLE_HINT: Color = Color::srgb(0.518, 0.478, 0.322);          
 pub const BUYER_BUBBLE_DIVIDER: Color = Color::srgba(0.902, 0.824, 0.314, 0.2);
 pub const BUYER_SPOTLIGHT: Color = Color::srgba(0.902, 0.784, 0.235, 0.14);
 pub const BUYER_NAME: Color = Color::srgb(0.941, 0.878, 0.541);
-pub const HEAT_CAP_CHIP_BG: Color = Color::srgba(0.118, 0.047, 0.047, 0.9);
-pub const HEAT_CAP_CHIP_BORDER: Color = Color::srgba(0.863, 0.353, 0.353, 0.55);
-pub const HEAT_CAP_CHIP_TEXT: Color = Color::srgb(1.0, 0.604, 0.604);
-pub const HEAT_CAP_CHIP_VALUE: Color = Color::srgb(1.0, 0.824, 0.302);
-
-// Actor card-count chips
-pub const COUNT_CHIP_BG: Color = Color::srgba(0.047, 0.055, 0.086, 0.85);
-pub const COUNT_CHIP_BORDER: Color = Color::srgba(0.471, 0.510, 0.627, 0.35);
-pub const COUNT_CHIP_TEXT: Color = Color::srgb(0.682, 0.714, 0.784);               // #aeb6c8
+// SOW-022 cleanup: HEAT_CAP_CHIP_* removed (chip replaced by the confidence
+// face on the scenario placard) and COUNT_CHIP_* removed (hand-size chips cut)
 
 // Deal table ghost slots (empty-slot treatment, one palette per slot type -
 // derived from the card type colors: border alpha 0.4, bg alpha 0.05,

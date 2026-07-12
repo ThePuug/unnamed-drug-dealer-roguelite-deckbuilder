@@ -869,14 +869,11 @@ pub fn create_ui(commands: &mut Commands, emoji_font: &EmojiFont) {
                 NarcPortrait,
             ));
 
-            // Name plate + face-down count chip
+            // Name plate (count chip removed - it added little over the intent bubble)
             parent.spawn(Node {
                 position_type: PositionType::Absolute,
                 left: Val::Px(14.0),
                 top: Val::Px(274.0),
-                flex_direction: FlexDirection::Row,
-                align_items: AlignItems::Center,
-                column_gap: Val::Px(10.0),
                 ..default()
             })
             .with_children(|parent| {
@@ -885,36 +882,6 @@ pub fn create_ui(commands: &mut Commands, emoji_font: &EmojiFont) {
                     TextFont::from_font_size(14.0),
                     TextColor(theme::NARC_NAME),
                 ));
-                parent.spawn((
-                    Node {
-                        flex_direction: FlexDirection::Row,
-                        align_items: AlignItems::Center,
-                        column_gap: Val::Px(5.0),
-                        padding: UiRect::axes(Val::Px(9.0), Val::Px(3.0)),
-                        border: UiRect::all(Val::Px(1.0)),
-                        border_radius: BorderRadius::all(Val::Px(6.0)),
-                        ..default()
-                    },
-                    BackgroundColor(theme::COUNT_CHIP_BG),
-                    BorderColor::all(theme::COUNT_CHIP_BORDER),
-                ))
-                .with_children(|parent| {
-                    parent.spawn((
-                        Node {
-                            width: Val::Px(12.0),
-                            height: Val::Px(17.0),
-                            ..default()
-                        },
-                        ImageNode::default(),
-                        NarcCountChipIcon,
-                    ));
-                    parent.spawn((
-                        Text::new("0"),
-                        TextFont::from_font_size(12.0),
-                        TextColor(theme::COUNT_CHIP_TEXT),
-                        NarcCardCountText,
-                    ));
-                });
             });
 
             // Intent bubble (hidden until the narc telegraphs)
@@ -1006,47 +973,14 @@ pub fn create_ui(commands: &mut Commands, emoji_font: &EmojiFont) {
                 BuyerPortrait,
             ));
 
-            // Name plate + card count chip (name sits rightmost)
+            // Name plate
             parent.spawn(Node {
                 position_type: PositionType::Absolute,
                 right: Val::Px(14.0),
                 top: Val::Px(274.0),
-                flex_direction: FlexDirection::Row,
-                align_items: AlignItems::Center,
-                column_gap: Val::Px(10.0),
                 ..default()
             })
             .with_children(|parent| {
-                parent.spawn((
-                    Node {
-                        flex_direction: FlexDirection::Row,
-                        align_items: AlignItems::Center,
-                        column_gap: Val::Px(5.0),
-                        padding: UiRect::axes(Val::Px(9.0), Val::Px(3.0)),
-                        border: UiRect::all(Val::Px(1.0)),
-                        border_radius: BorderRadius::all(Val::Px(6.0)),
-                        ..default()
-                    },
-                    BackgroundColor(theme::COUNT_CHIP_BG),
-                    BorderColor::all(theme::COUNT_CHIP_BORDER),
-                ))
-                .with_children(|parent| {
-                    parent.spawn((
-                        Node {
-                            width: Val::Px(12.0),
-                            height: Val::Px(17.0),
-                            ..default()
-                        },
-                        ImageNode::default(),
-                        BuyerCountChipIcon,
-                    ));
-                    parent.spawn((
-                        Text::new("0"),
-                        TextFont::from_font_size(12.0),
-                        TextColor(theme::COUNT_CHIP_TEXT),
-                        BuyerCardCountText,
-                    ));
-                });
                 parent.spawn((
                     Text::new("BUYER"),
                     TextFont::from_font_size(14.0),
@@ -1055,47 +989,14 @@ pub fn create_ui(commands: &mut Commands, emoji_font: &EmojiFont) {
                 ));
             });
 
-            // Heat cap chip ("BAILS AT HEAT n" - hidden when scenario has no cap)
+            // Speech bubble: "PLAYED · <card>" - the buyer's ACTIONS, symmetric
+            // with the narc's intent bubble (hidden until the buyer reacts)
             parent.spawn((
                 Node {
                     position_type: PositionType::Absolute,
-                    right: Val::Px(14.0),
-                    top: Val::Px(304.0),
-                    flex_direction: FlexDirection::Row,
-                    align_items: AlignItems::Center,
-                    column_gap: Val::Px(7.0),
-                    padding: UiRect::axes(Val::Px(12.0), Val::Px(5.0)),
-                    border: UiRect::all(Val::Px(1.0)),
-                    border_radius: BorderRadius::MAX,
-                    display: Display::None,
-                    ..default()
-                },
-                BackgroundColor(theme::HEAT_CAP_CHIP_BG),
-                BorderColor::all(theme::HEAT_CAP_CHIP_BORDER),
-                BoxShadow::new(Color::srgba(0.784, 0.235, 0.235, 0.2), Val::Px(0.0), Val::Px(0.0), Val::Px(0.0), Val::Px(16.0)),
-                BuyerHeatCapChip,
-            ))
-            .with_children(|parent| {
-                spawn_emoji(parent, "⚠", 12.0, theme::HEAT_CAP_CHIP_TEXT, emoji_font);
-                parent.spawn((
-                    Text::new("BAILS AT HEAT"),
-                    TextFont::from_font_size(12.0),
-                    TextColor(theme::HEAT_CAP_CHIP_TEXT),
-                ));
-                parent.spawn((
-                    Text::new("—"),
-                    TextFont::from_font_size(12.0),
-                    TextColor(theme::HEAT_CAP_CHIP_VALUE),
-                    BuyerHeatCapText,
-                ));
-            });
-
-            // Buyer reaction bubble: "PLAYED · <card>" (hidden until the buyer reacts)
-            parent.spawn((
-                Node {
-                    position_type: PositionType::Absolute,
-                    right: Val::Px(14.0),
-                    top: Val::Px(344.0),
+                    right: Val::Px(150.0),
+                    top: Val::Px(2.0),
+                    width: Val::Px(250.0),
                     flex_direction: FlexDirection::Column,
                     align_items: AlignItems::FlexEnd,
                     row_gap: Val::Px(4.0),
@@ -1125,14 +1026,28 @@ pub fn create_ui(commands: &mut Commands, emoji_font: &EmojiFont) {
                     },
                     BuyerPlayedStatsRow,
                 ));
+                // Speech tail
+                parent.spawn((
+                    Node {
+                        position_type: PositionType::Absolute,
+                        right: Val::Px(44.0),
+                        bottom: Val::Px(-8.0),
+                        width: Val::Px(16.0),
+                        height: Val::Px(16.0),
+                        ..default()
+                    },
+                    BackgroundColor(theme::BUYER_BUBBLE_BG),
+                    UiTransform::from_rotation(Rot2::degrees(45.0)),
+                ));
             });
 
-            // Wants bubble (hover for detail)
+            // Scenario placard: standing WANTS info under the name plate
+            // (hover for detail; confidence face replaces the heat-cap chip)
             parent.spawn((
                 Node {
                     position_type: PositionType::Absolute,
-                    right: Val::Px(150.0),
-                    top: Val::Px(2.0),
+                    right: Val::Px(14.0),
+                    top: Val::Px(306.0),
                     width: Val::Px(258.0),
                     flex_direction: FlexDirection::Column,
                     padding: UiRect::axes(Val::Px(15.0), Val::Px(11.0)),
@@ -1198,6 +1113,33 @@ pub fn create_ui(commands: &mut Commands, emoji_font: &EmojiFont) {
                         BuyerPayoutText,
                     ));
                 });
+                // Confidence row: how close the buyer is to bailing
+                parent.spawn(Node {
+                    flex_direction: FlexDirection::Row,
+                    justify_content: JustifyContent::FlexEnd,
+                    align_items: AlignItems::Center,
+                    column_gap: Val::Px(6.0),
+                    margin: UiRect::top(Val::Px(5.0)),
+                    ..default()
+                })
+                .with_children(|parent| {
+                    parent.spawn((
+                        Text::new("🙂"),
+                        TextFont {
+                            font: emoji_font.0.clone(),
+                            font_size: 14.0,
+                            ..default()
+                        },
+                        TextColor(theme::SAFE_CHIP_TEXT),
+                        BuyerConfidenceEmoji,
+                    ));
+                    parent.spawn((
+                        Text::new("CONFIDENT"),
+                        TextFont::from_font_size(12.0),
+                        TextColor(theme::SAFE_CHIP_TEXT),
+                        BuyerConfidenceText,
+                    ));
+                });
                 parent.spawn((
                     Text::new("▾ HOVER FOR DETAIL"),
                     TextFont::from_font_size(9.0),
@@ -1232,19 +1174,7 @@ pub fn create_ui(commands: &mut Commands, emoji_font: &EmojiFont) {
                         BuyerDetailText,
                     ));
                 });
-                // Speech tail
-                parent.spawn((
-                    Node {
-                        position_type: PositionType::Absolute,
-                        right: Val::Px(44.0),
-                        bottom: Val::Px(-8.0),
-                        width: Val::Px(16.0),
-                        height: Val::Px(16.0),
-                        ..default()
-                    },
-                    BackgroundColor(theme::BUYER_BUBBLE_BG),
-                    UiTransform::from_rotation(Rot2::degrees(45.0)),
-                ));
+                // (no speech tail - the placard is standing info, not speech)
             });
         });
 
@@ -1263,10 +1193,20 @@ pub fn create_ui(commands: &mut Commands, emoji_font: &EmojiFont) {
         })
         .with_children(|parent| {
             parent.spawn((
-                Text::new("THE DEAL ON THE TABLE"),
-                TextFont::from_font_size(11.0),
-                TextColor(theme::V2_LABEL),
-            ));
+                Node {
+                    padding: UiRect::axes(Val::Px(12.0), Val::Px(4.0)),
+                    border_radius: BorderRadius::MAX,
+                    ..default()
+                },
+                BackgroundColor(theme::V2_SCRIM_BG),
+            ))
+            .with_children(|parent| {
+                parent.spawn((
+                    Text::new("THE DEAL ON THE TABLE"),
+                    TextFont::from_font_size(11.0),
+                    TextColor(theme::V2_LABEL),
+                ));
+            });
             parent.spawn((
                 Node {
                     flex_direction: FlexDirection::Row,
@@ -1304,12 +1244,17 @@ pub fn create_ui(commands: &mut Commands, emoji_font: &EmojiFont) {
             ..default()
         })
         .with_children(|parent| {
-            parent.spawn(Node {
-                width: Val::Px(640.0),
-                flex_direction: FlexDirection::Column,
-                row_gap: Val::Px(8.0),
-                ..default()
-            })
+            parent.spawn((
+                Node {
+                    width: Val::Px(664.0),
+                    flex_direction: FlexDirection::Column,
+                    row_gap: Val::Px(8.0),
+                    padding: UiRect::axes(Val::Px(12.0), Val::Px(8.0)),
+                    border_radius: BorderRadius::all(Val::Px(10.0)),
+                    ..default()
+                },
+                BackgroundColor(theme::V2_SCRIM_BG),
+            ))
             .with_children(|parent| {
                 // Header: evidence | chips | cover
                 parent.spawn(Node {

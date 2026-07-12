@@ -221,6 +221,71 @@ pub fn buyer_played(hand_state: &HandState) -> Option<IntentView> {
 }
 
 // ============================================================================
+// Buyer confidence
+// ============================================================================
+
+/// How close the buyer is to bailing, as a face + label.
+/// Proximity is the worst of the two bail axes (`should_buyer_bail`):
+/// session heat vs the scenario's heat threshold, and evidence total vs the
+/// persona's evidence threshold. A buyer with no thresholds never bails and
+/// is always confident.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BuyerConfidence {
+    Confident,
+    Nervous,
+    Scared,
+}
+
+impl BuyerConfidence {
+    pub fn emoji(self) -> &'static str {
+        match self {
+            BuyerConfidence::Confident => "🙂",
+            BuyerConfidence::Nervous => "😟",
+            BuyerConfidence::Scared => "😨",
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            BuyerConfidence::Confident => "CONFIDENT",
+            BuyerConfidence::Nervous => "NERVOUS",
+            BuyerConfidence::Scared => "SCARED",
+        }
+    }
+}
+
+pub fn buyer_confidence(hand_state: &HandState) -> Option<BuyerConfidence> {
+    let persona = hand_state.buyer_persona.as_ref()?;
+
+    let heat_proximity = persona
+        .active_scenario_index
+        .and_then(|idx| persona.scenarios.get(idx))
+        .and_then(|s| s.heat_threshold)
+        .filter(|t| *t > 0)
+        .map(|t| hand_state.current_heat.max(0) as f32 / t as f32);
+
+    let evidence_proximity = persona
+        .evidence_threshold
+        .filter(|t| *t > 0)
+        .map(|t| hand_state.calculate_totals(true).evidence as f32 / t as f32);
+
+    let proximity = match (heat_proximity, evidence_proximity) {
+        (Some(h), Some(e)) => h.max(e),
+        (Some(h), None) => h,
+        (None, Some(e)) => e,
+        (None, None) => 0.0, // fearless - never bails
+    };
+
+    Some(if proximity >= 0.8 {
+        BuyerConfidence::Scared
+    } else if proximity >= 0.5 {
+        BuyerConfidence::Nervous
+    } else {
+        BuyerConfidence::Confident
+    })
+}
+
+// ============================================================================
 // Turn pill
 // ============================================================================
 
@@ -522,6 +587,67 @@ mod tests {
         hs.cards_mut(Owner::Buyer).played.push(create_buyer_modifier("Secrecy", 1.0, 0, 20, -10));
         let view = buyer_played(&hs).unwrap();
         assert_eq!(view.rows, vec![("🛡", "+20".to_string()), ("🔥", "-10".to_string())]);
+    }
+
+    // ---- buyer_confidence ----
+
+    fn hand_state_with_scenario_threshold(heat_threshold: Option<u32>) -> HandState {
+        use crate::models::buyer::{BuyerDemand, BuyerPersona, BuyerScenario};
+        let mut hs = HandState::default();
+        hs.buyer_persona = Some(BuyerPersona {
+            display_name: "Test Buyer".to_string(),
+            demand: BuyerDemand {
+                products: vec![],
+                locations: vec![],
+                description: String::new(),
+            },
+            base_multiplier: 1.0,
+            reduced_multiplier: 1.0,
+            evidence_threshold: None,
+            reaction_deck_ids: vec![],
+            reaction_deck: vec![],
+            scenarios: vec![BuyerScenario {
+                display_name: "Test".to_string(),
+                products: vec![],
+                locations: vec![],
+                heat_threshold,
+                description: String::new(),
+                narrative_fragments: None,
+            }],
+            active_scenario_index: Some(0),
+        });
+        hs
+    }
+
+    #[test]
+    fn confidence_tracks_heat_proximity() {
+        let mut hs = hand_state_with_scenario_threshold(Some(100));
+        hs.current_heat = 20;
+        assert_eq!(buyer_confidence(&hs), Some(BuyerConfidence::Confident));
+        hs.current_heat = 50; // 0.5 -> nervous
+        assert_eq!(buyer_confidence(&hs), Some(BuyerConfidence::Nervous));
+        hs.current_heat = 80; // 0.8 -> scared
+        assert_eq!(buyer_confidence(&hs), Some(BuyerConfidence::Scared));
+        hs.current_heat = -10; // cooling run clamps to 0
+        assert_eq!(buyer_confidence(&hs), Some(BuyerConfidence::Confident));
+    }
+
+    #[test]
+    fn confidence_uses_worst_axis() {
+        // Heat is comfortable but evidence is near the persona's bail line
+        let mut hs = hand_state_with_scenario_threshold(Some(100));
+        hs.buyer_persona.as_mut().unwrap().evidence_threshold = Some(10);
+        hs.current_heat = 10;
+        hs.cards_played.push(create_evidence("Stakeout", 9, 0)); // 0.9 -> scared
+        assert_eq!(buyer_confidence(&hs), Some(BuyerConfidence::Scared));
+    }
+
+    #[test]
+    fn fearless_buyer_is_always_confident() {
+        let mut hs = hand_state_with_scenario_threshold(None);
+        hs.current_heat = 500;
+        assert_eq!(buyer_confidence(&hs), Some(BuyerConfidence::Confident));
+        assert!(buyer_confidence(&HandState::default()).is_none()); // no persona
     }
 
     // ---- turn_pill / round_header ----

@@ -41,7 +41,10 @@ public class Win32Drv {
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
   [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
+  [DllImport("user32.dll")] public static extern bool GetCursorPos(out POINT p);
+  [DllImport("user32.dll")] public static extern bool MoveWindow(IntPtr h, int x, int y, int w, int ht, bool repaint);
   [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extra);
+  [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
   public struct RECT { public int Left, Top, Right, Bottom; }
   public struct POINT { public int X, Y; }
 }
@@ -55,6 +58,20 @@ if ($h -eq [IntPtr]::Zero) { throw "no main window handle" }
 
 $dpiRaw = [Win32Drv]::GetDpiForWindow($h)
 $DPI = if ($dpiRaw -gt 0) { $dpiRaw / 96.0 } else { 1.0 }
+
+# If the window is larger than the screen, click targets can fall off-screen
+# and SetCursorPos silently clamps to the screen edge (hazard: the bottom-right
+# corner is Windows' "show desktop" button). Fit the window first.
+Add-Type -AssemblyName System.Windows.Forms
+$screen = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds  # physical (DPI-aware)
+$wrFit = New-Object Win32Drv+RECT
+[Win32Drv]::GetWindowRect($h, [ref]$wrFit) | Out-Null
+if (($wrFit.Right - $wrFit.Left) -gt $screen.Width -or ($wrFit.Bottom - $wrFit.Top) -gt $screen.Height -or $wrFit.Left -lt 0 -or $wrFit.Top -lt 0) {
+  $fitW = [Math]::Min($wrFit.Right - $wrFit.Left, $screen.Width - 40)
+  $fitH = [Math]::Min($wrFit.Bottom - $wrFit.Top, $screen.Height - 60)
+  [Win32Drv]::MoveWindow($h, 10, 10, $fitW, $fitH, $true) | Out-Null
+  Start-Sleep -Milliseconds 700
+}
 
 $r = New-Object Win32Drv+RECT
 [Win32Drv]::GetClientRect($h, [ref]$r) | Out-Null
@@ -74,14 +91,28 @@ if ($Action -eq "click" -or $Action -eq "hover") {
   [Win32Drv]::ClientToScreen($h, [ref]$pt) | Out-Null
   $sx = [int]($pt.X + ($offx + $X * $s) * $DPI)
   $sy = [int]($pt.Y + ($offy + $Y * $s) * $DPI)
-  [Win32Drv]::SetForegroundWindow($h) | Out-Null
-  Start-Sleep -Milliseconds 400
+  # Windows blocks SetForegroundWindow from background processes; pulsing ALT
+  # (keybd_event 0x12) is the documented unlock. Retry a few times.
+  for ($i = 0; $i -lt 5; $i++) {
+    [Win32Drv]::keybd_event(0x12, 0, 0, [UIntPtr]::Zero)      # ALT down
+    [Win32Drv]::SetForegroundWindow($h) | Out-Null
+    [Win32Drv]::keybd_event(0x12, 0, 2, [UIntPtr]::Zero)      # ALT up
+    Start-Sleep -Milliseconds 300
+    if ([Win32Drv]::GetForegroundWindow() -eq $h) { break }
+  }
   if ([Win32Drv]::GetForegroundWindow() -ne $h) { throw "game window not foreground - aborting to avoid stray clicks" }
   $wr = New-Object Win32Drv+RECT
   [Win32Drv]::GetWindowRect($h, [ref]$wr) | Out-Null
   if ($sx -lt $wr.Left -or $sx -gt $wr.Right -or $sy -lt $wr.Top -or $sy -gt $wr.Bottom) { throw "target outside window ($sx,$sy)" }
   [Win32Drv]::SetCursorPos($sx, $sy) | Out-Null
   Start-Sleep -Milliseconds 250
+  # Verify the cursor actually landed (SetCursorPos clamps at screen edges -
+  # a clamped click can hit other UI, e.g. the "show desktop" corner)
+  $cur = New-Object Win32Drv+POINT
+  [Win32Drv]::GetCursorPos([ref]$cur) | Out-Null
+  if ([Math]::Abs($cur.X - $sx) -gt 2 -or [Math]::Abs($cur.Y - $sy) -gt 2) {
+    throw "cursor clamped to $($cur.X),$($cur.Y) (wanted $sx,$sy) - aborting"
+  }
   if ($Action -eq "click") {
     [Win32Drv]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)  # LEFTDOWN
     Start-Sleep -Milliseconds 60

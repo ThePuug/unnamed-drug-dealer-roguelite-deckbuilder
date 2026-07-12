@@ -170,23 +170,12 @@ pub struct NarcIntentStatsRow;
 #[derive(Component)]
 pub struct NarcSpotlight;
 
-#[derive(Component)]
-pub struct NarcCardCountText;
-
-/// Mini card-back icon in the narc count chip (image filled at runtime)
-#[derive(Component)]
-pub struct NarcCountChipIcon;
+// (hand-size count chips removed - they added little over the action bubbles)
 
 // -- Buyer character cluster --
 
 #[derive(Component)]
 pub struct BuyerSpotlight;
-
-#[derive(Component)]
-pub struct BuyerCardCountText;
-
-#[derive(Component)]
-pub struct BuyerCountChipIcon;
 
 #[derive(Component)]
 pub struct BuyerNameText;
@@ -211,14 +200,17 @@ pub struct BuyerDetailPanel;
 #[derive(Component)]
 pub struct BuyerDetailText;
 
+/// Confidence face on the scenario placard - how close the buyer is to
+/// bailing (replaces the BAILS AT HEAT chip; exact thresholds live in the
+/// hover detail)
 #[derive(Component)]
-pub struct BuyerHeatCapChip;
+pub struct BuyerConfidenceEmoji;
 
 #[derive(Component)]
-pub struct BuyerHeatCapText;
+pub struct BuyerConfidenceText;
 
-/// "PLAYED · <card>" callout for buyer reactions (SOW-022 follow-up:
-/// buyer plays previously had no on-screen feedback)
+/// "PLAYED · <card>" speech bubble for buyer reactions, symmetric with the
+/// narc intent bubble (SOW-022 follow-up: buyer plays had no on-screen feedback)
 #[derive(Component)]
 pub struct BuyerPlayedBubble;
 
