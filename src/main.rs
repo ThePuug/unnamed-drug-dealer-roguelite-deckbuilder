@@ -159,6 +159,7 @@ fn main() {
             front_take_system,
             front_pay_system,
             update_front_pressure_system,
+            shop_save_refresh_system, // SOW-031 review: cash moved -> re-offer FRONTs
         ).chain().run_if(in_state(GameState::DeckBuilding)))
         .run();
 }

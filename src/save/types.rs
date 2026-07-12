@@ -424,6 +424,17 @@ impl SaveData {
                     // construction - a soured supplier has no open front -
                     // but the muscle handles it the same, defensively)
                     let seizure = self.account.cash_on_hand * MUSCLE_SEIZURE_PCT / 100;
+                    // SOW-031 review fix: never bench the empire's ONLY
+                    // available runner. Relocating only ticks on completed
+                    // runs, so benching the last dealer who can run is a
+                    // saved, PERMANENT softlock. The repossession + souring
+                    // below are the real price; the beating needs somebody
+                    // else left standing to matter.
+                    let has_other_runner = self
+                        .dealers
+                        .iter()
+                        .enumerate()
+                        .any(|(i, d)| i != self.active_dealer && d.is_available());
                     if seizure > 0 {
                         self.account.cash_on_hand -= seizure;
                         events.push(FrontEvent::MuscleSeized {
@@ -433,7 +444,7 @@ impl SaveData {
                     } else if let Some(dealer) = self
                         .dealers
                         .get_mut(self.active_dealer)
-                        .filter(|d| d.is_available())
+                        .filter(|d| d.is_available() && has_other_runner)
                     {
                         dealer.status = DealerStatus::Relocating { runs_remaining: 1 };
                         let dealer = dealer.name.clone();
@@ -1719,8 +1730,10 @@ mod tests {
     }
 
     #[test]
-    fn test_broke_muscle_benches_the_active_dealer_instead() {
+    fn test_broke_muscle_benches_the_active_dealer_when_backup_exists() {
         let mut data = SaveData::new();
+        data.account.cash_on_hand = 500;
+        assert!(data.hire_dealer());
         data.account.cash_on_hand = 4; // 20% rounds to 0 - nothing worth taking
         data.take_front("shrooms", "the_corner", 100).unwrap();
         data.supplier_standing
@@ -1737,6 +1750,29 @@ mod tests {
         assert_eq!(data.standing_with("the_corner"), SupplierStanding::Soured);
         // The beating is downtime, not jail - the kingpin invariant holds
         assert!(data.dealers[0].jail_remaining().is_none());
+        // The hire keeps the empire runnable - no softlock
+        assert!(data.dealers[1].is_available());
+    }
+
+    #[test]
+    fn test_broke_muscle_never_benches_the_only_runner() {
+        // SOW-031 review: Relocating only ticks on COMPLETED runs, so
+        // benching a solo empire's only available dealer would be a saved,
+        // permanent softlock. The muscle spares the runner; the
+        // repossession and the souring still land.
+        let mut data = SaveData::new();
+        data.account.cash_on_hand = 4;
+        data.take_front("shrooms", "the_corner", 100).unwrap();
+        data.supplier_standing
+            .insert("the_corner".to_string(), SupplierStanding::CutOff);
+        data.fronts[0].runs_remaining = 1;
+
+        let events = data.tick_fronts();
+        assert_eq!(events.len(), 1, "no bench event - only the souring");
+        assert!(matches!(events[0], FrontEvent::Soured { .. }));
+        assert!(data.dealers[0].is_available(), "the only runner keeps running");
+        assert_eq!(data.standing_with("the_corner"), SupplierStanding::Soured);
+        assert!(!data.account.unlocked_cards.contains("shrooms"), "repossession lands");
     }
 
     #[test]

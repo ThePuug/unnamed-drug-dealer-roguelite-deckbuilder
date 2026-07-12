@@ -531,6 +531,7 @@ pub fn shop_purchase_system(
     save_manager: Option<Res<SaveManager>>,
     mut shop_state: ResMut<ShopState>,
     game_assets: Res<GameAssets>,
+    mut deck_builder: Option<ResMut<crate::DeckBuilder>>,
 ) {
     for (interaction, button) in interaction_query.iter() {
         if *interaction != Interaction::Pressed {
@@ -576,6 +577,12 @@ pub fn shop_purchase_system(
         data.account.cash_on_hand -= button.price as u64;
         data.account.unlocked_cards.insert(button.card_id.clone());
 
+        // SOW-031 review fix: the pool reflects the buy NOW - the
+        // DeckBuilder is otherwise only rebuilt at go-home
+        if let Some(ref mut db) = deck_builder {
+            db.resync_available(&game_assets, &data.account.unlocked_cards);
+        }
+
         info!("Purchased card {} for ${} (remaining: ${})",
               button.card_id, button.price, data.account.cash_on_hand);
 
@@ -605,6 +612,8 @@ pub fn front_take_system(
     mut save_data: Option<ResMut<SaveData>>,
     save_manager: Option<Res<SaveManager>>,
     shop_state: Res<ShopState>,
+    game_assets: Res<GameAssets>,
+    mut deck_builder: Option<ResMut<crate::DeckBuilder>>,
 ) {
     for (interaction, button) in interaction_query.iter() {
         if *interaction != Interaction::Pressed {
@@ -620,6 +629,13 @@ pub fn front_take_system(
                     "Fronted {} in {}: ${} due in {} runs",
                     button.card_id, button.area_id, front.owed, front.runs_remaining
                 );
+                // SOW-031 review fix: playable NOW must be literal - the
+                // window starts ticking on the very next run, so waiting
+                // for the go-home rebuild burns a tick before the card
+                // can earn
+                if let Some(ref mut db) = deck_builder {
+                    db.resync_available(&game_assets, &data.account.unlocked_cards);
+                }
                 if let Some(ref manager) = save_manager {
                     if let Err(e) = manager.save(data) {
                         warn!("Failed to save after front: {:?}", e);
@@ -671,6 +687,27 @@ fn refresh_shop_tab(commands: &mut Commands, shop_state: &ShopState) {
         viewing_shop: shop_state.viewing_shop,
         selected_location: shop_state.selected_location.clone(),
     });
+}
+
+/// SOW-031 review fix: affordability + FRONT offers are computed at
+/// populate time, but cash can move without the shop being touched (the
+/// roster strip's HIRE/BAIL/coolers are clickable while the tab is open).
+/// Any save change while the shop is viewing re-populates the tab. Cheap:
+/// fires only on actual SaveData writes, and populate never writes back.
+pub fn shop_save_refresh_system(
+    mut commands: Commands,
+    save_data: Option<Res<SaveData>>,
+    shop_state: Option<Res<ShopState>>,
+) {
+    let Some(save) = save_data else { return };
+    if !save.is_changed() || save.is_added() {
+        return;
+    }
+    let Some(shop_state) = shop_state else { return };
+    if !shop_state.viewing_shop {
+        return;
+    }
+    refresh_shop_tab(&mut commands, &shop_state);
 }
 
 /// SOW-024: Buying a locked area - deduct global cash, unlock, rebuild the

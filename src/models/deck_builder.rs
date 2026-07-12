@@ -28,6 +28,21 @@ impl DeckBuilder {
     pub fn is_valid(&self) -> bool {
         validate_deck(&self.selected_cards).is_ok()
     }
+
+    /// SOW-031 review fix: re-sync the pool against CURRENT ownership
+    /// without resetting the player's selection. Mid-hub unlocks (cash
+    /// buys, fronts) must be playable immediately - a fronted card that
+    /// waits for the next go-home rebuild burns a window tick before it
+    /// can earn. The retain covers the other direction: a repossessed
+    /// card leaves the selection too.
+    pub fn resync_available(
+        &mut self,
+        assets: &crate::assets::GameAssets,
+        unlocked_cards: &HashSet<String>,
+    ) {
+        self.available_cards = create_player_deck_filtered(assets, unlocked_cards);
+        self.selected_cards.retain(|c| unlocked_cards.contains(&c.id));
+    }
 }
 
 // ============================================================================
@@ -53,6 +68,50 @@ mod tests {
         assert!(!builder.available_cards.is_empty(), "Should have some available cards");
         assert!(!builder.selected_cards.is_empty(), "Should have some selected cards");
         assert!(builder.is_valid(), "Default deck should be valid");
+    }
+
+    #[test]
+    fn resync_adds_new_unlocks_and_evicts_repossessions() {
+        use crate::models::test_helpers::create_mock_game_assets;
+        let assets = create_mock_game_assets();
+
+        let unlocked = AccountState::starting_collection();
+        let mut builder = DeckBuilder::from_assets_filtered(&assets, &unlocked);
+        let full: HashSet<String> = builder_all_ids(&assets);
+
+        // Grow: a mid-hub unlock (buy or front) appears in the pool NOW,
+        // and the existing selection is untouched
+        let selected_before = builder.selected_cards.len();
+        builder.resync_available(&assets, &full);
+        assert!(builder.available_cards.len() > selected_before);
+        assert_eq!(builder.selected_cards.len(), selected_before);
+
+        // Shrink: repossess one selected card - it leaves BOTH lists
+        let victim = builder.selected_cards[0].id.clone();
+        let mut without: HashSet<String> = full.clone();
+        without.remove(&victim);
+        builder.resync_available(&assets, &without);
+        assert!(builder.available_cards.iter().all(|c| c.id != victim));
+        assert!(builder.selected_cards.iter().all(|c| c.id != victim));
+    }
+
+    fn builder_all_ids(assets: &crate::assets::GameAssets) -> HashSet<String> {
+        DeckBuilder::from_assets_filtered(
+            assets,
+            &assets
+                .products
+                .values()
+                .map(|c| c.id.clone())
+                .chain(assets.locations.values().map(|c| c.id.clone()))
+                .chain(assets.cover.iter().map(|c| c.id.clone()))
+                .chain(assets.insurance.iter().map(|c| c.id.clone()))
+                .chain(assets.modifiers.iter().map(|c| c.id.clone()))
+                .collect(),
+        )
+        .available_cards
+        .iter()
+        .map(|c| c.id.clone())
+        .collect()
     }
 
     #[test]
