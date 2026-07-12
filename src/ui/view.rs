@@ -227,7 +227,10 @@ pub fn buyer_played(hand_state: &HandState) -> Option<IntentView> {
 /// How close the buyer is to bailing, as a face + label.
 /// Proximity is the worst of the two bail axes (`should_buyer_bail`):
 /// session heat vs the scenario's heat threshold, and evidence total vs the
-/// persona's evidence threshold. A buyer with no thresholds never bails and
+/// persona's evidence threshold. Bail is checked only at resolution, so the
+/// bands mirror that: SCARED means the buyer is over a line RIGHT NOW and
+/// walks if the hand resolves as-is (still recoverable); NERVOUS means past
+/// two-thirds of the way there. A buyer with no thresholds never bails and
 /// is always confident.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BuyerConfidence {
@@ -276,9 +279,11 @@ pub fn buyer_confidence(hand_state: &HandState) -> Option<BuyerConfidence> {
         (None, None) => 0.0, // fearless - never bails
     };
 
-    Some(if proximity >= 0.8 {
+    // > 1.0 matches the engine's strict `>` check: exactly ON the threshold
+    // still survives resolution, one past it does not
+    Some(if proximity > 1.0 {
         BuyerConfidence::Scared
-    } else if proximity >= 0.5 {
+    } else if proximity > 2.0 / 3.0 {
         BuyerConfidence::Nervous
     } else {
         BuyerConfidence::Confident
@@ -622,11 +627,13 @@ mod tests {
     #[test]
     fn confidence_tracks_heat_proximity() {
         let mut hs = hand_state_with_scenario_threshold(Some(100));
-        hs.current_heat = 20;
+        hs.current_heat = 66; // 0.66 <= 2/3 -> still confident
         assert_eq!(buyer_confidence(&hs), Some(BuyerConfidence::Confident));
-        hs.current_heat = 50; // 0.5 -> nervous
+        hs.current_heat = 67; // past two-thirds -> nervous
         assert_eq!(buyer_confidence(&hs), Some(BuyerConfidence::Nervous));
-        hs.current_heat = 80; // 0.8 -> scared
+        hs.current_heat = 100; // exactly ON the line survives resolution -> nervous
+        assert_eq!(buyer_confidence(&hs), Some(BuyerConfidence::Nervous));
+        hs.current_heat = 101; // over the line: bails if resolved now -> scared
         assert_eq!(buyer_confidence(&hs), Some(BuyerConfidence::Scared));
         hs.current_heat = -10; // cooling run clamps to 0
         assert_eq!(buyer_confidence(&hs), Some(BuyerConfidence::Confident));
@@ -634,11 +641,11 @@ mod tests {
 
     #[test]
     fn confidence_uses_worst_axis() {
-        // Heat is comfortable but evidence is near the persona's bail line
+        // Heat is comfortable but evidence is past the persona's bail line
         let mut hs = hand_state_with_scenario_threshold(Some(100));
         hs.buyer_persona.as_mut().unwrap().evidence_threshold = Some(10);
         hs.current_heat = 10;
-        hs.cards_played.push(create_evidence("Stakeout", 9, 0)); // 0.9 -> scared
+        hs.cards_played.push(create_evidence("Stakeout", 11, 0)); // 1.1 -> scared
         assert_eq!(buyer_confidence(&hs), Some(BuyerConfidence::Scared));
     }
 
