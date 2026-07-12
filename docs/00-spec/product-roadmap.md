@@ -53,7 +53,7 @@ period when busted. **Cash is global.** The product needs:
   (stats shown, stories archived for SOW-026).
 - e2e-verified live: dealer select, jail tick on run completion, bail cost
   decay, per-dealer heat transfer, global cash, HIRE cost doubling.
-- Next: SOW-023 acceptance + merge, then SOW-024 (Areas & Unlocks).
+- SOW-023 accepted (user playtest + hot-scenario e2e of the GAME OVER board) and merged to main.
 
 ### Iteration 1 — 2026-07-12
 - SOW-022 (Game Play v2) accepted + merged after playtest-directed iterations.

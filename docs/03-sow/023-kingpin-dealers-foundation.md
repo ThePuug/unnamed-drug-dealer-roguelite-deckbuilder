@@ -2,7 +2,7 @@
 
 ## Status
 
-**Review** - 2026-07-12 (all 4 phases complete on branch; e2e-verified)
+**Merged** - 2026-07-12
 
 ## References
 
@@ -193,4 +193,41 @@ inner button the interaction, so paying bail doesn't re-select the runner.
 
 ## Acceptance Review
 
-*Populated after implementation.*
+### Scope Completion: 100%
+
+- ✅ Phase 1: Dealer save model (roster, turn-based jail, scars, bail/hire math)
+- ✅ Phase 2: Engine integration (per-dealer runs, jail-not-delete, sentence
+  ticking, empire reset with surviving fallen-empires board)
+- ✅ Phase 3: Operations roster panel + arcade GAME OVER moment
+- ✅ Phase 4: Harness (save forge via real HMAC key, DDD_SAVE_DIR isolation,
+  closed-loop playtest script)
+
+### Architectural Compliance
+
+152 tests passing (17 new across jail/bail/hire/epitaph/forge); zero new
+warnings (two pre-existing removed). Jail/bail/hire/epitaph logic pure and
+unit-tested; HandState remains dealer-agnostic; theme/marker conventions held.
+
+### Player Experience Validation
+
+Reed reviewed the roster panels live ("the new dealer panels are good") and
+directed the duplicate heat-line removal (applied). e2e-verified on forged
+scenarios: dealer select, jail sentence ticking (2→1 runs with bail
+$600→$300), per-dealer heat transfer, global cash banking, HIRE cost
+doubling, and the kingpin GAME OVER with the FALLEN EMPIRES board ("← THIS
+RUN" marker) rendering live in the `hot` scenario.
+
+### Known papercut (harness, not game)
+
+The fallen-empires board lengthens the game-over panel, moving NEW EMPIRE
+below playtest.ps1's scripted click position — script needs an outcome-aware
+button Y (queued for the next harness touch).
+
+---
+
+## Sign-Off
+
+**Reviewed By:** User playtest + ARCHITECT review
+**Date:** 2026-07-12
+**Decision:** ✅ **ACCEPTED**
+**Status:** Merged to main
