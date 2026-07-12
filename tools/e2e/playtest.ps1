@@ -98,7 +98,7 @@ if ($BuyArea -ne "") {
 # 3. Optional roster actions before the run
 if ($Hire) {
   # HIRE card sits after the dealer cards; count dealers from the forge scenario
-  $dealerCount = switch ($Scenario) { "roster" { 3 } default { 1 } }
+  $dealerCount = switch ($Scenario) { "roster" { 3 } "hustler" { 2 } "legacy" { 2 } default { 1 } }
   $hireX = 30 + $dealerCount * 260 + 70
   & $drv -Action click -X $hireX -Y 120 | Out-Null
   Start-Sleep -Milliseconds 800

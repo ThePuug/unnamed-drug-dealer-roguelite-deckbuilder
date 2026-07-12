@@ -31,9 +31,8 @@ pub enum StoryFocus {
     Epitaph(usize),
 }
 
-/// Cap the visible feed - the ledger is a surface, not an archive dump.
-/// Older entries collapse into a "… n earlier" tail line.
-const STORY_FEED_CAP: usize = 15;
+// Panel caps + tail derivation live in ledger_view (pure, unit-tested) -
+// the SOW-030 review found presentation logic hiding untested in here.
 
 /// Spawn the (hidden) overlay under DeckBuilderRoot - same inheritance
 /// as the map overlay (design-space scaling + state-exit cleanup).
@@ -327,7 +326,10 @@ fn spawn_roster_panel(
     game_assets: &GameAssets,
     focus: Option<StoryFocus>,
 ) {
-    let rows = ledger_view::dossier_rows(save, &game_assets.shop_locations);
+    let (rows, tail) = ledger_view::roster_view(
+        ledger_view::dossier_rows(save, &game_assets.shop_locations),
+        ledger_view::ROSTER_PANEL_CAP,
+    );
     panel_frame(panels, "THE ROSTER", Val::Px(560.0)).with_children(|panel| {
         for row in &rows {
             let focused = focus == Some(StoryFocus::Dealer(row.dealer_index));
@@ -412,6 +414,13 @@ fn spawn_roster_panel(
                     }
                 });
         }
+        if let Some(tail) = &tail {
+            panel.spawn((
+                Text::new(tail.as_str()),
+                TextFont::from_font_size(12.0),
+                TextColor(theme::V2_LABEL),
+            ));
+        }
     });
 }
 
@@ -422,7 +431,8 @@ fn spawn_board_panel(
     save: &SaveData,
     focus: Option<StoryFocus>,
 ) {
-    let rows = ledger_view::board_rows(save);
+    let (rows, tail) =
+        ledger_view::board_view(ledger_view::board_rows(save), ledger_view::BOARD_PANEL_CAP);
     panel_frame(panels, "FALLEN EMPIRES", Val::Px(560.0)).with_children(|panel| {
         if save.fallen_empires.is_empty() {
             panel.spawn((
@@ -480,6 +490,13 @@ fn spawn_board_panel(
                 ));
             });
         }
+        if let Some(tail) = &tail {
+            panel.spawn((
+                Text::new(tail.as_str()),
+                TextFont::from_font_size(12.0),
+                TextColor(theme::V2_LABEL),
+            ));
+        }
     });
 }
 
@@ -529,17 +546,18 @@ fn spawn_story_panel(
             ));
             return;
         }
-        for story in stories.iter().take(STORY_FEED_CAP) {
+        let (visible, tail) =
+            ledger_view::story_feed(stories, ledger_view::STORY_FEED_CAP);
+        for story in &visible {
             panel.spawn((
                 Text::new(story.as_str()),
                 TextFont::from_font_size(13.0),
                 TextColor(theme::LEDGER_STORY_TEXT),
             ));
         }
-        let hidden = stories.len().saturating_sub(STORY_FEED_CAP);
-        if hidden > 0 {
+        if let Some(tail) = &tail {
             panel.spawn((
-                Text::new(format!("… {hidden} earlier stories")),
+                Text::new(tail.as_str()),
                 TextFont::from_font_size(12.0),
                 TextColor(theme::V2_LABEL),
             ));

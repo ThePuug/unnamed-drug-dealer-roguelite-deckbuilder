@@ -199,12 +199,77 @@ pub fn board_rows(save: &SaveData) -> Vec<BoardRow> {
     rows
 }
 
-/// A fallen empire's archived stories, newest first. Missing index -> empty.
+/// A fallen empire's archived stories in ARCHIVE order: per dealer,
+/// oldest first, kingpin's record first (EmpireEpitaph::from_save
+/// flat-maps the roster). The archive carries no global chronology, so
+/// "newest first" is underivable across dealers - read it like a case
+/// file, front to back. Missing index -> empty.
 pub fn epitaph_stories(save: &SaveData, epitaph_index: usize) -> Vec<String> {
     save.fallen_empires
         .get(epitaph_index)
-        .map(|e| e.stories.iter().rev().cloned().collect())
+        .map(|e| e.stories.clone())
         .unwrap_or_default()
+}
+
+// ============================================================================
+// Panel capping - the ledger renders into a fixed 1080px design height
+// with no scroll machinery, so every panel needs a cap and a truthful
+// tail. All of it lives HERE, unit-tested: the SOW-030 review found the
+// story cap/tail untested in the ECS layer and the roster/board panels
+// uncapped (a full board clipped the IN PROGRESS row off-screen).
+// ============================================================================
+
+/// Story feed rows per panel
+pub const STORY_FEED_CAP: usize = 15;
+/// Dossier rows before the roster panel tails
+pub const ROSTER_PANEL_CAP: usize = 8;
+/// Board rows before the fallen-empires panel tails
+pub const BOARD_PANEL_CAP: usize = 10;
+
+/// Truthful tail line for a capped list: None while everything fits.
+fn tail_line(hidden: usize, singular: &str, plural: &str) -> Option<String> {
+    match hidden {
+        0 => None,
+        1 => Some(format!("… 1 more {singular}")),
+        n => Some(format!("… {n} more {plural}")),
+    }
+}
+
+/// Cap a story feed: (visible rows, tail).
+pub fn story_feed(stories: Vec<String>, cap: usize) -> (Vec<String>, Option<String>) {
+    let hidden = stories.len().saturating_sub(cap);
+    let mut visible = stories;
+    visible.truncate(cap);
+    (visible, tail_line(hidden, "story", "stories"))
+}
+
+/// Cap the roster panel: first `cap` dossiers in roster order (the
+/// kingpin is dealers[0], so the boss never tails off).
+pub fn roster_view(rows: Vec<DossierRow>, cap: usize) -> (Vec<DossierRow>, Option<String>) {
+    let hidden = rows.len().saturating_sub(cap);
+    let mut visible = rows;
+    visible.truncate(cap);
+    (visible, tail_line(hidden, "dealer", "dealers"))
+}
+
+/// Cap the board panel WITHOUT ever hiding the living empire's IN
+/// PROGRESS row: top ranks stay; if the living row sits below the fold
+/// it takes the last visible slot ("you're down here somewhere").
+pub fn board_view(rows: Vec<BoardRow>, cap: usize) -> (Vec<BoardRow>, Option<String>) {
+    if rows.len() <= cap {
+        return (rows, None);
+    }
+    let hidden = rows.len() - cap;
+    let live_pos = rows.iter().position(|r| r.is_current);
+    let visible: Vec<BoardRow> = match live_pos {
+        Some(p) if p >= cap => {
+            let mut v = rows[..cap - 1].to_vec();
+            v.push(rows[p].clone());
+            v
+        }
+        _ => rows[..cap].to_vec(),
+    };
+    (visible, tail_line(hidden, "fallen empire", "fallen empires"))
 }
 
 // ============================================================================
@@ -396,11 +461,102 @@ mod tests {
     }
 
     #[test]
-    fn epitaph_stories_newest_first_and_missing_index_empty() {
+    fn epitaph_stories_archive_order_and_missing_index_empty() {
         let mut save = roster_save();
         save.fallen_empires.push(epitaph(1000, 5));
-        assert_eq!(epitaph_stories(&save, 0), vec!["latest", "first"]);
+        // Archive order as frozen - NOT reversed: the flat archive has no
+        // global chronology once several dealers' histories are
+        // concatenated, so the feed reads front-to-back like a case file
+        assert_eq!(epitaph_stories(&save, 0), vec!["first", "latest"]);
         assert!(epitaph_stories(&save, 7).is_empty());
+    }
+
+    #[test]
+    fn epitaph_archive_preserves_multi_dealer_grouping() {
+        let mut save = roster_save();
+        save.dealers[0].character.story_history = vec!["K1".into(), "K2".into()];
+        save.dealers[1].character.story_history = vec!["H1".into()];
+        let e = EmpireEpitaph::from_save(&save, 1);
+        save.fallen_empires.push(e);
+        // Kingpin's record first, each dealer oldest-first - grouping
+        // survives so a reader can follow one career at a time
+        assert_eq!(epitaph_stories(&save, 0), vec!["K1", "K2", "H1"]);
+    }
+
+    // -- panel capping --
+
+    #[test]
+    fn story_feed_at_cap_has_no_tail() {
+        let s: Vec<String> = (0..15).map(|i| format!("s{i}")).collect();
+        let (v, tail) = story_feed(s, 15);
+        assert_eq!(v.len(), 15);
+        assert!(tail.is_none());
+    }
+
+    #[test]
+    fn story_feed_tail_is_singular_at_cap_plus_one() {
+        let s: Vec<String> = (0..16).map(|i| format!("s{i}")).collect();
+        let (v, tail) = story_feed(s, 15);
+        assert_eq!(v.len(), 15);
+        assert_eq!(tail.as_deref(), Some("… 1 more story"));
+    }
+
+    #[test]
+    fn story_feed_tail_pluralizes() {
+        let s: Vec<String> = (0..20).map(|i| format!("s{i}")).collect();
+        let (_, tail) = story_feed(s, 15);
+        assert_eq!(tail.as_deref(), Some("… 5 more stories"));
+    }
+
+    #[test]
+    fn roster_view_caps_with_tail_and_kingpin_stays_first() {
+        let mut save = roster_save();
+        save.account.cash_on_hand = 10_000_000;
+        while save.dealers.len() < 10 {
+            save.hire_dealer();
+        }
+        let rows = dossier_rows(&save, &city());
+        let (v, tail) = roster_view(rows, 8);
+        assert_eq!(v.len(), 8);
+        assert!(v[0].is_kingpin);
+        assert_eq!(tail.as_deref(), Some("… 2 more dealers"));
+    }
+
+    #[test]
+    fn board_view_that_fits_is_untouched() {
+        let mut save = roster_save();
+        save.fallen_empires.push(epitaph(5000, 1));
+        let (v, tail) = board_view(board_rows(&save), 10);
+        assert_eq!(v.len(), 2);
+        assert!(tail.is_none());
+    }
+
+    #[test]
+    fn board_view_pins_in_progress_below_the_fold() {
+        let mut save = roster_save(); // lifetime 2,000
+        for i in 0..12 {
+            save.fallen_empires.push(epitaph(10_000 + i as u64, 1));
+        }
+        let rows = board_rows(&save); // 13 rows, living dead-last
+        assert!(rows[12].is_current);
+        let (v, tail) = board_view(rows, 10);
+        assert_eq!(v.len(), 10);
+        assert!(v[9].is_current, "living row must take the last visible slot");
+        assert!(v[..9].iter().all(|r| !r.is_current));
+        assert_eq!(tail.as_deref(), Some("… 3 more fallen empires"));
+    }
+
+    #[test]
+    fn board_view_live_inside_the_top_keeps_ranks() {
+        let mut save = roster_save(); // lifetime 2,000 beats every 100
+        for _ in 0..11 {
+            save.fallen_empires.push(epitaph(100, 1));
+        }
+        let rows = board_rows(&save); // 12 rows, living first
+        let (v, tail) = board_view(rows, 10);
+        assert_eq!(v.len(), 10);
+        assert!(v[0].is_current);
+        assert_eq!(tail.as_deref(), Some("… 2 more fallen empires"));
     }
 
     // -- the board --
