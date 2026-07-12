@@ -130,8 +130,12 @@ fn main() {
             shop_location_button_system,
             populate_shop_cards_system,
             shop_purchase_system,
-            area_unlock_button_system,        // SOW-024: buy territories
+            area_unlock_button_system,        // SOW-024: buy territories (SOW-029: from the map)
             update_area_unlock_button_visuals,
+            // SOW-029: City map overlay
+            map_toggle_system,
+            map_dealer_chip_system,
+            populate_map_nodes_system,
             update_shop_tab_visuals,
             update_location_button_visuals,
             ui::ui_scroll_system, // Bevy 0.18: Manual scroll handling
