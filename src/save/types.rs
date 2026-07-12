@@ -186,7 +186,6 @@ impl SaveData {
             .collect()
     }
 
-    #[allow(dead_code)] // consumed in SOW-025 Phases 2-3
     /// SOW-025: relocate a dealer to another area. Costs the flat move fee
     /// from global cash plus one run of downtime ("getting established").
     /// The station changes immediately; the dealer is unavailable until the
@@ -208,13 +207,11 @@ impl SaveData {
         true
     }
 
-    #[allow(dead_code)] // consumed in SOW-025 Phase 3
     /// SOW-025: the flat relocation fee (exposed for UI labels)
     pub fn move_fee(&self) -> u64 {
         MOVE_FEE
     }
 
-    #[allow(dead_code)] // consumed in SOW-025 Phase 3
     /// SOW-025: the roster's best street cred for an area - any dealer's
     /// reputation opens doors there. Returns (dealer index, cred); the shop
     /// shows WHO is effectively unlocking ("unlocked by <name>").
@@ -962,7 +959,6 @@ impl DealerState {
         }
     }
 
-    #[allow(dead_code)] // consumed in SOW-025 Phase 2
     /// SOW-025: +1 street cred in an area (one successful deal there)
     pub fn add_cred(&mut self, area: &str) {
         *self.street_cred.entry(area.to_string()).or_insert(0) += 1;
@@ -973,7 +969,6 @@ impl DealerState {
         self.street_cred.get(area).copied().unwrap_or(0)
     }
 
-    #[allow(dead_code)] // consumed in SOW-025 Phase 3
     /// SOW-025: remaining relocation downtime in runs (None if not moving)
     pub fn relocating_remaining(&self) -> Option<u32> {
         match self.status {

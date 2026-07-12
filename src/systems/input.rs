@@ -536,6 +536,7 @@ pub fn roster_button_system(
     dealer_query: Query<(&Interaction, &RosterDealerButton), Changed<Interaction>>,
     bail_query: Query<(&Interaction, &RosterBailButton), Changed<Interaction>>,
     hire_query: Query<&Interaction, (Changed<Interaction>, With<RosterHireButton>)>,
+    move_query: Query<(&Interaction, &RosterMoveButton), Changed<Interaction>>,
     save_data: Option<ResMut<crate::save::SaveData>>,
     save_manager: Option<Res<crate::save::SaveManager>>,
 ) {
@@ -571,6 +572,22 @@ pub fn roster_button_system(
         }
     }
 
+    // SOW-025: relocate a dealer (move_dealer no-ops when unavailable,
+    // already there, or the fee is unaffordable)
+    for (interaction, button) in move_query.iter() {
+        if *interaction == Interaction::Pressed {
+            let moved = save_data.move_dealer(button.dealer_index, &button.to_area);
+            if moved {
+                bevy::log::info!(
+                    "{} is relocating to {}",
+                    save_data.dealers[button.dealer_index].name,
+                    button.to_area
+                );
+            }
+            dirty |= moved;
+        }
+    }
+
     if dirty {
         if let Err(e) = save_manager.save(&save_data) {
             bevy::log::warn!("Failed to save roster change: {:?}", e);
@@ -592,9 +609,12 @@ pub fn update_start_run_button_system(
         return;
     };
 
-    let available = save_data.active_dealer_state().is_available();
-    let (color, label) = if available {
+    // SOW-025: the label says WHY the active dealer can't be sent out
+    let dealer = save_data.active_dealer_state();
+    let (color, label) = if dealer.is_available() {
         (theme::CONTINUE_BUTTON_BG, "START RUN")
+    } else if dealer.relocating_remaining().is_some() {
+        (theme::BUTTON_DISABLED_BG, "MOVING")
     } else {
         (theme::BUTTON_DISABLED_BG, "JAILED")
     };

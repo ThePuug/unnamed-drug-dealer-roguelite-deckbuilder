@@ -189,19 +189,63 @@ pub fn populate_shop_cards_system(
         type_order(a).cmp(&type_order(b)).then_with(|| a.name.cmp(&b.name))
     });
 
+    // SOW-025: street cred gates deeper stock - the roster's best rep in
+    // THIS area opens the door, and the shop names who ("unlocked by Ray")
+    let area_best_cred = save_data.as_ref().and_then(|data| {
+        data.best_cred(&shop_state.selected_location)
+            .map(|(idx, cred)| (data.dealers[idx].name.clone(), cred))
+    });
+
     // Spawn shop card displays
     commands.entity(container).with_children(|parent| {
         for card in location_cards {
             let is_unlocked = unlocked_cards.contains(&card.id);
             let price = card.shop_price.unwrap_or(0);
+            let cred_gate = card.shop_cred_required.map(|required| CredGate {
+                required,
+                best: area_best_cred.as_ref().map(|(_, c)| *c).unwrap_or(0),
+                unlocked_by: area_best_cred.as_ref().map(|(n, _)| n.clone()),
+            });
 
-            spawn_shop_card(parent, card, price, is_unlocked);
+            spawn_shop_card(parent, card, price, is_unlocked, cred_gate);
         }
     });
 }
 
+/// SOW-025: find a shop card by id across all shop-stocked collections
+/// (mirrors populate_shop_cards_system's gather)
+fn find_shop_card<'a>(assets: &'a GameAssets, card_id: &str) -> Option<&'a Card> {
+    assets
+        .products
+        .values()
+        .chain(assets.locations.values())
+        .chain(assets.cover.iter())
+        .chain(assets.insurance.iter())
+        .chain(assets.modifiers.iter())
+        .find(|c| c.id == card_id)
+}
+
+/// SOW-025: how the roster's reputation measures up to an item's requirement
+struct CredGate {
+    required: u32,
+    best: u32,
+    unlocked_by: Option<String>,
+}
+
+impl CredGate {
+    fn met(&self) -> bool {
+        self.best >= self.required
+    }
+}
+
 /// Spawn a shop card display
-fn spawn_shop_card(parent: &mut ChildSpawnerCommands, card: &Card, price: u32, is_unlocked: bool) {
+fn spawn_shop_card(
+    parent: &mut ChildSpawnerCommands,
+    card: &Card,
+    price: u32,
+    is_unlocked: bool,
+    cred_gate: Option<CredGate>,
+) {
     let card_color = match card.card_type {
         CardType::Product { .. } => theme::PRODUCT_CARD_COLOR,
         CardType::Location { .. } => theme::LOCATION_CARD_COLOR,
@@ -273,7 +317,28 @@ fn spawn_shop_card(parent: &mut ChildSpawnerCommands, card: &Card, price: u32, i
                 TextFont::from_font_size(14.0),
                 TextColor(Color::srgb(0.8, 0.8, 0.3)),
             ));
+        } else if cred_gate.as_ref().is_some_and(|gate| !gate.met()) {
+            // SOW-025: cred-locked - "to unlock it, you gotta deal here"
+            let gate = cred_gate.as_ref().unwrap();
+            card_parent.spawn((
+                Text::new(format!("NEEDS CRED {}\n(best: {})", gate.required, gate.best)),
+                TextFont::from_font_size(12.0),
+                TextColor(theme::SHOP_CRED_LOCK_TEXT),
+                TextLayout::new_with_justify(bevy::text::Justify::Center),
+            ));
         } else {
+            // SOW-025: a met cred requirement names the dealer whose rep
+            // opened the door (Reed: make the unlocking dealer visible)
+            if let Some(gate) = cred_gate.as_ref() {
+                if let Some(name) = &gate.unlocked_by {
+                    card_parent.spawn((
+                        Text::new(format!("unlocked by {name}")),
+                        TextFont::from_font_size(10.0),
+                        TextColor(theme::SHOP_CREDIT_LINE_TEXT),
+                    ));
+                }
+            }
+
             // Purchase button
             card_parent.spawn((
                 Button,
@@ -308,6 +373,7 @@ pub fn shop_purchase_system(
     mut save_data: Option<ResMut<SaveData>>,
     save_manager: Option<Res<SaveManager>>,
     mut shop_state: ResMut<ShopState>,
+    game_assets: Res<GameAssets>,
 ) {
     for (interaction, button) in interaction_query.iter() {
         if *interaction != Interaction::Pressed {
@@ -324,6 +390,21 @@ pub fn shop_purchase_system(
             info!("Cannot afford card {} (need ${}, have ${})",
                   button.card_id, button.price, data.account.cash_on_hand);
             continue;
+        }
+
+        // SOW-025: server-side cred guard (the button doesn't spawn when
+        // cred-locked, but state can shift between spawn and click)
+        if let Some(card) = find_shop_card(&game_assets, &button.card_id) {
+            if let (Some(required), Some(area)) = (card.shop_cred_required, card.shop_location.as_deref()) {
+                let best = data.best_cred(area).map(|(_, c)| c).unwrap_or(0);
+                if best < required {
+                    info!(
+                        "Cannot buy {}: needs {} cred in {} (roster best: {})",
+                        button.card_id, required, area, best
+                    );
+                    continue;
+                }
+            }
         }
 
         // Deduct cash and unlock card

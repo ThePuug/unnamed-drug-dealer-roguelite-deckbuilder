@@ -355,6 +355,13 @@ pub struct RosterBailButton {
 #[derive(Component)]
 pub struct RosterHireButton;
 
+/// SOW-025: relocate a dealer to another unlocked area (cash + downtime)
+#[derive(Component)]
+pub struct RosterMoveButton {
+    pub dealer_index: usize,
+    pub to_area: String,
+}
+
 // ============================================================================
 // SOW-020: Shop UI Components
 // ============================================================================

@@ -294,6 +294,13 @@ pub const ROSTER_SCAR_TEXT: Color = Color::srgb(0.75, 0.65, 0.5);           // p
 pub const ROSTER_HIRE_BG: Color = Color::srgb(0.25, 0.45, 0.65);
 pub const ROSTER_BAIL_BG: Color = Color::srgb(0.55, 0.35, 0.2);
 
+// SOW-025: stationing + street cred
+pub const ROSTER_STATION_TEXT: Color = Color::srgb(0.6, 0.7, 0.85);          // "THE BLOCK · CRED 5"
+pub const ROSTER_STATUS_MOVING: Color = Color::srgb(0.55, 0.75, 1.0);        // relocation countdown
+pub const ROSTER_MOVE_BG: Color = Color::srgb(0.3, 0.4, 0.6);                // MOVE button
+pub const SHOP_CRED_LOCK_TEXT: Color = Color::srgb(1.0, 0.55, 0.45);         // "NEEDS CRED n"
+pub const SHOP_CREDIT_LINE_TEXT: Color = Color::srgb(0.85, 0.75, 0.45);      // "unlocked by Ray"
+
 // ============================================================================
 // Helper Functions
 // ============================================================================
