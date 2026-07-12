@@ -333,18 +333,9 @@ impl HeatTier {
         }
     }
 
-    /// RFC-018: Get Narc upgrade tier for this Heat tier
-    /// Higher Heat = stronger Narc cards
-    pub fn narc_upgrade_tier(&self) -> UpgradeTier {
-        match self {
-            HeatTier::Cold => UpgradeTier::Base,      // No bonus
-            HeatTier::Warm => UpgradeTier::Tier1,     // +10%
-            HeatTier::Hot => UpgradeTier::Tier2,      // +20%
-            HeatTier::Blazing => UpgradeTier::Tier3,  // +30%
-            HeatTier::Scorching => UpgradeTier::Tier4, // +40%
-            HeatTier::Inferno => UpgradeTier::Tier5,  // +50% with foil effect
-        }
-    }
+    // SOW-027: narc_upgrade_tier() removed - narc difficulty is the deck
+    // COMPOSITION per (area x HeatTier), authored in narc_deck.ron. The tier
+    // itself still selects which composition a dealer faces.
 
     /// RFC-018: Get danger level description for UI
     pub fn danger_name(&self) -> &'static str {
@@ -1981,30 +1972,6 @@ mod tests {
         assert!(state.card_play_counts.is_empty());
     }
 
-    // ========================================================================
-    // RFC-018: Heat Tier → Narc Upgrade Tier Tests
-    // ========================================================================
-
-    #[test]
-    fn test_heat_tier_narc_upgrade_mapping() {
-        // Cold → Base (no bonus)
-        assert_eq!(HeatTier::Cold.narc_upgrade_tier(), UpgradeTier::Base);
-
-        // Warm → Tier1 (+10%)
-        assert_eq!(HeatTier::Warm.narc_upgrade_tier(), UpgradeTier::Tier1);
-
-        // Hot → Tier2 (+20%)
-        assert_eq!(HeatTier::Hot.narc_upgrade_tier(), UpgradeTier::Tier2);
-
-        // Blazing → Tier3 (+30%)
-        assert_eq!(HeatTier::Blazing.narc_upgrade_tier(), UpgradeTier::Tier3);
-
-        // Scorching → Tier4 (+40%)
-        assert_eq!(HeatTier::Scorching.narc_upgrade_tier(), UpgradeTier::Tier4);
-
-        // Inferno → Tier5 (+50% with foil effect)
-        assert_eq!(HeatTier::Inferno.narc_upgrade_tier(), UpgradeTier::Tier5);
-    }
 
     #[test]
     fn test_heat_tier_danger_names() {
@@ -2014,34 +1981,5 @@ mod tests {
         assert_eq!(HeatTier::Blazing.danger_name(), "Severe");
         assert_eq!(HeatTier::Scorching.danger_name(), "Intense");
         assert_eq!(HeatTier::Inferno.danger_name(), "Deadly");
-    }
-
-    #[test]
-    fn test_heat_to_narc_tier_via_character() {
-        let mut character = CharacterState::new();
-
-        // At 0 heat (Cold), Narc should be Base
-        character.heat = 0;
-        assert_eq!(character.heat_tier().narc_upgrade_tier(), UpgradeTier::Base);
-
-        // At 30 heat (Warm), Narc should be Tier1
-        character.heat = 30;
-        assert_eq!(character.heat_tier().narc_upgrade_tier(), UpgradeTier::Tier1);
-
-        // At 60 heat (Hot), Narc should be Tier2
-        character.heat = 60;
-        assert_eq!(character.heat_tier().narc_upgrade_tier(), UpgradeTier::Tier2);
-
-        // At 90 heat (Blazing), Narc should be Tier3
-        character.heat = 90;
-        assert_eq!(character.heat_tier().narc_upgrade_tier(), UpgradeTier::Tier3);
-
-        // At 120 heat (Scorching), Narc should be Tier4
-        character.heat = 120;
-        assert_eq!(character.heat_tier().narc_upgrade_tier(), UpgradeTier::Tier4);
-
-        // At 150 heat (Inferno), Narc should be Tier5 with foil
-        character.heat = 150;
-        assert_eq!(character.heat_tier().narc_upgrade_tier(), UpgradeTier::Tier5);
     }
 }

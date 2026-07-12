@@ -11,7 +11,9 @@ use std::collections::HashMap;
 pub struct GameAssets {
     pub products: HashMap<String, Card>,
     pub locations: HashMap<String, Card>,
-    pub evidence: Vec<Card>,          // Narc deck (Evidence + Conviction)
+    /// SOW-027: per-area, per-tier narc deck compositions
+    /// (area id -> HeatTier name -> assembled deck of Evidence/Conviction cards)
+    pub narc_compositions: HashMap<String, HashMap<String, Vec<Card>>>,
     pub cover: Vec<Card>,              // Player Cover cards
     pub insurance: Vec<Card>,          // Player Insurance cards
     pub modifiers: Vec<Card>,          // Player Deal Modifiers
@@ -31,7 +33,7 @@ impl GameAssets {
         Self {
             products: HashMap::new(),
             locations: HashMap::new(),
-            evidence: Vec::new(),
+            narc_compositions: HashMap::new(),
             cover: Vec::new(),
             insurance: Vec::new(),
             modifiers: Vec::new(),

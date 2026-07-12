@@ -40,7 +40,7 @@ mod tests {
                             let mut configs = vec![vec![]]; // No evidence
 
                             // Add configs for each individual evidence card
-                            for i in 0..assets.evidence.len() {
+                            for i in 0..narc_card_pool(&assets).len() {
                                 configs.push(vec![i]); // Single evidence card
                             }
 
@@ -52,7 +52,7 @@ mod tests {
 
                             // Add evidence cards
                             for &idx in &evidence_indices {
-                                if let Some(evidence) = assets.evidence.get(idx) {
+                                if let Some(evidence) = narc_card_pool(&assets).get(idx) {
                                     cards_played.push(evidence.clone());
                                 }
                             }
@@ -130,6 +130,16 @@ mod tests {
         }
     }
 
+    /// SOW-027: the story permutation test just needs A pool of narc cards -
+    /// any composition works (they all reference the same card definitions)
+    fn narc_card_pool(assets: &GameAssets) -> &Vec<Card> {
+        assets
+            .narc_compositions
+            .get("the_corner")
+            .and_then(|tiers| tiers.get("Cold"))
+            .expect("test assets ship a the_corner/Cold composition")
+    }
+
     fn load_test_assets() -> GameAssets {
         let mut assets = GameAssets::default();
 
@@ -162,7 +172,10 @@ mod tests {
 
         match load_cards("assets/cards/evidence.ron") {
             Ok(cards) => {
-                assets.evidence = cards;
+                assets.narc_compositions.insert(
+                    "the_corner".to_string(),
+                    std::collections::HashMap::from([("Cold".to_string(), cards)]),
+                );
             }
             Err(e) => panic!("Failed to load evidence: {}", e),
         }

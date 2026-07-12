@@ -453,18 +453,21 @@ pub fn start_run_button_system(
                 random_buyer.active_scenario_index = Some(scenario_index);
             }
 
-            // RFC-018/023: Narc difficulty scales with the ACTIVE dealer's heat -
-            // difficulty is a property of WHO you send out
+            // SOW-027: narc difficulty = deck composition for (run area x the
+            // ACTIVE dealer's heat tier) - WHO you send and WHERE both matter
             let heat_tier = save_data
                 .as_ref()
                 .map(|save| save.active_character().heat_tier())
                 .unwrap_or(crate::save::HeatTier::Cold);
 
-            // Create new HandState with selected deck and heat tier
+            // Create new HandState; the constructor records the run area and
+            // builds the narc deck from it (Safe hands here earn the runner
+            // street cred in this area at resolution - SOW-025)
             let mut hand_state = HandState::with_custom_deck(
                 deck_builder.selected_cards.clone(),
                 &game_assets,
                 heat_tier,
+                run_area,
             );
             hand_state.buyer_persona = Some(random_buyer);
 
@@ -475,10 +478,6 @@ pub fn start_run_button_system(
                 hand_state.card_play_counts = character.card_play_counts.clone();
                 hand_state.card_upgrades = character.card_upgrades.clone();
             }
-
-            // SOW-025: record where this run happens - Safe hands here earn
-            // the runner street cred in this area at resolution
-            hand_state.run_area = run_area.to_string();
 
             hand_state.draw_cards(); // This will also initialize buyer hand
             commands.spawn(hand_state);

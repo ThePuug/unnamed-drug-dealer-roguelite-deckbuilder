@@ -97,11 +97,9 @@ impl HandState {
         for card in self.get_cards_for_calculation(include_current_round) {
             match card.card_type {
                 CardType::Evidence { evidence, .. } => {
-                    // RFC-018: Apply Narc upgrade tier to Evidence cards based on Heat
-                    // (Evidence cards are Narc cards, not player-upgradeable)
-                    let narc_mult = self.narc_upgrade_tier.multiplier();
-                    let upgraded_evidence = (evidence as f32 * narc_mult) as u32;
-                    totals.evidence += upgraded_evidence;
+                    // SOW-027: authored evidence, no narc multipliers -
+                    // difficulty lives in the deck composition now
+                    totals.evidence += evidence;
                 }
                 CardType::Cover { cover, .. } => {
                     // RFC-019: Apply per-stat upgrade multipliers
@@ -415,89 +413,30 @@ mod tests {
         hand_state.cards_played.push(create_location("Location", 10, 10, 0));
         hand_state.cards_played.push(create_evidence("Narc Evidence", 20, 0));
 
-        // Player upgrades don't affect Narc cards (they use narc_upgrade_tier instead)
+        // Player upgrades don't affect Narc cards
         let mut upgrades = CardUpgrades::new();
         upgrades.add_upgrade(UpgradeableStat::Evidence);
         hand_state.card_upgrades.insert("Narc Evidence".to_string(), upgrades);
 
-        // With Base narc_upgrade_tier (default), evidence = 10 + 20 = 30
-        // The player upgrade has no effect on Narc cards
+        // Evidence = 10 (location) + 20 (authored) = 30 - the player upgrade
+        // has no effect on Narc cards
         let totals = hand_state.calculate_totals(true);
         assert_eq!(totals.evidence, 30);
     }
 
-    // ========================================================================
-    // RFC-018: Narc Difficulty Scaling Tests
-    // ========================================================================
+    // SOW-027: RFC-018 narc tier multiplier tests retired - narc difficulty
+    // is the deck COMPOSITION (area x tier), and totals use authored numbers.
 
     #[test]
-    fn test_narc_tier_base_no_bonus() {
+    fn test_narc_evidence_uses_authored_numbers() {
         let mut hand_state = HandState::default();
-        hand_state.narc_upgrade_tier = crate::save::UpgradeTier::Base;
-
-        hand_state.cards_played.push(create_location("Location", 10, 10, 0));
-        hand_state.cards_played.push(create_evidence("Surveillance", 20, 5));
-
-        let totals = hand_state.calculate_totals(true);
-        // Evidence: 10 (location) + 20 (narc * 1.0) = 30
-        // Heat: 0 (location) + 5 (narc * 1.0) = 5
-        assert_eq!(totals.evidence, 30);
-    }
-
-    #[test]
-    fn test_narc_tier1_bonus() {
-        let mut hand_state = HandState::default();
-        hand_state.narc_upgrade_tier = crate::save::UpgradeTier::Tier1; // +10%
-
-        hand_state.cards_played.push(create_location("Location", 10, 10, 0));
-        hand_state.cards_played.push(create_evidence("Surveillance", 20, 10));
-
-        let totals = hand_state.calculate_totals(true);
-        // Evidence: 10 (location) + 22 (20 * 1.1) = 32
-        // Heat: 0 (location) + 11 (10 * 1.1) = 11
-        assert_eq!(totals.evidence, 32);
-    }
-
-    #[test]
-    fn test_narc_tier2_bonus() {
-        let mut hand_state = HandState::default();
-        hand_state.narc_upgrade_tier = crate::save::UpgradeTier::Tier2; // +20%
-
-        hand_state.cards_played.push(create_location("Location", 10, 10, 0));
-        hand_state.cards_played.push(create_evidence("Surveillance", 20, 10));
-
-        let totals = hand_state.calculate_totals(true);
-        // Evidence: 10 (location) + 24 (20 * 1.2) = 34
-        // Heat: 0 (location) + 12 (10 * 1.2) = 12
-        assert_eq!(totals.evidence, 34);
-    }
-
-    #[test]
-    fn test_narc_tier4_max_bonus() {
-        let mut hand_state = HandState::default();
-        hand_state.narc_upgrade_tier = crate::save::UpgradeTier::Tier4; // +40%
-
-        hand_state.cards_played.push(create_location("Location", 10, 10, 0));
-        hand_state.cards_played.push(create_evidence("Surveillance", 20, 10));
-
-        let totals = hand_state.calculate_totals(true);
-        // Evidence: 10 (location) + 28 (20 * 1.4) = 38
-        // Heat: 0 (location) + 14 (10 * 1.4) = 14
-        assert_eq!(totals.evidence, 38);
-    }
-
-    #[test]
-    fn test_narc_tier_multiple_evidence_cards() {
-        let mut hand_state = HandState::default();
-        hand_state.narc_upgrade_tier = crate::save::UpgradeTier::Tier2; // +20%
 
         hand_state.cards_played.push(create_location("Location", 10, 10, 0));
         hand_state.cards_played.push(create_evidence("Patrol", 10, 2));
         hand_state.cards_played.push(create_evidence("Surveillance", 20, 5));
 
         let totals = hand_state.calculate_totals(true);
-        // Evidence: 10 (location) + 12 (10 * 1.2) + 24 (20 * 1.2) = 46
-        // Heat: 0 (location) + 2 (2 * 1.2 = 2.4 -> 2) + 6 (5 * 1.2) = 8
-        assert_eq!(totals.evidence, 46);
+        // Evidence: 10 (location) + 10 + 20 - exactly as authored, no scaling
+        assert_eq!(totals.evidence, 40);
     }
 }

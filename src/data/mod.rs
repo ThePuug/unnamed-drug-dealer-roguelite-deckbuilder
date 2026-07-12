@@ -7,6 +7,6 @@ mod buyer_personas;
 mod presets;
 
 pub use narc_deck::create_narc_deck;
-pub use player_deck::{create_player_deck, create_player_deck_filtered};
+pub use player_deck::create_player_deck_filtered;
 pub use buyer_personas::{create_buyer_personas, personas_in_area};
 pub use presets::{validate_deck, create_default_deck, create_default_deck_from_available};

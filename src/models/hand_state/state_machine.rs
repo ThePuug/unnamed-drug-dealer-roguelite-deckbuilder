@@ -5,16 +5,21 @@ use rand::prelude::*;
 
 impl HandState {
     /// Create HandState with a custom player deck
-    /// RFC-018: Now takes heat_tier to set Narc difficulty scaling
+    /// SOW-027: narc difficulty comes from the (run area x heat tier) deck
+    /// COMPOSITION - RFC-018 stat multipliers retired
     pub fn with_custom_deck(
         mut player_deck: Vec<Card>,
         assets: &crate::assets::GameAssets,
         heat_tier: crate::save::HeatTier,
+        run_area: &str,
     ) -> Self {
         player_deck.shuffle(&mut rand::rng());
 
         let mut owner_cards = std::collections::HashMap::new();
-        owner_cards.insert(Owner::Narc, Cards::new(create_narc_deck(assets)));
+        owner_cards.insert(
+            Owner::Narc,
+            Cards::new(create_narc_deck(assets, run_area, heat_tier)),
+        );
         owner_cards.insert(Owner::Player, Cards::new(player_deck));
         owner_cards.insert(Owner::Buyer, Cards::empty());
 
@@ -36,8 +41,7 @@ impl HandState {
             last_profit: 0,
             card_play_counts: std::collections::HashMap::new(), // RFC-017: Initialize empty, set from SaveData
             card_upgrades: std::collections::HashMap::new(), // RFC-019: Initialize empty, set from SaveData
-            narc_upgrade_tier: heat_tier.narc_upgrade_tier(), // RFC-018: Set from heat tier
-            run_area: crate::save::DEFAULT_STATION.to_string(), // SOW-025: overwritten at run start
+            run_area: run_area.to_string(), // SOW-025/027: where this run happens
         }
     }
 
@@ -88,10 +92,10 @@ impl HandState {
         let preserved_buyer_persona = self.buyer_persona.clone();
         let preserved_play_counts = self.card_play_counts.clone(); // RFC-017: Preserve play counts
         let preserved_upgrades = self.card_upgrades.clone(); // RFC-019: Preserve card upgrades
-        let preserved_narc_tier = self.narc_upgrade_tier; // RFC-018: Preserve Narc tier for entire deck
         let preserved_run_area = self.run_area.clone(); // SOW-025: the whole session happens in one area
 
-        // Reset state but preserve cash/heat/cards/buyer/play_counts/upgrades/narc_tier/run_area
+        // Reset state but preserve cash/heat/cards/buyer/play_counts/upgrades/run_area
+        // (SOW-027: the narc deck itself carries difficulty now - it's in owner_cards)
         *self = Self::default();
         self.cash = preserved_cash;
         self.current_heat = preserved_heat;
@@ -99,7 +103,6 @@ impl HandState {
         self.buyer_persona = preserved_buyer_persona;
         self.card_play_counts = preserved_play_counts; // RFC-017: Restore play counts
         self.card_upgrades = preserved_upgrades; // RFC-019: Restore card upgrades
-        self.narc_upgrade_tier = preserved_narc_tier; // RFC-018: Restore Narc tier
         self.run_area = preserved_run_area; // SOW-025: Restore run area
 
         bevy::log::info!(
@@ -229,7 +232,7 @@ impl HandState {
     }
 
     /// Get heat value from a card (applies Narc multiplier for Evidence cards)
-    fn get_card_heat(&self, card: &Card, owner: Owner) -> i32 {
+    fn get_card_heat(&self, card: &Card, _owner: Owner) -> i32 {
         use crate::CardType;
         match &card.card_type {
             CardType::Product { heat, .. } => *heat,
@@ -239,15 +242,9 @@ impl HandState {
             // SOW-021: heat_penalty applies only when insurance activates at resolution
             // (see resolution.rs try_insurance_activation) - playing the card is heat-free
             CardType::Insurance { .. } => 0,
-            CardType::Evidence { heat, .. } => {
-                // Apply Narc upgrade multiplier to Evidence heat
-                if owner == Owner::Narc {
-                    let mult = self.narc_upgrade_tier.multiplier();
-                    (*heat as f32 * mult).round() as i32
-                } else {
-                    *heat
-                }
-            }
+            // SOW-027: authored heat, no narc multipliers - difficulty lives
+            // in the deck composition now
+            CardType::Evidence { heat, .. } => *heat,
             CardType::Conviction { .. } => 0, // Conviction doesn't add heat directly
         }
     }

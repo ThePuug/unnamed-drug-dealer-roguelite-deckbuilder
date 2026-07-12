@@ -62,44 +62,15 @@ pub struct HandState {
     pub last_profit: u32, // RFC-016: Profit from most recent hand resolution
     pub card_play_counts: HashMap<String, u32>, // RFC-017: Play counts for upgrade tiers
     pub card_upgrades: HashMap<String, crate::save::CardUpgrades>, // RFC-019: Per-card upgrade choices
-    pub narc_upgrade_tier: crate::save::UpgradeTier, // RFC-018: Narc difficulty scaling
+    // SOW-027: narc_upgrade_tier removed - narc difficulty IS the deck
+    // composition (station area x heat tier), fixed when the deck is built
     /// SOW-025: the area this run happens in (the active dealer's station).
     /// Safe hands here earn the runner street cred in this area.
     pub run_area: String,
 }
 
-impl HandState {
-    /// SOW-013-B: Create HandState from loaded assets
-    /// RFC-018: Now takes heat_tier to set Narc difficulty scaling
-    pub fn from_assets(assets: &crate::assets::GameAssets, heat_tier: crate::save::HeatTier) -> Self {
-        let mut owner_cards = HashMap::new();
-        owner_cards.insert(Owner::Narc, Cards::new(create_narc_deck(assets)));
-        owner_cards.insert(Owner::Player, Cards::new(create_player_deck(assets)));
-        owner_cards.insert(Owner::Buyer, Cards::empty());
-
-        Self {
-            current_state: HandPhase::Draw,
-            current_round: 1,
-            owner_cards,
-            cards_played: Vec::new(),
-            cards_played_this_round: Vec::new(),
-            discard_pile: Vec::new(),
-            outcome: None,
-            cash: 0,
-            current_heat: 0,
-            current_player_index: 0,
-            checks_this_hand: Vec::new(),
-            buyer_persona: None,
-            hand_story: None,
-            session_stories: Vec::new(),
-            last_profit: 0,
-            card_play_counts: HashMap::new(), // RFC-017: Initialize empty
-            card_upgrades: HashMap::new(), // RFC-019: Initialize empty
-            narc_upgrade_tier: heat_tier.narc_upgrade_tier(), // RFC-018: Set from heat tier
-            run_area: crate::save::DEFAULT_STATION.to_string(), // SOW-025: overwritten at run start
-        }
-    }
-}
+// SOW-027: from_assets removed (dead since custom decks shipped;
+// with_custom_deck is the production constructor and carries the run area)
 
 // Keep Default for tests
 impl Default for HandState {
@@ -139,7 +110,6 @@ impl Default for HandState {
             last_profit: 0,
             card_play_counts: HashMap::new(), // RFC-017: Initialize empty
             card_upgrades: HashMap::new(), // RFC-019: Initialize empty
-            narc_upgrade_tier: crate::save::UpgradeTier::Base, // RFC-018: Default to base (tests)
             run_area: crate::save::DEFAULT_STATION.to_string(), // SOW-025
         }
     }
