@@ -280,6 +280,21 @@ pub const CARD_WIDTH_COMPACT: f32 = 134.0; // discard stack top card
 pub const CARD_HEIGHT_COMPACT: f32 = 194.0;
 
 // ============================================================================
+// SOW-023: Operations roster panel
+// ============================================================================
+
+pub const ROSTER_CARD_BG: Color = Color::srgb(0.16, 0.16, 0.20);
+pub const ROSTER_CARD_BG_JAILED: Color = Color::srgb(0.15, 0.10, 0.10);
+pub const ROSTER_CARD_BORDER: Color = Color::srgb(0.35, 0.35, 0.45);
+pub const ROSTER_CARD_BORDER_ACTIVE: Color = Color::srgb(0.3, 0.8, 0.3);    // selected-to-run highlight
+pub const ROSTER_STATUS_READY: Color = Color::srgb(0.5, 0.9, 0.6);
+pub const ROSTER_STATUS_JAILED: Color = Color::srgb(1.0, 0.45, 0.45);
+pub const ROSTER_KINGPIN_BADGE: Color = Color::srgb(1.0, 0.85, 0.3);        // "BOSS"
+pub const ROSTER_SCAR_TEXT: Color = Color::srgb(0.75, 0.65, 0.5);           // prior convictions "⚖ n"
+pub const ROSTER_HIRE_BG: Color = Color::srgb(0.25, 0.45, 0.65);
+pub const ROSTER_BAIL_BG: Color = Color::srgb(0.55, 0.35, 0.2);
+
+// ============================================================================
 // Helper Functions
 // ============================================================================
 

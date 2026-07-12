@@ -72,6 +72,57 @@ pub struct SaveData {
     /// RFC-016: Account Cash System
     #[serde(default)]
     pub account: AccountState,
+    /// SOW-023: arcade board of fallen empires. Survives `reset_empire` -
+    /// the one thing a kingpin bust cannot erase. Stats are displayed on the
+    /// game-over board; each epitaph also ARCHIVES the empire's full story
+    /// history for the SOW-026 ledger (not displayed yet).
+    #[serde(default)]
+    pub fallen_empires: Vec<EmpireEpitaph>,
+}
+
+/// The tombstone of one empire: summary stats for the arcade leaderboard
+/// plus the archived stories of everyone who worked it
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct EmpireEpitaph {
+    pub ended_at: u64,
+    pub lifetime_revenue: u64,
+    pub cash_at_fall: u64,
+    /// Roster size beyond the kingpin
+    pub dealers_hired: u32,
+    /// Times anyone in the roster went through the system
+    pub total_prior_convictions: u32,
+    /// Decks played across the whole roster
+    pub decks_played: u32,
+    /// Aggregate story history of every dealer (archive for SOW-026)
+    pub stories: Vec<String>,
+}
+
+impl EmpireEpitaph {
+    /// Summarize a dying empire. Pure given the timestamp.
+    pub fn from_save(save: &SaveData, ended_at: u64) -> Self {
+        Self {
+            ended_at,
+            lifetime_revenue: save.account.lifetime_revenue,
+            cash_at_fall: save.account.cash_on_hand,
+            dealers_hired: save.dealers.len().saturating_sub(1) as u32,
+            total_prior_convictions: save.dealers.iter().map(|d| d.prior_convictions).sum(),
+            decks_played: save.dealers.iter().map(|d| d.character.decks_played).sum(),
+            stories: save
+                .dealers
+                .iter()
+                .flat_map(|d| d.character.story_history.iter().cloned())
+                .collect(),
+        }
+    }
+}
+
+/// Top-N fallen empires by lifetime revenue (indices into the input slice,
+/// so callers can mark "this run" by comparing against the latest index)
+pub fn leaderboard_top(fallen: &[EmpireEpitaph], n: usize) -> Vec<usize> {
+    let mut order: Vec<usize> = (0..fallen.len()).collect();
+    order.sort_by(|a, b| fallen[*b].lifetime_revenue.cmp(&fallen[*a].lifetime_revenue));
+    order.truncate(n);
+    order
 }
 
 impl SaveData {
@@ -81,6 +132,7 @@ impl SaveData {
             dealers: vec![DealerState::kingpin()],
             active_dealer: 0,
             account: AccountState::new(),
+            fallen_empires: Vec::new(),
         }
     }
 
@@ -106,14 +158,12 @@ impl SaveData {
     }
 
     /// Cost to hire the next dealer at the current roster size
-    #[allow(dead_code)] // consumed by SOW-023 Phase 3 (operations panel)
     pub fn next_hire_cost(&self) -> u64 {
         hire_cost(self.dealers.len())
     }
 
     /// Hire a new dealer, spending from the kingpin's account.
     /// Returns false (no mutation) if the account can't afford it.
-    #[allow(dead_code)] // consumed by SOW-023 Phase 3 (operations panel)
     pub fn hire_dealer(&mut self) -> bool {
         let cost = self.next_hire_cost();
         if !self.account.spend(cost) {
@@ -139,7 +189,6 @@ impl SaveData {
     /// bail_cost(runs_remaining) from global cash; the heat reduction stays
     /// proportional to time actually served (the bail tradeoff).
     /// Returns false (no mutation) if not jailed or unaffordable.
-    #[allow(dead_code)] // consumed by SOW-023 Phase 3 (operations panel)
     pub fn bail_out(&mut self, dealer_idx: usize) -> bool {
         let Some(dealer) = self.dealers.get(dealer_idx) else {
             return false;
@@ -155,9 +204,14 @@ impl SaveData {
     }
 
     /// RFC-023: the KINGPIN busting ends the empire - the one remaining
-    /// permadeath. Everything resets, including the books.
+    /// permadeath. Everything resets, including the books - EXCEPT the
+    /// arcade board: the falling empire's epitaph is appended first and the
+    /// board carries into the fresh save (SOW-023 addendum).
     pub fn reset_empire(&mut self) {
+        let mut fallen = std::mem::take(&mut self.fallen_empires);
+        fallen.push(EmpireEpitaph::from_save(self, current_timestamp()));
         *self = SaveData::new();
+        self.fallen_empires = fallen;
     }
 
     /// Validate data sanity (defense in depth)
@@ -731,11 +785,9 @@ const JAIL_HEAT_PER_RUN: u32 = 25;
 
 /// Bail: $300 per remaining sentence run (early release costs money AND
 /// forfeits the un-served heat reduction)
-#[allow(dead_code)] // consumed by SOW-023 Phase 3 (operations panel)
 const BAIL_COST_PER_RUN: u64 = 300;
 
 /// First hire beyond the kingpin costs $500; each subsequent hire doubles
-#[allow(dead_code)] // consumed by SOW-023 Phase 3 (operations panel)
 const HIRE_BASE_COST: u64 = 500;
 
 /// Street names for recruited dealers
@@ -792,14 +844,12 @@ pub fn jail_sentence_from_heat(heat: i32) -> u32 {
 }
 
 /// Cost to bail a dealer with the given remaining sentence
-#[allow(dead_code)] // consumed by SOW-023 Phase 3 (operations panel)
 pub fn bail_cost(runs_remaining: u32) -> u64 {
     BAIL_COST_PER_RUN.saturating_mul(u64::from(runs_remaining))
 }
 
 /// Cost to hire the NEXT dealer given the current roster size (kingpin
 /// included): $500, $1000, $2000, ... - the roster is a progression sink
-#[allow(dead_code)] // consumed by SOW-023 Phase 3 (operations panel)
 pub fn hire_cost(roster_len: usize) -> u64 {
     HIRE_BASE_COST.saturating_mul(1u64 << (roster_len.saturating_sub(1)).min(40))
 }
@@ -1226,6 +1276,61 @@ mod tests {
             heat_at_bust: 0,
         };
         assert!(data.validate().is_err());
+    }
+
+    #[test]
+    fn test_epitaph_summarizes_roster() {
+        let mut save = SaveData::new();
+        save.account.lifetime_revenue = 12_400;
+        save.account.cash_on_hand = 900;
+        save.dealers[0].character.decks_played = 5;
+        save.dealers[0].character.story_history.push("The boss's tale".into());
+        let mut hired = DealerState::recruit(&save.dealers);
+        hired.prior_convictions = 2;
+        hired.character.decks_played = 4;
+        hired.character.story_history.push("Slim's tale".into());
+        save.dealers.push(hired);
+
+        let epitaph = EmpireEpitaph::from_save(&save, 1234);
+        assert_eq!(epitaph.ended_at, 1234);
+        assert_eq!(epitaph.lifetime_revenue, 12_400);
+        assert_eq!(epitaph.cash_at_fall, 900);
+        assert_eq!(epitaph.dealers_hired, 1);
+        assert_eq!(epitaph.total_prior_convictions, 2);
+        assert_eq!(epitaph.decks_played, 9);
+        assert_eq!(epitaph.stories.len(), 2); // full ledger archived
+    }
+
+    #[test]
+    fn test_fallen_empires_survive_reset_and_accumulate() {
+        let mut save = SaveData::new();
+        save.account.lifetime_revenue = 1000;
+        save.reset_empire();
+        assert_eq!(save.fallen_empires.len(), 1);
+        assert_eq!(save.fallen_empires[0].lifetime_revenue, 1000);
+        // Fresh empire otherwise
+        assert_eq!(save.dealers.len(), 1);
+        assert!(save.dealers[0].is_kingpin);
+        assert_eq!(save.account.lifetime_revenue, 0);
+
+        save.account.lifetime_revenue = 5000;
+        save.reset_empire();
+        assert_eq!(save.fallen_empires.len(), 2); // the board is forever
+        assert_eq!(save.fallen_empires[1].lifetime_revenue, 5000);
+    }
+
+    #[test]
+    fn test_leaderboard_top_sorted_by_revenue() {
+        let mut save = SaveData::new();
+        for revenue in [300u64, 900, 100, 600] {
+            save.account.lifetime_revenue = revenue;
+            save.reset_empire();
+        }
+        let top = leaderboard_top(&save.fallen_empires, 3);
+        let revenues: Vec<u64> = top.iter().map(|i| save.fallen_empires[*i].lifetime_revenue).collect();
+        assert_eq!(revenues, vec![900, 600, 300]);
+        // latest entry (index 3, revenue 600) can be identified for the marker
+        assert!(top.contains(&3));
     }
 
     #[test]

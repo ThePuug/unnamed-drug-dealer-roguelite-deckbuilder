@@ -156,6 +156,20 @@ pub fn setup_deck_builder(
             });
         });
 
+        // SOW-023: Operations roster - who's on the payroll, who's in jail,
+        // who runs next. Children rebuilt by populate_roster_panel_system.
+        parent.spawn((
+            Node {
+                width: Val::Percent(100.0),
+                flex_direction: FlexDirection::Row,
+                column_gap: Val::Px(10.0),
+                margin: UiRect::bottom(Val::Px(10.0)),
+                align_items: AlignItems::Stretch,
+                ..default()
+            },
+            RosterPanel,
+        ));
+
         // Card pool container - scrollable, fills available space (YOUR CARDS view)
         parent.spawn((
             Node {

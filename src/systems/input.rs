@@ -174,6 +174,7 @@ pub fn restart_button_system(
 // ============================================================================
 pub fn update_restart_button_states(
     hand_state_query: Query<&HandState>,
+    save_data: Option<Res<crate::save::SaveData>>, // SOW-023: kingpin game-over label
     mut restart_button_query: Query<(&mut BackgroundColor, &mut Visibility, &Children), With<RestartButton>>,
     go_home_button_query: Query<(Entity, &Children), With<GoHomeButton>>,
     mut text_query: Query<&mut Text>,
@@ -220,12 +221,25 @@ pub fn update_restart_button_states(
         }
     }
 
-    // GO HOME button text: "GO HOME" if safe, "END RUN" if busted
+    // GO HOME button text: "GO HOME" if safe, "END RUN" if busted,
+    // "NEW EMPIRE" when the KINGPIN busted (SOW-023: the empire already fell;
+    // this button walks into the fresh one)
     let (_button_entity, children) = go_home_button_query
         .single()
         .expect("Expected exactly one GoHomeButton in resolution overlay");
 
-    let go_home_label = if is_busted { "END RUN" } else { "GO HOME" };
+    let kingpin_fell = is_busted
+        && save_data
+            .as_ref()
+            .map(|save| save.active_dealer_state().is_kingpin)
+            .unwrap_or(false);
+    let go_home_label = if kingpin_fell {
+        "NEW EMPIRE"
+    } else if is_busted {
+        "END RUN"
+    } else {
+        "GO HOME"
+    };
     for child in children.iter() {
         if let Ok(mut text) = text_query.get_mut(child) {
             if **text != go_home_label {
@@ -380,6 +394,16 @@ pub fn start_run_button_system(
     };
     for interaction in interaction_query.iter() {
         if *interaction == Interaction::Pressed && deck_builder.is_valid() {
+            // SOW-023: a jailed dealer can't be sent out (closes the Phase 1-2
+            // gap where a just-jailed active dealer could still START RUN)
+            let active_available = save_data
+                .as_ref()
+                .map(|save| save.active_dealer_state().is_available())
+                .unwrap_or(true);
+            if !active_available {
+                continue;
+            }
+
             // Despawn any existing HandState
             for entity in hand_state_query.iter() {
                 commands.entity(entity).despawn();
@@ -462,6 +486,88 @@ pub fn card_click_system(
                         let _ = hand_state.play_card(Owner::Player, card_button.card_index);
                     }
                 }
+            }
+        }
+    }
+}
+
+// ============================================================================
+// SOW-023: OPERATIONS ROSTER BUTTONS (deck-builder screen)
+// ============================================================================
+pub fn roster_button_system(
+    dealer_query: Query<(&Interaction, &RosterDealerButton), Changed<Interaction>>,
+    bail_query: Query<(&Interaction, &RosterBailButton), Changed<Interaction>>,
+    hire_query: Query<&Interaction, (Changed<Interaction>, With<RosterHireButton>)>,
+    save_data: Option<ResMut<crate::save::SaveData>>,
+    save_manager: Option<Res<crate::save::SaveManager>>,
+) {
+    let (Some(mut save_data), Some(save_manager)) = (save_data, save_manager) else {
+        return;
+    };
+
+    let mut dirty = false;
+
+    // Select who runs next (jailed dealers can be selected to inspect;
+    // START RUN stays disabled for them)
+    for (interaction, button) in dealer_query.iter() {
+        if *interaction == Interaction::Pressed
+            && button.dealer_index < save_data.dealers.len()
+            && save_data.active_dealer != button.dealer_index
+        {
+            save_data.active_dealer = button.dealer_index;
+            dirty = true;
+        }
+    }
+
+    // Pay bail (bail_out itself no-ops when unaffordable or not jailed)
+    for (interaction, button) in bail_query.iter() {
+        if *interaction == Interaction::Pressed {
+            dirty |= save_data.bail_out(button.dealer_index);
+        }
+    }
+
+    // Hire the next recruit (hire_dealer no-ops when unaffordable)
+    for interaction in hire_query.iter() {
+        if *interaction == Interaction::Pressed {
+            dirty |= save_data.hire_dealer();
+        }
+    }
+
+    if dirty {
+        if let Err(e) = save_manager.save(&save_data) {
+            bevy::log::warn!("Failed to save roster change: {:?}", e);
+        }
+    }
+}
+
+/// SOW-023: START RUN reflects the active dealer's availability (the click
+/// handler independently guards, this is the visual)
+pub fn update_start_run_button_system(
+    save_data: Option<Res<crate::save::SaveData>>,
+    mut button_query: Query<(&mut BackgroundColor, &Children), With<StartRunButton>>,
+    mut text_query: Query<&mut Text>,
+) {
+    let Some(save_data) = save_data else {
+        return;
+    };
+    let Ok((mut bg, children)) = button_query.single_mut() else {
+        return;
+    };
+
+    let available = save_data.active_dealer_state().is_available();
+    let (color, label) = if available {
+        (theme::CONTINUE_BUTTON_BG, "START RUN")
+    } else {
+        (theme::BUTTON_DISABLED_BG, "JAILED")
+    };
+
+    if bg.0 != color {
+        *bg = color.into();
+    }
+    for child in children.iter() {
+        if let Ok(mut text) = text_query.get_mut(child) {
+            if **text != label {
+                **text = label.to_string();
             }
         }
     }

@@ -112,6 +112,9 @@ fn main() {
         .add_systems(Update, (
             deck_builder_card_click_system,
             start_run_button_system,
+            roster_button_system,             // SOW-023: select/hire/bail
+            populate_roster_panel_system,     // SOW-023: roster strip
+            update_start_run_button_system,   // SOW-023: jailed = no run
             story_history_button_system,
             update_deck_builder_ui_system,
             populate_deck_builder_cards_system,
