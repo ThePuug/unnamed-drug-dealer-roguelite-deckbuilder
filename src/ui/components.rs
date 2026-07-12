@@ -294,14 +294,9 @@ pub struct ResolutionResults;
 // Character Heat Display (Persistent Heat from Save System)
 // ============================================================================
 
-#[derive(Component)]
-pub struct CharacterHeatDisplay;
-
-#[derive(Component)]
-pub struct CharacterHeatText;
-
-#[derive(Component)]
-pub struct CharacterTierText;
+// SOW-023: CharacterHeatDisplay/CharacterHeatText/CharacterTierText removed -
+// per-dealer heat displays on the operations roster panel (the old stats-block
+// line duplicated it)
 
 #[derive(Component)]
 pub struct DecayInfoDisplay;
@@ -334,6 +329,31 @@ pub struct StoryHistoryCloseButton;
 
 #[derive(Component)]
 pub struct StoryHistoryText;
+
+// ============================================================================
+// SOW-023: Operations roster panel (deck-builder screen)
+// ============================================================================
+
+/// Strip under the tabs listing the kingpin's dealers (children rebuilt on
+/// save change by populate_roster_panel_system)
+#[derive(Component)]
+pub struct RosterPanel;
+
+/// Clickable dealer card - selects who runs the next session
+#[derive(Component)]
+pub struct RosterDealerButton {
+    pub dealer_index: usize,
+}
+
+/// Pay bail for a jailed dealer
+#[derive(Component)]
+pub struct RosterBailButton {
+    pub dealer_index: usize,
+}
+
+/// Hire the next recruit
+#[derive(Component)]
+pub struct RosterHireButton;
 
 // ============================================================================
 // SOW-020: Shop UI Components

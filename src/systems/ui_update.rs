@@ -494,6 +494,222 @@ pub fn update_spotlights_system(
     }
 }
 
+/// SOW-023: Operations roster - one card per dealer (portrait, name,
+/// tier, scars, status), plus a HIRE card. Rebuilt when the save changes or
+/// the panel is freshly (re)spawned. Card width is FIXED at 250px so the e2e
+/// harness can target rows deterministically.
+pub fn populate_roster_panel_system(
+    mut commands: Commands,
+    save_data: Option<Res<crate::save::SaveData>>,
+    panel_query: Query<Entity, With<RosterPanel>>,
+    children_query: Query<&Children>,
+    game_assets: Res<crate::assets::GameAssets>,
+) {
+    let Some(save_data) = save_data else {
+        return;
+    };
+    let Ok(panel) = panel_query.single() else {
+        return; // panel only exists on the deck-builder screen
+    };
+
+    let is_empty = children_query.get(panel).map(|c| c.is_empty()).unwrap_or(true);
+    if !save_data.is_changed() && !is_empty {
+        return;
+    }
+
+    if let Ok(children) = children_query.get(panel) {
+        for child in children.iter() {
+            commands.entity(child).despawn();
+        }
+    }
+
+    let cash = save_data.account.cash_on_hand;
+    let hire_cost = save_data.next_hire_cost();
+
+    commands.entity(panel).with_children(|parent| {
+        for (index, dealer) in save_data.dealers.iter().enumerate() {
+            let is_active = index == save_data.active_dealer;
+            let jailed = dealer.jail_remaining();
+
+            parent
+                .spawn((
+                    Button,
+                    Node {
+                        width: Val::Px(250.0),
+                        flex_direction: FlexDirection::Row,
+                        align_items: AlignItems::Center,
+                        column_gap: Val::Px(8.0),
+                        padding: UiRect::all(Val::Px(8.0)),
+                        border: UiRect::all(Val::Px(2.0)),
+                        border_radius: BorderRadius::all(Val::Px(8.0)),
+                        ..default()
+                    },
+                    BackgroundColor(if jailed.is_some() {
+                        theme::ROSTER_CARD_BG_JAILED
+                    } else {
+                        theme::ROSTER_CARD_BG
+                    }),
+                    BorderColor::all(if is_active {
+                        theme::ROSTER_CARD_BORDER_ACTIVE
+                    } else {
+                        theme::ROSTER_CARD_BORDER
+                    }),
+                    RosterDealerButton { dealer_index: index },
+                ))
+                .with_children(|parent| {
+                    // Portrait
+                    parent.spawn((
+                        Node {
+                            width: Val::Px(72.0),
+                            height: Val::Px(72.0),
+                            flex_shrink: 0.0,
+                            ..default()
+                        },
+                        ImageNode {
+                            image: game_assets
+                                .actor_portraits
+                                .get(&dealer.portrait)
+                                .cloned()
+                                .unwrap_or_default(),
+                            ..default()
+                        },
+                    ));
+
+                    // Identity + status column
+                    parent.spawn(Node {
+                        flex_direction: FlexDirection::Column,
+                        row_gap: Val::Px(2.0),
+                        flex_grow: 1.0,
+                        ..default()
+                    })
+                    .with_children(|parent| {
+                        // Name row (+ BOSS badge, + scars)
+                        parent.spawn(Node {
+                            flex_direction: FlexDirection::Row,
+                            column_gap: Val::Px(6.0),
+                            align_items: AlignItems::Center,
+                            ..default()
+                        })
+                        .with_children(|parent| {
+                            parent.spawn((
+                                Text::new(&dealer.name),
+                                TextFont::from_font_size(15.0),
+                                TextColor(Color::WHITE),
+                            ));
+                            if dealer.is_kingpin {
+                                parent.spawn((
+                                    Text::new("BOSS"),
+                                    TextFont::from_font_size(11.0),
+                                    TextColor(theme::ROSTER_KINGPIN_BADGE),
+                                ));
+                            }
+                            if dealer.prior_convictions > 0 {
+                                // ⚖ renders in DejaVuSans (established convention)
+                                parent.spawn((
+                                    Text::new(format!("⚖ {}", dealer.prior_convictions)),
+                                    TextFont::from_font_size(11.0),
+                                    TextColor(theme::ROSTER_SCAR_TEXT),
+                                ));
+                            }
+                        });
+
+                        // Heat tier
+                        let tier = dealer.character.heat_tier();
+                        let (r, g, b) = tier.color();
+                        parent.spawn((
+                            Text::new(format!("Heat {} [{}]", dealer.character.heat, tier.name())),
+                            TextFont::from_font_size(12.0),
+                            TextColor(Color::srgb(r, g, b)),
+                        ));
+
+                        // Status
+                        match jailed {
+                            Some(runs) => {
+                                parent.spawn((
+                                    Text::new(format!(
+                                        "JAILED · {} RUN{}",
+                                        runs,
+                                        if runs == 1 { "" } else { "S" }
+                                    )),
+                                    TextFont::from_font_size(12.0),
+                                    TextColor(theme::ROSTER_STATUS_JAILED),
+                                ));
+                            }
+                            None => {
+                                parent.spawn((
+                                    Text::new("READY"),
+                                    TextFont::from_font_size(12.0),
+                                    TextColor(theme::ROSTER_STATUS_READY),
+                                ));
+                            }
+                        }
+                    });
+
+                    // Bail button on jailed dealers (nested Button blocks the
+                    // row's select interaction, so bailing doesn't re-select)
+                    if let Some(runs) = jailed {
+                        let cost = crate::save::bail_cost(runs);
+                        let affordable = cash >= cost;
+                        parent
+                            .spawn((
+                                Button,
+                                Node {
+                                    padding: UiRect::axes(Val::Px(8.0), Val::Px(6.0)),
+                                    border_radius: BorderRadius::all(Val::Px(6.0)),
+                                    flex_shrink: 0.0,
+                                    ..default()
+                                },
+                                BackgroundColor(if affordable {
+                                    theme::ROSTER_BAIL_BG
+                                } else {
+                                    theme::BUTTON_DISABLED_BG
+                                }),
+                                RosterBailButton { dealer_index: index },
+                            ))
+                            .with_children(|parent| {
+                                parent.spawn((
+                                    Text::new(format!("BAIL\n${cost}")),
+                                    TextFont::from_font_size(12.0),
+                                    TextColor(Color::WHITE),
+                                    TextLayout::new_with_justify(bevy::text::Justify::Center),
+                                ));
+                            });
+                    }
+                });
+        }
+
+        // HIRE card
+        let affordable = cash >= hire_cost;
+        parent
+            .spawn((
+                Button,
+                Node {
+                    width: Val::Px(140.0),
+                    justify_content: JustifyContent::Center,
+                    align_items: AlignItems::Center,
+                    border: UiRect::all(Val::Px(2.0)),
+                    border_radius: BorderRadius::all(Val::Px(8.0)),
+                    ..default()
+                },
+                BackgroundColor(if affordable {
+                    theme::ROSTER_HIRE_BG
+                } else {
+                    theme::BUTTON_DISABLED_BG
+                }),
+                BorderColor::all(theme::ROSTER_CARD_BORDER),
+                RosterHireButton,
+            ))
+            .with_children(|parent| {
+                parent.spawn((
+                    Text::new(format!("HIRE\n${hire_cost}")),
+                    TextFont::from_font_size(14.0),
+                    TextColor(Color::WHITE),
+                    TextLayout::new_with_justify(bevy::text::Justify::Center),
+                ));
+            });
+    });
+}
+
 pub fn update_deck_builder_ui_system(
     deck_builder: Option<Res<DeckBuilder>>,
     mut stats_query: Query<(&mut Text, &mut TextColor), With<DeckStatsDisplay>>,
@@ -586,20 +802,19 @@ pub fn populate_deck_builder_cards_system(
                     ui::CardDisplayState::Inactive
                 };
 
-                // RFC-017: Get upgrade info from character state if available
-                let upgrade_info = save_data.as_ref().and_then(|save| {
-                    save.character.as_ref().map(|character| {
-                        let play_count = character.get_play_count(&card.name);
-                        let tier = character.get_card_tier(&card.name);
-                        ui::UpgradeInfo {
-                            tier_name: tier.name().to_string(),
-                            plays: play_count,
-                            plays_to_next: tier.plays_to_next(),
-                            multiplier: tier.multiplier(),
-                            star_color: tier.star_color(),
-                            is_foil: tier.is_foil(),
-                        }
-                    })
+                // RFC-017/023: Get upgrade info from the ACTIVE dealer's record
+                let upgrade_info = save_data.as_ref().map(|save| {
+                    let character = save.active_character();
+                    let play_count = character.get_play_count(&card.name);
+                    let tier = character.get_card_tier(&card.name);
+                    ui::UpgradeInfo {
+                        tier_name: tier.name().to_string(),
+                        plays: play_count,
+                        plays_to_next: tier.plays_to_next(),
+                        multiplier: tier.multiplier(),
+                        star_color: tier.star_color(),
+                        is_foil: tier.is_foil(),
+                    }
                 });
 
                 // Use template-based rendering for deck builder cards

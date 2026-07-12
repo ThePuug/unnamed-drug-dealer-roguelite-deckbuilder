@@ -17,7 +17,8 @@ pub fn setup_deck_builder(
     // SOW-021: unless the player chose DECIDE LATER - then the deck builder MUST
     // spawn or DeckBuilding becomes an empty screen (soft-lock)
     if let Some(ref data) = save_data {
-        if let Some(ref character) = data.character {
+        {
+            let character = data.active_character(); // RFC-023: active dealer
             if character.has_pending_upgrades() && !deferred.0 {
                 return;
             }
@@ -155,6 +156,20 @@ pub fn setup_deck_builder(
             });
         });
 
+        // SOW-023: Operations roster - who's on the payroll, who's in jail,
+        // who runs next. Children rebuilt by populate_roster_panel_system.
+        parent.spawn((
+            Node {
+                width: Val::Percent(100.0),
+                flex_direction: FlexDirection::Row,
+                column_gap: Val::Px(10.0),
+                margin: UiRect::bottom(Val::Px(10.0)),
+                align_items: AlignItems::Stretch,
+                ..default()
+            },
+            RosterPanel,
+        ));
+
         // Card pool container - scrollable, fills available space (YOUR CARDS view)
         parent.spawn((
             Node {
@@ -234,28 +249,10 @@ pub fn setup_deck_builder(
                     DeckStatsDisplay,
                 ));
 
-                // Character heat display
-                parent.spawn(Node {
-                    flex_direction: FlexDirection::Row,
-                    column_gap: Val::Px(8.0),
-                    ..default()
-                })
-                .with_children(|parent| {
-                    parent.spawn((
-                        Text::new("Heat: 0"),
-                        TextFont::from_font_size(20.0),
-                        TextColor(Color::WHITE),
-                        CharacterHeatText,
-                    ));
-                    parent.spawn((
-                        Text::new("[Cold]"),
-                        TextFont::from_font_size(20.0),
-                        TextColor(Color::srgb(0.3, 0.7, 0.3)),
-                        CharacterTierText,
-                    ));
-                });
+                // SOW-023: the "Heat: N [Tier]" line is gone - per-dealer heat
+                // lives on the roster panel now (Reed: it duplicated the panel)
 
-                // Decay info (hidden by default)
+                // Decay info (hidden by default; the only decay surface)
                 parent.spawn((
                     Text::new(""),
                     TextFont::from_font_size(18.0),

@@ -360,8 +360,37 @@ pub fn conviction_ticks(hand_state: &HandState) -> Vec<(u32, String)> {
     ticks
 }
 
+// ============================================================================
+// Game-over arcade board (SOW-023)
+// ============================================================================
+
+/// Top-3 fallen empires by lifetime revenue for the GAME OVER overlay,
+/// marking the empire that just fell (always the latest epitaph)
+pub fn game_over_board(fallen: &[crate::save::EmpireEpitaph]) -> String {
+    if fallen.is_empty() {
+        return String::new();
+    }
+    let latest = fallen.len() - 1;
+    crate::save::leaderboard_top(fallen, 3)
+        .into_iter()
+        .enumerate()
+        .map(|(rank, idx)| {
+            let epitaph = &fallen[idx];
+            let marker = if idx == latest { "  ← THIS RUN" } else { "" };
+            format!(
+                "{}. {} · {} decks{}",
+                rank + 1,
+                format_cash(epitaph.lifetime_revenue),
+                epitaph.decks_played,
+                marker
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 /// Format a cash amount with thousands separators: 2400 → "$2,400"
-pub fn format_cash(n: u32) -> String {
+pub fn format_cash(n: u64) -> String {
     let s = n.to_string();
     let mut out = String::new();
     for (i, c) in s.chars().rev().enumerate() {
@@ -720,5 +749,29 @@ mod tests {
         assert_eq!(format_cash(950), "$950");
         assert_eq!(format_cash(2400), "$2,400");
         assert_eq!(format_cash(1234567), "$1,234,567");
+    }
+
+    // ---- game_over_board ----
+
+    #[test]
+    fn game_over_board_ranks_and_marks_this_run() {
+        use crate::save::EmpireEpitaph;
+        let epitaph = |revenue: u64, decks: u32| EmpireEpitaph {
+            ended_at: 0,
+            lifetime_revenue: revenue,
+            cash_at_fall: 0,
+            dealers_hired: 0,
+            total_prior_convictions: 0,
+            decks_played: decks,
+            stories: vec![],
+        };
+        // Latest fall (600) places 2nd on the board and gets the marker
+        let fallen = vec![epitaph(900, 3), epitaph(100, 1), epitaph(600, 9)];
+        let board = game_over_board(&fallen);
+        let lines: Vec<&str> = board.lines().collect();
+        assert_eq!(lines[0], "1. $900 · 3 decks");
+        assert_eq!(lines[1], "2. $600 · 9 decks  ← THIS RUN");
+        assert_eq!(lines[2], "3. $100 · 1 decks");
+        assert!(game_over_board(&[]).is_empty());
     }
 }

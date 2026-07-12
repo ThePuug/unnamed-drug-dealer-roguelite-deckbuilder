@@ -23,11 +23,23 @@
 #   divides by the window's DPI scale (auto-detected via GetDpiForWindow).
 
 param(
-  [string]$Action = "shot",   # shot | click | hover
+  [string]$Action = "shot",   # shot | click | hover | reset
   [string]$OutFile = "shot.png",
   [double]$X = 0,             # position in 1920x1080 DESIGN coords
   [double]$Y = 0
 )
+
+# reset: delete the save (Reed-approved between-playtest hygiene). Honors
+# DDD_SAVE_DIR like the game does; runs without the game being up.
+if ($Action -eq "reset") {
+  $saveDir = if ($env:DDD_SAVE_DIR) { $env:DDD_SAVE_DIR } else { Join-Path $env:LOCALAPPDATA "DrugDealerDeckbuilder" }
+  foreach ($f in "save.dat", "save.dat.bak") {
+    $p = Join-Path $saveDir $f
+    if (Test-Path $p) { Remove-Item $p -Force -Confirm:$false }
+  }
+  Write-Output ("reset save at " + $saveDir)
+  exit 0
+}
 Add-Type @'
 using System;
 using System.Runtime.InteropServices;

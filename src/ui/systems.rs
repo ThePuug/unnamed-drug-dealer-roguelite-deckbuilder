@@ -184,7 +184,7 @@ pub fn update_standing_panel_system(
         }
     };
 
-    set_text(cash_query.single().ok(), view::format_cash(hand_state.cash));
+    set_text(cash_query.single().ok(), view::format_cash(u64::from(hand_state.cash)));
     set_text(heat_value_query.single().ok(), hand_state.current_heat.to_string());
 
     // Heat tier chip (name + color from the shared HeatTier scale; session
@@ -346,12 +346,23 @@ pub fn update_balance_bar_system(
 
 /// Show/hide resolution overlay and update results text
 pub fn update_resolution_overlay_system(
-    hand_state_query: Query<&HandState, Changed<HandState>>,
+    hand_state_changed: Query<(), (With<HandState>, Changed<HandState>)>,
+    hand_state_query: Query<&HandState>,
+    // SOW-023: kingpin game-over needs the save (roster + fallen-empire
+    // board). The epitaph lands via a SaveData write in
+    // save_after_resolution_system, so save changes also refresh the overlay
+    // (HandState stays terminal at Bust and won't re-trigger on its own).
+    save_data: Option<Res<crate::save::SaveData>>,
     mut overlay_query: Query<&mut Node, With<ResolutionOverlay>>,
     mut title_query: Query<(&mut Text, &mut TextColor), (With<ResolutionTitle>, Without<ResolutionResults>, Without<ResolutionStory>)>,
     mut story_query: Query<&mut Text, (With<ResolutionStory>, Without<ResolutionTitle>, Without<ResolutionResults>)>,
     mut results_query: Query<&mut Text, (With<ResolutionResults>, Without<ResolutionTitle>, Without<ResolutionStory>)>,
 ) {
+    let save_changed = save_data.as_ref().map(|save| save.is_changed()).unwrap_or(false);
+    if hand_state_changed.is_empty() && !save_changed {
+        return;
+    }
+
     let Ok(hand_state) = hand_state_query.single() else {
         return;
     };
@@ -359,6 +370,15 @@ pub fn update_resolution_overlay_system(
     let Ok(mut overlay_node) = overlay_query.single_mut() else {
         return;
     };
+
+    // SOW-023: a Busted outcome while the KINGPIN was out is game over.
+    // (After the empire reset the active dealer is the fresh kingpin, so this
+    // stays true on the save-change refresh that delivers the epitaph board.)
+    let kingpin_fell = matches!(hand_state.outcome, Some(HandOutcome::Busted))
+        && save_data
+            .as_ref()
+            .map(|save| save.active_dealer_state().is_kingpin)
+            .unwrap_or(false);
 
     // Show overlay when hand reaches Bust state
     if hand_state.current_state == HandPhase::Bust {
@@ -370,6 +390,7 @@ pub fn update_resolution_overlay_system(
 
         **title_text = match hand_state.outcome {
             Some(HandOutcome::Safe) => "DEAL COMPLETE!".to_string(),
+            Some(HandOutcome::Busted) if kingpin_fell => "GAME OVER".to_string(),
             Some(HandOutcome::Busted) => "BUSTED!".to_string(),
             Some(HandOutcome::Folded) => "HAND FOLDED".to_string(),
             Some(HandOutcome::InvalidDeal) => "INVALID DEAL".to_string(),
@@ -425,7 +446,32 @@ pub fn update_resolution_overlay_system(
                 // busts as "Deck Exhausted" - exhaustion messaging lives on the
                 // NEW DEAL button ("OUT OF CARDS") instead.
                 results.push_str(&format!("Evidence: {} > Cover: {} ✗\n\n", totals.evidence, totals.cover));
-                results.push_str("You got caught!");
+                if kingpin_fell {
+                    // SOW-023: the boss went down - the empire falls onto the
+                    // arcade board (full story ledger archived in the epitaph)
+                    results.push_str("The boss went down. The empire fell.\n\n");
+                    if let Some(save) = save_data.as_ref() {
+                        let board = view::game_over_board(&save.fallen_empires);
+                        if !board.is_empty() {
+                            results.push_str("FALLEN EMPIRES\n");
+                            results.push_str(&board);
+                        }
+                    }
+                } else {
+                    results.push_str("You got caught!");
+                    // SOW-023: non-kingpin busts mean jail - show the sentence
+                    if let Some(save) = save_data.as_ref() {
+                        let dealer = save.active_dealer_state();
+                        if let Some(runs) = dealer.jail_remaining() {
+                            results.push_str(&format!(
+                                "\n{} is going away for {} run{}",
+                                dealer.name,
+                                runs,
+                                if runs == 1 { "" } else { "s" }
+                            ));
+                        }
+                    }
+                }
             }
             Some(HandOutcome::Folded) => {
                 results.push_str("You bailed out\n\nNo profit, no risk");

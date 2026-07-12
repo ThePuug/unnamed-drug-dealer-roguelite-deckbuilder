@@ -32,19 +32,22 @@ wins a purpose (roster, territory, legacy).
   sets the narc tier (RFC-018 unchanged — per-dealer difficulty), their play
   counts/upgrades apply, their story history records the run.
 
-### Jail (replaces permadeath)
+### Jail (replaces permadeath) — REVISED per Reed, 2026-07-12
 
-- A **Busted** resolution jails the ACTIVE dealer: `status = Jailed { until }`
-  where `until = now + base + f(heat at bust)` (real-time, same clock as heat
-  decay). Session pot is lost; the dealer keeps their identity and record.
-- While jailed a dealer cannot be sent out; the operations screen shows a
-  release countdown.
-- On release (lazily evaluated on load/screen entry, like decay): status
-  returns to Available and heat resets to 0 — jail is the heat valve, but it
-  costs real time and takes an asset off the board, replacing the old
-  "deliberate bust as free heat reset" exploit with a priced trade.
-- If ALL dealers are jailed and cash can't hire another: that is the fail
-  state pressure (not deletion — the empire waits or pays).
+- Sentences are **turn-based**, not wall-clock:
+  `Jailed { runs_remaining, sentence_total, heat_at_bust }` with
+  `sentence = 1 + max(heat,0)/25` runs. Every completed run by any OTHER
+  dealer ticks all sentences down — the empire keeps moving while someone sits.
+- **Serving time reduces heat proportionally**: released after k of n runs →
+  heat = heat_at_bust × (n−k)/n. A full sentence walks out at heat 0. Either
+  release path adds `prior_convictions += 1` — the heat clears but the record
+  doesn't (future difficulty hook). No decay while jailed (jail IS the valve).
+- **Bail**: pay $300 × runs_remaining from global cash to release early —
+  but the heat reduction stays proportional to time actually served.
+- **The kingpin is `dealers[0]`** (`is_kingpin`): the game starts with you
+  dealing yourself. The kingpin is never jailed and never hire-gated — but a
+  KINGPIN bust ends the empire (full SaveData reset, the one remaining
+  permadeath). Hired dealers absorb busts as jail time.
 
 ### Cash
 
@@ -68,3 +71,6 @@ wins a purpose (roster, territory, legacy).
 - DeckBuilding screen gains an operations panel (roster select/hire) — full
   operations screen redesign can come later; SOW-023 does the minimum panel.
 - e2e harness gains save isolation so scripted busts stop affecting real saves.
+- Kingpin game-over feeds an arcade board: `fallen_empires` epitaphs survive
+  `reset_empire` (stats displayed on the GAME OVER overlay; each epitaph
+  archives the empire's full story ledger for SOW-026's presentation call).

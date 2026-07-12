@@ -18,6 +18,14 @@ use game_state::{GameState, AiActionTimer};
 use save::SavePlugin;
 
 fn main() {
+    // SOW-023: dev subcommand - `cargo run -- forge <scenario> [--dir <path>]`
+    // writes a crafted, signed save for e2e playtests and exits (no App)
+    let cli_args: Vec<String> = std::env::args().collect();
+    if cli_args.get(1).map(String::as_str) == Some("forge") {
+        save::forge::run_cli(&cli_args[2..]);
+        return;
+    }
+
     let mut app = App::new();
 
     app.add_plugins(DefaultPlugins.set(WindowPlugin {
@@ -57,7 +65,7 @@ fn main() {
             setup_deck_builder,
         ).chain())
         .add_systems(OnEnter(GameState::InRun), (
-            ensure_character_on_run_start,
+            ensure_roster_on_run_start, // RFC-023: defensive roster invariant
             clear_upgrade_deferral, // SOW-021: re-prompt pending upgrades after next run
         ))
         .add_systems(OnExit(GameState::DeckBuilding), cleanup_deck_builder_ui)
@@ -99,7 +107,6 @@ fn main() {
             ui::update_turn_display_system,   // SOW-021/022: round + actor pill
             ui::update_resolution_overlay_system,
             ui::update_background_system,
-            update_character_heat_display_system,
             update_decay_display_system,
             clear_decay_display_system,
             update_account_cash_display_system,
@@ -112,6 +119,9 @@ fn main() {
         .add_systems(Update, (
             deck_builder_card_click_system,
             start_run_button_system,
+            roster_button_system,             // SOW-023: select/hire/bail
+            populate_roster_panel_system,     // SOW-023: roster strip
+            update_start_run_button_system,   // SOW-023: jailed = no run
             story_history_button_system,
             update_deck_builder_ui_system,
             populate_deck_builder_cards_system,
@@ -139,11 +149,10 @@ fn initialize_deck_builder_from_assets(
 ) {
     // RFC-019: Skip if pending upgrades (we're about to redirect to UpgradeChoice)
     // SOW-021: unless the player deferred them (DECIDE LATER) - then we stay here
+    // RFC-023: pending upgrades belong to the active dealer
     if let Some(ref data) = save_data {
-        if let Some(ref character) = data.character {
-            if character.has_pending_upgrades() && !deferred.0 {
-                return;
-            }
+        if data.active_character().has_pending_upgrades() && !deferred.0 {
+            return;
         }
     }
 
