@@ -140,13 +140,6 @@ impl HandState {
                     HandPhase::Draw
                 }
             },
-            HandPhase::FoldDecision => {
-                // Legacy state - should not be used anymore
-                // Fold happens during PlayerPhase now
-                self.current_round += 1;
-                self.reset_turn_tracking();
-                HandPhase::Draw
-            },
             HandPhase::Resolve => HandPhase::Bust, // Will be refined (Safe vs Busted)
             HandPhase::Bust => HandPhase::Bust, // Terminal state
         };

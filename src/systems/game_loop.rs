@@ -12,14 +12,15 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
 
     // Load emoji font (for emoji icons on cards)
     // DejaVuSans is used as the default font (set in main.rs) and supports ★ U+2605
-    let emoji_font = asset_server.load("fonts/NotoEmoji-VariableFont_wght.ttf");
-    commands.insert_resource(EmojiFont(emoji_font));
+    let emoji_font = EmojiFont(asset_server.load("fonts/NotoEmoji-VariableFont_wght.ttf"));
 
     // SOW-006: Don't spawn HandState at startup - only when START RUN is pressed
     // HandState will be created when transitioning from DeckBuilding to InRun
 
     // Create gameplay UI root (initially hidden)
-    create_ui(&mut commands);
+    // SOW-022: static emoji labels need the font handle at spawn time
+    create_ui(&mut commands, &emoji_font);
+    commands.insert_resource(emoji_font);
 }
 
 pub fn auto_flip_system(

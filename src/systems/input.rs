@@ -74,8 +74,10 @@ pub fn betting_button_system(
 // ============================================================================
 pub fn update_betting_button_states(
     hand_state_query: Query<&HandState>,
-    mut check_button_query: Query<&mut BackgroundColor, (With<CheckButton>, Without<FoldButton>)>,
-    mut fold_button_query: Query<&mut BackgroundColor, (With<FoldButton>, Without<CheckButton>)>,
+    mut check_button_query: Query<(&mut BackgroundGradient, &Children), (With<CheckButton>, Without<FoldButton>)>,
+    mut fold_button_query: Query<(&mut BorderColor, &Children), (With<FoldButton>, Without<CheckButton>)>,
+    mut text_colors: Query<&mut TextColor>,
+    mut last_enabled: Local<Option<bool>>,
 ) {
     let Ok(hand_state) = hand_state_query.single() else {
         return;
@@ -85,23 +87,43 @@ pub fn update_betting_button_states(
     let is_player_turn = hand_state.current_state == HandPhase::PlayerPhase &&
                          hand_state.current_player() == Owner::Player;
 
-    // Update Pass button (Check) - enabled when player's turn, disabled otherwise
-    let mut bg = check_button_query.single_mut()
-        .expect("Expected exactly one CheckButton");
-    *bg = if is_player_turn {
-        theme::BUTTON_ENABLED_BG.into()
-    } else {
-        theme::BUTTON_DISABLED_BG.into()
-    };
+    // SOW-022: restyle only on change (gradient/border/text swap)
+    if *last_enabled == Some(is_player_turn) {
+        return;
+    }
+    *last_enabled = Some(is_player_turn);
 
-    // Update Bail Out button (Fold) - enabled when player's turn, disabled otherwise
-    let mut bg = fold_button_query.single_mut()
-        .expect("Expected exactly one FoldButton");
-    *bg = if is_player_turn {
-        theme::BUTTON_NEUTRAL_BG.into()
-    } else {
-        theme::BUTTON_DISABLED_BG.into()
-    };
+    // PASS button: green gradient face when enabled, gray when not
+    if let Ok((mut gradient, children)) = check_button_query.single_mut() {
+        *gradient = crate::ui::setup::pass_button_gradient(is_player_turn);
+        for child in children.iter() {
+            if let Ok(mut color) = text_colors.get_mut(child) {
+                color.0 = if is_player_turn {
+                    theme::PASS_BUTTON_TEXT
+                } else {
+                    theme::PASS_BUTTON_TEXT_DISABLED
+                };
+            }
+        }
+    }
+
+    // BAIL OUT button: red border dims when disabled
+    if let Ok((mut border, children)) = fold_button_query.single_mut() {
+        *border = BorderColor::all(if is_player_turn {
+            theme::BAIL_BUTTON_BORDER
+        } else {
+            theme::BAIL_BUTTON_BORDER_DISABLED
+        });
+        for child in children.iter() {
+            if let Ok(mut color) = text_colors.get_mut(child) {
+                color.0 = if is_player_turn {
+                    theme::BAIL_BUTTON_TEXT
+                } else {
+                    theme::BAIL_BUTTON_TEXT_DISABLED
+                };
+            }
+        }
+    }
 }
 
 // ============================================================================

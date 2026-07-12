@@ -4,16 +4,16 @@
 // Updated for Bevy 0.18
 
 use bevy::prelude::*;
-use crate::{HandState, CardType, Card, HandPhase, HandOutcome, Owner};
+use crate::{HandState, CardType, Card, HandPhase, HandOutcome};
 use super::components::*;
 use super::helpers;
 use super::theme;
+use super::view;
 
 /// Update active slots with current Product/Location/Conviction/Insurance cards
 pub fn update_active_slots_system(
     mut hand_state_query: Query<&mut HandState, Changed<HandState>>,
     slots_query: Query<(Entity, &ActiveSlot)>,
-    discard_pile_query: Query<Entity, With<super::components::DiscardPile>>,
     mut commands: Commands,
     children_query: Query<&Children>,
     _card_display_query: Query<Entity, With<PlayedCardDisplay>>,
@@ -54,30 +54,10 @@ pub fn update_active_slots_system(
     }
 
     // Move replaced cards to discard pile
+    // (SOW-022: the discard STACK display derives from cards_played in
+    // update_deck_discard_system; discard_pile remains the engine-facing record)
     for card in replaced_cards {
         hand_state.discard_pile.push(card);
-    }
-
-    // Update discard pile display (vertical list of card names)
-    if let Ok(discard_entity) = discard_pile_query.single() {
-        // Clear old discard items (except header)
-        if let Ok(children) = children_query.get(discard_entity) {
-            // Skip first child (header "Discard Pile")
-            for child in children.iter().skip(1) {
-                commands.entity(child).despawn();
-            }
-        }
-
-        // Add discarded cards (most recent first)
-        commands.entity(discard_entity).with_children(|parent| {
-            for card in hand_state.discard_pile.iter().rev() {
-                parent.spawn((
-                    Text::new(&card.name),
-                    TextFont::from_font_size(11.0),
-                    TextColor(theme::TEXT_SECONDARY),
-                ));
-            }
-        });
     }
 
     // For each slot type, determine which card (if any) is active
@@ -134,31 +114,55 @@ pub fn update_active_slots_system(
                     _ => None, // Cover/DealModifier don't show tier badges
                 };
 
-                // Spawn actual card with Medium size, no margin - use template with upgrade
+                // SOW-022: Table-size card on "the deal on the table"
                 helpers::spawn_card_display_with_upgrade(
                     parent,
                     &card.name,
                     &card.card_type,
-                    helpers::CardSize::Medium,
+                    helpers::CardSize::Table,
                     helpers::CardDisplayState::Active,
                     PlayedCardDisplay,
                     game_assets.card_template.clone(),
                     &emoji_font,
                     upgrade_info,
                 );
+            } else if slot.slot_type == SlotType::Insurance {
+                // SOW-022: ghost "+ INSURANCE" slot invites the play
+                let (width, height) = helpers::CardSize::Table.dimensions();
+                parent.spawn((
+                    Node {
+                        width: Val::Px(width),
+                        height: Val::Px(height),
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
+                        border: UiRect::all(Val::Px(2.0)),
+                        border_radius: BorderRadius::all(Val::Px(12.0)),
+                        ..default()
+                    },
+                    BackgroundColor(theme::GHOST_INSURANCE_BG),
+                    BorderColor::all(theme::GHOST_INSURANCE_BORDER),
+                    PlayedCardDisplay,
+                ))
+                .with_children(|parent| {
+                    parent.spawn((
+                        Text::new("+ INSURANCE"),
+                        TextFont::from_font_size(12.0),
+                        TextColor(theme::GHOST_INSURANCE_TEXT),
+                    ));
+                });
             } else {
-                // Spawn ghosted placeholder (Medium size, no margin)
-                let (color, label) = match slot.slot_type {
-                    SlotType::Location => (theme::LOCATION_CARD_COLOR, "Location"),
-                    SlotType::Product => (theme::PRODUCT_CARD_COLOR, "Product"),
-                    SlotType::Conviction => (theme::CONVICTION_CARD_COLOR, "Conviction"),
-                    SlotType::Insurance => (theme::INSURANCE_CARD_COLOR, "Insurance"),
+                // Ghosted placeholder communicates the slot type by color
+                let color = match slot.slot_type {
+                    SlotType::Location => theme::LOCATION_CARD_COLOR,
+                    SlotType::Product => theme::PRODUCT_CARD_COLOR,
+                    SlotType::Conviction => theme::CONVICTION_CARD_COLOR,
+                    SlotType::Insurance => theme::INSURANCE_CARD_COLOR,
                 };
 
                 helpers::spawn_placeholder(
                     parent,
-                    label,
-                    helpers::CardSize::Medium,
+                    "",
+                    helpers::CardSize::Table,
                     color,
                     game_assets.card_placeholder.clone(),
                 );
@@ -167,53 +171,192 @@ pub fn update_active_slots_system(
     }
 }
 
-/// Update heat bar fill and color based on current heat
-pub fn update_heat_bar_system(
+/// SOW-022: YOUR STANDING panel - session cash, heat value/tier, 0..100 heat
+/// track with conviction-threshold tick marks
+pub fn update_standing_panel_system(
     hand_state_query: Query<&HandState, Changed<HandState>>,
-    mut bar_fill_query: Query<&mut Node, (With<HeatBarFill>, Without<HeatBar>)>,
-    mut bar_color_query: Query<&mut BackgroundColor, With<HeatBarFill>>,
-    mut bar_text_query: Query<&mut Text, With<HeatBarText>>,
+    mut texts: Query<&mut Text>,
+    cash_query: Query<Entity, With<StandingCashText>>,
+    heat_value_query: Query<Entity, With<StandingHeatValueText>>,
+    tier_text_query: Query<Entity, With<StandingHeatTierText>>,
+    mut text_colors: Query<&mut TextColor>,
+    mut tier_chip_query: Query<&mut BorderColor, With<StandingHeatTierChip>>,
+    mut fill_query: Query<&mut Node, With<StandingHeatBarFill>>,
+    ticks_query: Query<Entity, With<StandingHeatTicks>>,
+    tick_labels_query: Query<Entity, With<StandingHeatTickLabels>>,
+    children_query: Query<&Children>,
+    mut commands: Commands,
 ) {
     let Ok(hand_state) = hand_state_query.single() else {
         return;
     };
 
-    // Heat is accumulated immediately when cards are played, use current_heat directly
-    let current_heat = hand_state.current_heat;
-
-    // Get threshold from buyer scenario (None = no limit, show as 999)
-    let heat_threshold = hand_state.buyer_persona.as_ref()
-        .and_then(|p| p.active_scenario_index)
-        .and_then(|idx| hand_state.buyer_persona.as_ref()?.scenarios.get(idx))
-        .and_then(|s| s.heat_threshold)
-        .unwrap_or(999);
-
-    // Update heat bar fill percentage
-    let fill_percentage = if heat_threshold > 0 {
-        ((current_heat as f32 / heat_threshold as f32) * 100.0).min(100.0)
-    } else {
-        0.0
+    let mut set_text = |entity: Option<Entity>, value: String| {
+        if let Some(entity) = entity {
+            if let Ok(mut text) = texts.get_mut(entity) {
+                if **text != value {
+                    **text = value;
+                }
+            }
+        }
     };
 
-    if let Ok(mut node) = bar_fill_query.single_mut() {
-        node.height = Val::Percent(fill_percentage);
+    set_text(cash_query.single().ok(), view::format_cash(hand_state.cash));
+    set_text(heat_value_query.single().ok(), hand_state.current_heat.to_string());
+
+    // Heat tier chip (name + color from the shared HeatTier scale)
+    let tier = crate::save::HeatTier::from_heat(hand_state.current_heat);
+    let (r, g, b) = tier.color();
+    let tier_color = Color::srgb(r, g, b);
+    set_text(tier_text_query.single().ok(), tier.name().to_uppercase());
+    if let Ok(tier_entity) = tier_text_query.single() {
+        if let Ok(mut color) = text_colors.get_mut(tier_entity) {
+            color.0 = tier_color;
+        }
+    }
+    if let Ok(mut border) = tier_chip_query.single_mut() {
+        *border = BorderColor::all(tier_color.with_alpha(0.5));
     }
 
-    // Update heat bar color based on percentage
-    if let Ok(mut color) = bar_color_query.single_mut() {
-        let bar_color = if fill_percentage >= 80.0 {
-            theme::HEAT_BAR_RED
-        } else if fill_percentage >= 50.0 {
-            theme::HEAT_BAR_YELLOW
+    // Track fill on the fixed 0..100 scale
+    if let Ok(mut node) = fill_query.single_mut() {
+        let pct = hand_state.current_heat.min(view::HEAT_BAR_MAX) as f32
+            / view::HEAT_BAR_MAX as f32
+            * 100.0;
+        node.width = Val::Percent(pct);
+    }
+
+    // Conviction-threshold tick marks + labels (content-driven)
+    let ticks = view::conviction_ticks(hand_state);
+
+    if let Ok(ticks_entity) = ticks_query.single() {
+        if let Ok(children) = children_query.get(ticks_entity) {
+            for child in children.iter() {
+                commands.entity(child).despawn();
+            }
+        }
+        commands.entity(ticks_entity).with_children(|parent| {
+            for (threshold, _) in &ticks {
+                parent.spawn((
+                    Node {
+                        position_type: PositionType::Absolute,
+                        left: Val::Percent(*threshold as f32 / view::HEAT_BAR_MAX as f32 * 100.0),
+                        top: Val::Px(-2.0),
+                        bottom: Val::Px(-2.0),
+                        width: Val::Px(1.0),
+                        ..default()
+                    },
+                    BackgroundColor(theme::STANDING_TICK),
+                ));
+            }
+        });
+    }
+
+    if let Ok(labels_entity) = tick_labels_query.single() {
+        if let Ok(children) = children_query.get(labels_entity) {
+            for child in children.iter() {
+                commands.entity(child).despawn();
+            }
+        }
+        commands.entity(labels_entity).with_children(|parent| {
+            for (index, (threshold, name)) in ticks.iter().enumerate() {
+                // The nearest (lowest) threshold carries its card name
+                let (label, color) = if index == 0 {
+                    (format!("{name} {threshold}"), theme::STANDING_TICK_LABEL_FIRST)
+                } else {
+                    (threshold.to_string(), theme::STANDING_TICK_LABEL)
+                };
+                parent.spawn((
+                    Text::new(label),
+                    TextFont::from_font_size(9.0),
+                    TextColor(color),
+                    Node {
+                        position_type: PositionType::Absolute,
+                        left: Val::Percent(*threshold as f32 / view::HEAT_BAR_MAX as f32 * 100.0),
+                        ..default()
+                    },
+                    // center the label on the tick
+                    UiTransform::from_translation(Val2::percent(-50.0, 0.0)),
+                ));
+            }
+        });
+    }
+}
+
+/// SOW-022: Evidence vs Cover balance bar with SAFE/AT RISK + payout chips
+pub fn update_balance_bar_system(
+    hand_state_query: Query<&HandState, Changed<HandState>>,
+    mut texts: Query<&mut Text>,
+    evidence_text_query: Query<Entity, With<BalanceEvidenceText>>,
+    cover_text_query: Query<Entity, With<BalanceCoverText>>,
+    status_text_query: Query<Entity, With<BalanceStatusChipText>>,
+    payout_text_query: Query<Entity, With<BalancePayoutChipText>>,
+    mut text_colors: Query<&mut TextColor>,
+    mut status_chip_query: Query<(&mut BackgroundColor, &mut BorderColor), With<BalanceStatusChip>>,
+    mut fills: Query<&mut Node>,
+    evidence_fill_query: Query<Entity, With<BalanceEvidenceFill>>,
+    cover_fill_query: Query<Entity, With<BalanceCoverFill>>,
+    divider_query: Query<Entity, With<BalanceDivider>>,
+) {
+    let Ok(hand_state) = hand_state_query.single() else {
+        return;
+    };
+
+    let totals = hand_state.calculate_totals(true);
+
+    let mut set_text = |entity: Option<Entity>, value: String| {
+        if let Some(entity) = entity {
+            if let Ok(mut text) = texts.get_mut(entity) {
+                if **text != value {
+                    **text = value;
+                }
+            }
+        }
+    };
+
+    set_text(evidence_text_query.single().ok(), format!("EVIDENCE {}", totals.evidence));
+    set_text(cover_text_query.single().ok(), format!("COVER {}", totals.cover));
+
+    let multiplier = hand_state.get_profit_multiplier();
+    set_text(payout_text_query.single().ok(), format!("PAYOUT ×{multiplier:.1}"));
+
+    // SAFE / AT RISK chip (ties go to the player - resolution.rs)
+    let is_safe = totals.evidence <= totals.cover;
+    set_text(
+        status_text_query.single().ok(),
+        if is_safe { "SAFE".to_string() } else { "AT RISK".to_string() },
+    );
+    if let Ok(entity) = status_text_query.single() {
+        if let Ok(mut color) = text_colors.get_mut(entity) {
+            color.0 = if is_safe { theme::SAFE_CHIP_TEXT } else { theme::RISK_CHIP_TEXT };
+        }
+    }
+    if let Ok((mut bg, mut border)) = status_chip_query.single_mut() {
+        if is_safe {
+            *bg = theme::SAFE_CHIP_BG.into();
+            *border = BorderColor::all(theme::SAFE_CHIP_BORDER);
         } else {
-            theme::HEAT_BAR_GREEN
-        };
-        *color = bar_color.into();
+            *bg = theme::RISK_CHIP_BG.into();
+            *border = BorderColor::all(theme::RISK_CHIP_BORDER);
+        }
     }
 
-    // Update heat bar text
-    if let Ok(mut text) = bar_text_query.single_mut() {
-        **text = format!("{current_heat}/{heat_threshold}");
+    // Bar split
+    let evidence_pct = view::balance_split(totals.evidence, totals.cover);
+    if let Ok(entity) = evidence_fill_query.single() {
+        if let Ok(mut node) = fills.get_mut(entity) {
+            node.width = Val::Percent(evidence_pct);
+        }
+    }
+    if let Ok(entity) = cover_fill_query.single() {
+        if let Ok(mut node) = fills.get_mut(entity) {
+            node.width = Val::Percent(100.0 - evidence_pct);
+        }
+    }
+    if let Ok(entity) = divider_query.single() {
+        if let Ok(mut node) = fills.get_mut(entity) {
+            node.left = Val::Percent(evidence_pct);
+        }
     }
 }
 
@@ -494,41 +637,67 @@ pub fn ui_scroll_system(
     }
 }
 
-/// SOW-021: Round and turn indicator - the player must always know which of
-/// the 3 rounds they are in and whose action is in progress
-pub fn update_turn_indicator_system(
+/// SOW-021/SOW-022: Round header + actor pill - the player must always know
+/// which of the 3 rounds they are in and whose action is in progress
+pub fn update_turn_display_system(
     hand_state_query: Query<&HandState>,
-    mut indicator_query: Query<(&mut Text, &mut TextColor), With<TurnIndicatorText>>,
+    mut header_query: Query<&mut Text, (With<TurnIndicatorText>, Without<TurnPillText>)>,
+    mut pill_text_query: Query<(&mut Text, &mut TextColor), (With<TurnPillText>, Without<TurnIndicatorText>)>,
+    mut pill_query: Query<(&mut BackgroundColor, &mut BorderColor), (With<TurnPill>, Without<TurnPillDot>)>,
+    mut dot_query: Query<&mut BackgroundColor, (With<TurnPillDot>, Without<TurnPill>)>,
 ) {
     let Ok(hand_state) = hand_state_query.single() else {
         return;
     };
-    let Ok((mut text, mut color)) = indicator_query.single_mut() else {
-        return;
+
+    // Header line ("ROUND 2 / 3 · DEAL IN PROGRESS") - write only on change
+    if let Ok(mut text) = header_query.single_mut() {
+        let header = view::round_header(hand_state);
+        if **text != header {
+            **text = header;
+        }
+    }
+
+    let (label, actor) = view::turn_pill(hand_state);
+    let (bg, border, dot, text_color) = match actor {
+        view::PillActor::Narc => (
+            theme::PILL_NARC_BG,
+            theme::PILL_NARC_BORDER,
+            theme::PILL_NARC_DOT,
+            theme::PILL_NARC_TEXT,
+        ),
+        view::PillActor::Player => (
+            theme::PILL_PLAYER_BG,
+            theme::PILL_PLAYER_BORDER,
+            theme::PILL_PLAYER_DOT,
+            theme::PILL_PLAYER_TEXT,
+        ),
+        view::PillActor::Buyer => (
+            theme::PILL_BUYER_BG,
+            theme::PILL_BUYER_BORDER,
+            theme::PILL_BUYER_DOT,
+            theme::PILL_BUYER_TEXT,
+        ),
+        view::PillActor::Neutral => (
+            theme::PILL_NEUTRAL_BG,
+            theme::PILL_NEUTRAL_BORDER,
+            theme::PILL_NEUTRAL_DOT,
+            theme::PILL_NEUTRAL_TEXT,
+        ),
     };
 
-    let round = hand_state.current_round;
-    let (label, text_color) = match hand_state.current_state {
-        HandPhase::Draw => (format!("Round {}/3 — dealing...", round), theme::TEXT_SECONDARY),
-        HandPhase::PlayerPhase => {
-            if hand_state.all_players_acted() {
-                (format!("Round {}/3", round), theme::TEXT_SECONDARY)
-            } else if hand_state.current_player() == Owner::Player {
-                (format!("Round {}/3 — YOUR TURN", round), theme::TEXT_PRIMARY)
-            } else {
-                (format!("Round {}/3 — Narc is acting...", round), theme::EVIDENCE_CARD_COLOR)
+    if let Ok((mut text, mut color)) = pill_text_query.single_mut() {
+        // Label change gates all pill restyling (avoids per-frame dirtying)
+        if **text != label {
+            **text = label.to_string();
+            color.0 = text_color;
+            if let Ok((mut pill_bg, mut pill_border)) = pill_query.single_mut() {
+                *pill_bg = bg.into();
+                *pill_border = BorderColor::all(border);
+            }
+            if let Ok(mut dot_bg) = dot_query.single_mut() {
+                *dot_bg = dot.into();
             }
         }
-        HandPhase::DealerReveal => {
-            (format!("Round {}/3 — Buyer reacting...", round), theme::TEXT_SECONDARY)
-        }
-        HandPhase::FoldDecision => (format!("Round {}/3", round), theme::TEXT_SECONDARY),
-        HandPhase::Resolve | HandPhase::Bust => ("Hand complete".to_string(), theme::TEXT_SECONDARY),
-    };
-
-    // Only write on change to avoid dirtying the Text component every frame
-    if **text != label {
-        **text = label;
-        *color = TextColor(text_color);
     }
 }

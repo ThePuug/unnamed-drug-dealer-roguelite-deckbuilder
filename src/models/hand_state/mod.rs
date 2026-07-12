@@ -23,7 +23,8 @@ pub enum HandPhase {
     Draw,
     PlayerPhase,
     DealerReveal,
-    FoldDecision,
+    // SOW-022: FoldDecision removed (legacy since SOW-008 - fold happens
+    // during PlayerPhase via the BAIL OUT button, variant was never constructed)
     Resolve,
     Bust,
 }

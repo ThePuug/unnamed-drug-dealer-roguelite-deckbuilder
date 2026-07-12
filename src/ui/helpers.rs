@@ -11,15 +11,19 @@ use super::foil_material::FoilCard;
 /// Card display size variants
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum CardSize {
-    Small,    // Played pool cards, deck builder cards
-    Medium,   // Player hand, active slots, narc/buyer hands
+    Small,    // Deck builder cards
+    Table,    // SOW-022: "the deal on the table" slots
+    Hand,     // SOW-022: fanned player hand
+    Compact,  // SOW-022: discard stack top card
 }
 
 impl CardSize {
     pub fn dimensions(&self) -> (f32, f32) {
         match self {
             CardSize::Small => (theme::CARD_WIDTH_SMALL, theme::CARD_HEIGHT_SMALL),
-            CardSize::Medium => (theme::CARD_WIDTH_MEDIUM, theme::CARD_HEIGHT_MEDIUM),
+            CardSize::Table => (theme::CARD_WIDTH_TABLE, theme::CARD_HEIGHT_TABLE),
+            CardSize::Hand => (theme::CARD_WIDTH_HAND, theme::CARD_HEIGHT_HAND),
+            CardSize::Compact => (theme::CARD_WIDTH_COMPACT, theme::CARD_HEIGHT_COMPACT),
         }
     }
 }
@@ -82,10 +86,7 @@ impl Default for UpgradeInfo {
     }
 }
 
-/// POC: Get stats to display for a card type (consistent ordering)
-fn get_card_stats(card_type: &CardType) -> Vec<StatInfo> {
-    get_card_stats_with_multiplier(card_type, 1.0)
-}
+// SOW-022: get_card_stats removed (all callers pass an explicit multiplier)
 
 /// RFC-017: Get stats with upgrade multiplier applied to primary stat
 fn get_card_stats_with_multiplier(card_type: &CardType, multiplier: f32) -> Vec<StatInfo> {
@@ -182,102 +183,8 @@ fn get_card_category(card_type: &CardType) -> &'static str {
     }
 }
 
-/// POC: Spawn a card button using the template image with text overlays
-pub fn spawn_card_button_with_template<T: Component>(
-    parent: &mut ChildSpawnerCommands,
-    card_name: &str,
-    card_type: &CardType,
-    size: CardSize,
-    state: CardDisplayState,
-    marker: T,
-    template_image: Handle<Image>,
-    emoji_font: &EmojiFont,
-) {
-    let (width, _height) = size.dimensions();
-    let card_color = get_card_color(card_type, state);
-    let stats = get_card_stats(card_type);
-    let category = get_card_category(card_type);
-
-    // Template aspect ratio: Actual card_template.png dimensions (601x870)
-    let template_aspect = 601.0 / 870.0;
-    let height = width / template_aspect;
-
-    // Scale factor for text positioning based on card width
-    let scale = width / 120.0; // Base measurements for 120px width
-
-    parent.spawn((
-        Button,
-        Node {
-            width: Val::Px(width),
-            height: Val::Px(height),
-            position_type: PositionType::Relative,
-            ..default()
-        },
-        marker,
-    ))
-    .with_children(|parent| {
-        // Template background image (colorized, maintains aspect ratio)
-        parent.spawn((
-            ImageNode::new(template_image.clone()).with_color(card_color),
-            Node {
-                position_type: PositionType::Absolute,
-                width: Val::Percent(100.0),
-                height: Val::Percent(100.0),
-                ..default()
-            },
-        ));
-
-        spawn_card_text_overlays(parent, card_name, &stats, category, scale, emoji_font, None);
-    });
-}
-
-/// POC: Spawn a card display using the template image with text overlays
-pub fn spawn_card_with_template<T: Component>(
-    parent: &mut ChildSpawnerCommands,
-    card_name: &str,
-    card_type: &CardType,
-    size: CardSize,
-    state: CardDisplayState,
-    marker: T,
-    template_image: Handle<Image>,
-    emoji_font: &EmojiFont,
-) {
-    let (width, _height) = size.dimensions();
-    let card_color = get_card_color(card_type, state);
-    let stats = get_card_stats(card_type);
-    let category = get_card_category(card_type);
-
-    // Template aspect ratio: Actual card_template.png dimensions (601x870)
-    let template_aspect = 601.0 / 870.0;
-    let height = width / template_aspect;
-
-    // Scale factor for text positioning based on card width
-    let scale = width / 120.0; // Base measurements for 120px width
-
-    parent.spawn((
-        Node {
-            width: Val::Px(width),
-            height: Val::Px(height),
-            position_type: PositionType::Relative,
-            ..default()
-        },
-        marker,
-    ))
-    .with_children(|parent| {
-        // Template background image (colorized, maintains aspect ratio)
-        parent.spawn((
-            ImageNode::new(template_image).with_color(card_color),
-            Node {
-                position_type: PositionType::Absolute,
-                width: Val::Percent(100.0),
-                height: Val::Percent(100.0),
-                ..default()
-            },
-        ));
-
-        spawn_card_text_overlays(parent, card_name, &stats, category, scale, emoji_font, None);
-    });
-}
+// SOW-022: spawn_card_button_with_template and spawn_card_with_template removed
+// (legacy no-upgrade paths; buyer visible hand was their last caller)
 
 /// POC: Helper to spawn text overlays on card template
 fn spawn_card_text_overlays(
@@ -438,22 +345,7 @@ fn spawn_card_text_overlays(
     });
 }
 
-/// Spawn a card display node with a marker component
-/// Use this when you need to query for specific card entities
-/// POC: Now uses template image rendering
-pub fn spawn_card_display_with_marker<T: Component>(
-    parent: &mut ChildSpawnerCommands,
-    card_name: &str,
-    card_type: &CardType,
-    size: CardSize,
-    state: CardDisplayState,
-    _compact_text: bool,
-    marker: T,
-    template_image: Handle<Image>,
-    emoji_font: &EmojiFont,
-) {
-    spawn_card_display_with_upgrade(parent, card_name, card_type, size, state, marker, template_image, emoji_font, None);
-}
+// SOW-022: spawn_card_display_with_marker removed (unused legacy wrapper)
 
 /// RFC-017: Spawn a card display with upgrade tier info
 pub fn spawn_card_display_with_upgrade<T: Component>(
@@ -509,21 +401,7 @@ pub fn spawn_card_display_with_upgrade<T: Component>(
     });
 }
 
-/// Spawn a card button (interactive, clickable)
-/// Use this for player hand cards, deck builder cards
-/// POC: Now uses template image rendering
-pub fn spawn_card_button<T: Component>(
-    parent: &mut ChildSpawnerCommands,
-    card_name: &str,
-    card_type: &CardType,
-    size: CardSize,
-    state: CardDisplayState,
-    marker: T,
-    template_image: Handle<Image>,
-    emoji_font: &EmojiFont,
-) {
-    spawn_card_button_with_upgrade(parent, card_name, card_type, size, state, marker, template_image, emoji_font, None);
-}
+// SOW-022: spawn_card_button removed (unused legacy wrapper)
 
 /// RFC-017: Spawn a card button with upgrade tier display
 pub fn spawn_card_button_with_upgrade<T: Component>(

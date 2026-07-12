@@ -84,15 +84,18 @@ fn main() {
             update_restart_button_states,
         ).chain())
         .add_systems(Update, (
-            update_played_cards_display_system,
-            render_buyer_visible_hand_system,
-            render_narc_visible_hand_system,
             update_actor_portraits_system,
             recreate_hand_display_system,
-            ui_update_system,
+            hand_hover_system,                // SOW-022: hand fan hover lift
+            update_deck_discard_system,       // SOW-022: deck/discard stacks
+            update_narc_intent_system,        // SOW-022: intent telegraph
+            update_buyer_panel_system,        // SOW-022: wants bubble + chips
+            buyer_bubble_hover_system,        // SOW-022: hover detail
+            update_spotlights_system,         // SOW-022: actor spotlights
             ui::update_active_slots_system,
-            ui::update_heat_bar_system,
-            ui::update_turn_indicator_system, // SOW-021: round/turn indicator
+            ui::update_standing_panel_system, // SOW-022: cash + heat panel
+            ui::update_balance_bar_system,    // SOW-022: evidence vs cover
+            ui::update_turn_display_system,   // SOW-021/022: round + actor pill
             ui::update_resolution_overlay_system,
             ui::update_background_system,
             update_character_heat_display_system,
