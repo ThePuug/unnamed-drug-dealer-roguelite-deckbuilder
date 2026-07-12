@@ -11,7 +11,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 /// RFC-023: Bumped 2 -> 3 (single character replaced by dealer roster;
 /// pre-release wipe convention - older saves start fresh)
 // SOW-025: v4 adds dealer stations + street cred (pre-release wipe convention)
-pub const SAVE_VERSION: u32 = 4;
+pub const SAVE_VERSION: u32 = 5; // SOW-026: lean starting collection
 
 /// Maximum sanity values for validation
 const MAX_HEAT: u32 = 10_000;
@@ -1099,17 +1099,19 @@ impl AccountState {
     }
 
     /// SOW-020: Starting card collection for new players
-    /// These cards are unlocked by default from The Corner
+    /// SOW-026 lean start: WEED is the only starting product (Reed's
+    /// authoring-first gradient - "starting off you only have access to
+    /// weed"). Everything trimmed here was re-laddered into shop stock;
+    /// the fresh collection must still build a legal deck (>=1 Product,
+    /// >=1 Location) - asserted at load by validate_fresh_collection.
     pub fn starting_collection() -> HashSet<String> {
         HashSet::from([
-            // Products (basic tier)
+            // Product: one. The first shop unlock (Shrooms) doubles your
+            // productive hands per session - progression you can feel.
             "weed".to_string(),
-            "shrooms".to_string(),
-            "codeine".to_string(),
             // Locations (simple spots)
             "dead_drop".to_string(),
             "parking_lot".to_string(),
-            "at_the_park".to_string(),
             // Cover (basic)
             "alibi".to_string(),
             "fake_receipts".to_string(),
