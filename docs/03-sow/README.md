@@ -31,7 +31,7 @@ SOWs are work orders for developers. Each SOW defines what needs to be built, wh
 | 022 | Game Play Screen v2 | 🎨 UI | ✅ Merged | 2026-07-12 |
 | 023 | Kingpin & Dealers Foundation | 🎲 Roguelite | ✅ Merged | 2026-07-12 |
 | 024 | Areas & Unlocks | 💰 Economy | ✅ Merged | 2026-07-12 |
-| 025 | Street Cred & Stationing | 🎲 Roguelite | 🔄 Review | 2026-07-12 |
+| 025 | Street Cred & Stationing | 🎲 Roguelite | ✅ Merged | 2026-07-12 |
 | AAA | Code Organization - main.rs Modularization | 🛠️ Dev Tools | ✅ Merged | 2025-11-15 |
 
 **Legend:**

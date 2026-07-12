@@ -2,7 +2,7 @@
 
 ## Status
 
-**Review** - 2026-07-12 (all 4 phases complete on branch)
+**Merged** - 2026-07-12
 
 ## References
 
@@ -153,4 +153,41 @@ should eyeball the shop states.
 
 ## Acceptance Review
 
-*Populated after implementation.*
+### Scope Completion: 100%
+
+- ✅ Phase 1: Stationing + cred model (pilot gates: Storage Unit 3 Corner
+  cred, Heroin 5 Block cred)
+- ✅ Phase 2: Station-based runs, cred accrual, relocation ticking
+- ✅ Phase 3: Roster placement UI, MOVE buttons, shop gate states + credit line
+- ✅ Phase 4: `hustler` forge scenario, e2e, docs
+
+### Architectural Compliance
+
+170 tests (8 new); zero new warnings; all staged APIs consumed. Reuses the
+sentence-tick choke point for relocations; purchase re-checks cred
+server-side.
+
+### Player Experience Validation
+
+Verified live on the `hustler` scenario: roster cards with station/cred/
+status and both MOVE buttons; **"unlocked by The Kingpin" credit line** on
+the cred-met Storage Unit; **"NEEDS CRED 5 (best: 2)"** locked state on
+Heroin; and a live double relocation (user-clicked during the acceptance
+window): both dealers MOVING · 1 RUN, stations swapped, fees charged
+($1,500 → $1,000), per-station cred display correct, START RUN guard
+reading "MOVING".
+
+### Tuning flags carried to SOW-026/027
+
+Move fee $250 (cheapest roster action - fine at 2 areas), pilot cred
+thresholds 3/5 placeholder, sentence constant unfelt, Wolf ×2.8 unchecked.
+
+---
+
+## Sign-Off
+
+**Reviewed By:** ARCHITECT review + live acceptance e2e (user hands-on
+during the window)
+**Date:** 2026-07-12
+**Decision:** ✅ **ACCEPTED**
+**Status:** Merged to main
