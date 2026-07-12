@@ -71,3 +71,6 @@ wins a purpose (roster, territory, legacy).
 - DeckBuilding screen gains an operations panel (roster select/hire) — full
   operations screen redesign can come later; SOW-023 does the minimum panel.
 - e2e harness gains save isolation so scripted busts stop affecting real saves.
+- Kingpin game-over feeds an arcade board: `fallen_empires` epitaphs survive
+  `reset_empire` (stats displayed on the GAME OVER overlay; each epitaph
+  archives the empire's full story ledger for SOW-026's presentation call).
