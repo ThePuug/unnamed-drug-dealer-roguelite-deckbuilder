@@ -101,11 +101,23 @@
 
 ---
 
+## History & Legacy (P5) - 5/5 (100%)
+
+| Feature | Status | Notes |
+|---------|:------:|-------|
+| Story history per dealer | ✅ | CharacterState.story_history (narrative engine) |
+| Empire epitaphs (fallen-empires archive) | ✅ | SOW-023: EmpireEpitaph frozen at kingpin bust, survives reset, stories archived |
+| Kingpin Ledger overlay | ✅ | SOW-030: empire strip + roster dossiers + fallen board, stories one click deeper; everything DERIVED from existing save state (zero schema changes) |
+| Arcade board browsable outside game over | ✅ | SOW-030: living empire slotted unranked "IN PROGRESS" at its would-be rank; ties go to the dead record |
+| Per-zone history on the city map | ✅ | SOW-030: "n deals closed · best: <dealer>" derived from street cred, same numbers as the ledger |
+
+---
+
 ## Scrapped Features
 
 | Feature | Reason |
 |---------|--------|
-| Leaderboards (Flash/Kingpin/Survivor) | Deferred indefinitely |
+| Leaderboards (Flash/Kingpin/Survivor) | Superseded: the SOW-023/030 fallen-empires arcade board (lifetime revenue) is the leaderboard |
 | Narc variety from locations | Single Narc for MVP, Heat controls difficulty |
 
 ---

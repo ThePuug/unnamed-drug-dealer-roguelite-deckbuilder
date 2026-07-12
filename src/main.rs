@@ -59,6 +59,7 @@ fn main() {
         // the pending-upgrades frame where setup_deck_builder early-returns
         // before its insert_resource - a bare ResMut panics without this
         .init_resource::<systems::city_map::MapUiState>()
+        .init_resource::<systems::kingpin_ledger::LedgerUiState>() // SOW-030: same lesson
         .add_systems(Startup, setup)
         // Character persistence systems
         .add_systems(OnEnter(GameState::DeckBuilding), (
@@ -143,6 +144,15 @@ fn main() {
             update_shop_tab_visuals,
             update_location_button_visuals,
             ui::ui_scroll_system, // Bevy 0.18: Manual scroll handling
+        ).chain().run_if(in_state(GameState::DeckBuilding)))
+        // SOW-030: Kingpin ledger overlay - its own chained group (the hub
+        // chain is at Bevy's 20-system tuple limit); the ledger is
+        // self-contained (reads SaveData + its own resource, spawns only
+        // under LedgerBody), so cross-group order doesn't matter
+        .add_systems(Update, (
+            ledger_toggle_system,
+            ledger_story_click_system,
+            populate_ledger_system,
         ).chain().run_if(in_state(GameState::DeckBuilding)))
         .run();
 }

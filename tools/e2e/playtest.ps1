@@ -16,6 +16,8 @@
 #   START RUN (856,987 is NEW DEAL; START RUN bottom-right): (1798, 987)
 #   hand fan slots: (822|960|1098, 950)   PASS: (1565, 930)
 #   overlay: NEW DEAL (856, 694), GO HOME / END RUN / NEW EMPIRE (1056, 694)
+#   SOW-030 ledger: LEDGER tab (575, 40), CLOSE (1843, 79); panels at
+#     x centers ~304 (roster) / ~884 (board); first dossier ~(380, 290)
 #   SOW-029 city map: CITY MAP tab (415, 40), CLOSE (1843, 79),
 #     node i in shop_locations.ron order: center x = 450|960|1470,
 #     node action button (UNLOCK / SEND HERE): (450|960|1470, 887),
@@ -96,7 +98,7 @@ if ($BuyArea -ne "") {
 # 3. Optional roster actions before the run
 if ($Hire) {
   # HIRE card sits after the dealer cards; count dealers from the forge scenario
-  $dealerCount = switch ($Scenario) { "roster" { 3 } default { 1 } }
+  $dealerCount = switch ($Scenario) { "roster" { 3 } "hustler" { 2 } "legacy" { 2 } default { 1 } }
   $hireX = 30 + $dealerCount * 260 + 70
   & $drv -Action click -X $hireX -Y 120 | Out-Null
   Start-Sleep -Milliseconds 800

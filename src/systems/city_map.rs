@@ -347,6 +347,17 @@ fn spawn_zone_node(
                 for chip in &node.dealers {
                     spawn_dealer_chip(card, chip, selected);
                 }
+
+                // SOW-030: zone history, derived from the same numbers as
+                // the ledger. BELOW the chips so the harness's chip-y
+                // reference coordinates stay put.
+                if let Some(history) = crate::ui::ledger_view::zone_history_line(save_data, &node.area_id) {
+                    card.spawn((
+                        Text::new(history),
+                        TextFont::from_font_size(12.0),
+                        TextColor(theme::SHOP_CREDIT_LINE_TEXT),
+                    ));
+                }
             }
 
             // Action area pinned to the card bottom

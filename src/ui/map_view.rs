@@ -145,7 +145,8 @@ pub fn zone_status(area: &ShopLocationDef, save: &SaveData) -> ZoneStatus {
     }
 }
 
-fn chip_status_note(dealer: &DealerState) -> Option<String> {
+/// Status suffix shared by map chips and ledger dossiers (SOW-030)
+pub fn chip_status_note(dealer: &DealerState) -> Option<String> {
     let plural = |n: u32| if n == 1 { "" } else { "S" };
     if let Some(runs) = dealer.jail_remaining() {
         Some(format!("JAILED · {} RUN{}", runs, plural(runs)))

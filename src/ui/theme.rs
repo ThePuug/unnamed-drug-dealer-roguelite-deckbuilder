@@ -290,6 +290,12 @@ pub const ROSTER_LAWYER_BG: Color = Color::srgb(0.45, 0.3, 0.55);            // 
 pub const SHOP_CRED_LOCK_TEXT: Color = Color::srgb(1.0, 0.55, 0.45);         // "NEEDS CRED n"
 pub const SHOP_CREDIT_LINE_TEXT: Color = Color::srgb(0.85, 0.75, 0.45);      // "unlocked by Ray"
 
+// SOW-030: Kingpin Ledger
+pub const LEDGER_TAB_BG: Color = Color::srgb(0.5, 0.4, 0.18);                // records gold
+pub const LEDGER_CANVAS_BG: Color = Color::srgb(0.035, 0.025, 0.05);         // back-office dark
+pub const LEDGER_BOARD_CURRENT: Color = Color::srgb(1.0, 0.85, 0.3);         // IN PROGRESS row
+pub const LEDGER_STORY_TEXT: Color = Color::srgb(0.82, 0.82, 0.87);          // story feed body
+
 // ============================================================================
 // Helper Functions
 // ============================================================================
