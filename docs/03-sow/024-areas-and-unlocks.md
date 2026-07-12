@@ -2,7 +2,7 @@
 
 ## Status
 
-**Review** - 2026-07-12 (all 4 phases complete on branch; e2e-verified)
+**Merged** - 2026-07-12
 
 ## References
 
@@ -141,4 +141,41 @@ edits on main).
 
 ## Acceptance Review
 
-*Populated after implementation.*
+### Scope Completion: 100%
+
+- ✅ Phase 1: Area purchase model (`shop_locations.ron` now the loaded,
+  validated source of truth; `unlock_location` finally has its caller)
+- ✅ Phase 2: Two-stage territory run selection (area → that area's clientele)
+- ✅ Phase 3: Shop purchase flow ("THE BLOCK — $2,000", New-turf feedback)
+- ✅ Phase 4: `mogul` forge scenario + harness fixes (roster-strip tab
+  coordinates, outcome-aware overlay dismissal closing the SOW-023 papercut)
+
+### Architectural Compliance
+
+162 tests (13 new); zero new warnings (staged dead-code APIs gained callers).
+Content-driven areas with load-time validation per the authorability rule;
+purchase/gating logic pure and unit-tested.
+
+### Player Experience Validation
+
+e2e on isolated saves: Block purchase logged and persisted across relaunch,
+selector rebuilt, formerly-dead Block stock browsable (~$49k of authored
+content revived), cash $3,000 → $1,000; five run-start samples drew Block
+clientele (Wall Street Wolf ×3) and Corner clientele ×2; fresh-empire
+never-Wolf pinned by tests. User playtest of the purchase flow on main is
+welcome post-merge.
+
+### Balance flag for SOW-025+
+
+The Wolf's ×2.8 payout against current narc pressure is unchecked — tuning
+belongs with the stationing/authoring work.
+
+---
+
+## Sign-Off
+
+**Reviewed By:** ARCHITECT review + e2e evidence (design directed by Reed
+throughout; territory reframe + stationing-interim folded in mid-flight)
+**Date:** 2026-07-12
+**Decision:** ✅ **ACCEPTED**
+**Status:** Merged to main
