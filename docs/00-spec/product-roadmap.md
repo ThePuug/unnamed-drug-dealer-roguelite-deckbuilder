@@ -26,27 +26,52 @@ period when busted. **Cash is global.** The product needs:
    random-area run selection.
 3. ✅ **SOW-025 Street Cred & Stationing** — merged; stationed runs, cred
    accrual, cash+downtime moves, cred-gated shops with credit line.
-4. **SOW-026 Content Authoring Pass** — lean start (Weed-only), shop stock as
-   the progression ladder with cash+cred requirements, per-area buyer demands
-   (the difficulty gradient is authoring, per Reed).
-5. **SOW-027 Heat Economy** (P2) — pressure: per-AREA narc deck composition
-   (GDD scaling, territory-flavored) × per-dealer heat; relief: Lay Low +
-   crooked lawyer (easy areas already serve as authored cooling venues);
-   RFC-019 dead Heat-upgrade decision; Wolf ×2.8 balance check.
-6. **SOW-028 City Map Screen** — area picker/preview + move UI once areas
-   differ enough to preview.
-7. **SOW-029 Kingpin Ledger** (P5) — empire/dealer history + full
+4. ✅ **SOW-026 Content Authoring Pass** — merged; Weed-only lean start, full
+   cash+cred shop ladder, measured pacing (Shrooms session 2-3).
+5. ✅ **SOW-027 Heat Economy** — merged; per-area × per-tier narc
+   compositions (multipliers retired), Lay Low + Crooked Lawyer, Heat
+   upgrade wired, fresh floor ≤ Hot, ZERO-warnings baseline.
+6. **SOW-028 Third Zone: The Strip + zone coherence** (Reed: creative
+   freedom, adjust zones 1-2 as needed) — nightlife zone with the Pimp
+   persona, Ecstasy/Ice re-zoned there, Housewife → Block as its first-rung
+   clientele (fixes the Wolf ×2.8 gap), tuning pass across the 3-zone
+   ladder. Design: studio repo `2026-07-12-three-zones.md`.
+7. **SOW-029 City Map Screen** — area picker/preview + move UI, with three
+   real nodes to show.
+8. **SOW-030 Kingpin Ledger** (P5) — empire/dealer history + full
    fallen-empires arcade board.
+9. **SOW-031 Starter/Tutorial Arc — "Road to Your First Dealer"** —
+   OPTIONAL at empire start; skipping confers NO benefit (the arc earns
+   exactly what ordinary play would); graduation = the first $500 hire.
 
-## Current-state debts the roadmap must absorb
-
-- Fun-assessment root causes #1/#3 (nothing wagered / no goal): jail time IS
-  the wager once dealers are assets; "grow the empire" is the goal scaffold.
-- RFC-019 "Heat" upgrade stat is a no-op (flagged in SOW-022) — resolve in SOW-025.
-- e2e harness: needs isolated save dir (baseline playtest permadeathed the
-  live character) and outcome-aware overlay buttons.
+**Closed threads (Reed, 2026-07-12):** dev save wipes are a non-concern for
+the leaderboard; Lay Low stays committed (no cancel); heat stays global per
+dealer. Original debt list fully absorbed: jail-as-wager shipped (023),
+RFC-019 resolved (027), harness isolation/outcome-awareness shipped (023/024).
 
 ## Iteration Log
+
+### Iteration 6 — 2026-07-12
+
+- SOW-027 merged (172 tests, ZERO warnings — all 41 pre-existing removed,
+  −355 lines dead code): compositions with sparse inheritance, multipliers/⚖
+  retired, Lay Low ($200/2 runs/−40) + Lawyer ($625/−25), Heat upgrade
+  wired positive-only.
+- Measured: fresh blind floor Warm-35/Hot-85, no busts (was Inferno-184 with
+  fresh GAME OVERs); target-play unregressed; Wolf ×2.8 confirmed gated
+  behind Coke — first-rung fix designed into SOW-028 zone coherence.
+- Reed: creative freedom on zone three (+ adjust zones 1-2), tutorial arc
+  onto the roadmap (optional, no skip benefit), three threads closed.
+  Three-zone city designed (Corner / Strip / Block).
+- Next: SOW-028 The Strip.
+
+### Iteration 5 — 2026-07-12
+
+- SOW-026 merged (174 tests): 8-card Weed-only start, full cash+cred ladder
+  (Shrooms $100·1 → Fentanyl $12k·6), pacing measured (target-play reaches
+  Shrooms session 2-3; Block 10-20 sessions), one tune (Shrooms $150→$100).
+- Exposed the fresh-floor problem (Inferno-184 in 3 blind sessions) —
+  carried as SOW-027's measured acceptance bar.
 
 ### Iteration 4 — 2026-07-12
 
