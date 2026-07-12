@@ -2,7 +2,7 @@
 
 **Spec:** [progression-meta.md](progression-meta.md)
 **Last Updated:** 2026-07-12
-**Overall Status:** 30/38 features complete (79%)
+**Overall Status:** 31/39 features complete (79%)
 
 ---
 
@@ -11,12 +11,12 @@
 | Category | Complete | Total | % |
 |----------|:--------:|:-----:|:-:|
 | Cash System | 5 | 5 | 100% |
-| Location System | 9 | 9 | 100% |
+| Location System | 10 | 10 | 100% |
 | Card Unlock System | 6 | 6 | 100% |
 | Per-Run Card Upgrades | 7 | 7 | 100% |
 | Character System | 3 | 7 | 43% |
 | Achievements | 0 | 4 | 0% |
-| **Total** | **30** | **38** | **79%** |
+| **Total** | **31** | **39** | **79%** |
 
 ---
 
@@ -32,7 +32,7 @@
 
 ---
 
-## Location System - 9/9 (100%)
+## Location System - 10/10 (100%)
 
 | Feature | Status | Notes |
 |---------|:------:|-------|
@@ -45,6 +45,7 @@
 | Dealer stationing (runs happen where the dealer stands) | ✅ | SOW-025: station per dealer, move = $250 + 1-run downtime, replaces SOW-024's interim random pick |
 | Street cred per dealer per area | ✅ | SOW-025: +1 per Safe deal in the run's area, never decays; roster card shows "STATION · CRED n" |
 | Cred-gated shop stock | ✅ | SOW-025: `shop_cred_required` in card RON (pilots: Storage Unit 3, Heroin 5); roster's best cred opens the door, shop credits the dealer by name |
+| City map screen (area picker + move UI) | ✅ | SOW-029: full-screen overlay with three zone node cards (clientele + payout band, products, narc hint, stationed-dealer chips, ★ best cred); zone unlocks and dealer relocation both live on the map |
 
 ---
 

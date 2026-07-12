@@ -16,6 +16,12 @@
 #   START RUN (856,987 is NEW DEAL; START RUN bottom-right): (1798, 987)
 #   hand fan slots: (822|960|1098, 950)   PASS: (1565, 930)
 #   overlay: NEW DEAL (856, 694), GO HOME / END RUN / NEW EMPIRE (1056, 694)
+#   SOW-029 city map: CITY MAP tab (415, 40), CLOSE (1843, 79),
+#     node i in shop_locations.ron order: center x = 450|960|1470,
+#     node action button (UNLOCK / SEND HERE): (450|960|1470, 887),
+#     first dealer chip on a node: (450|960|1470, 533)
+#   (zone unlocks moved to the map - the shop selector row lists unlocked
+#   areas only)
 
 param(
   [string]$Scenario = "fresh",
@@ -67,16 +73,20 @@ function Outcome-Count {
 
 & $drv -Action shot -OutFile (Join-Path $OutDir "00-deckbuilder.png") | Out-Null
 
-# 3a. SOW-024: optional territory purchase (shop tab -> unlock button -> back)
+# 3a. SOW-024/SOW-029: optional territory purchase (city map -> node UNLOCK)
 if ($BuyArea -ne "") {
-  & $drv -Action click -X 260 -Y 40 | Out-Null   # SHOP tab (reveals selector)
+  # Node index follows shop_locations.ron definition order
+  $nodeX = switch ($BuyArea) {
+    "the_corner" { 450 } "the_strip" { 960 } "the_block" { 1470 }
+    default { throw "unknown area '$BuyArea'" }
+  }
+  & $drv -Action click -X 415 -Y 40 | Out-Null   # CITY MAP tab
   Start-Sleep -Milliseconds 800
-  & $drv -Action shot -OutFile (Join-Path $OutDir "01-shop-locked.png") | Out-Null
-  # Locked-area unlock button sits after the unlocked Corner button
-  & $drv -Action click -X 605 -Y 40 | Out-Null
+  & $drv -Action shot -OutFile (Join-Path $OutDir "01-map-locked.png") | Out-Null
+  & $drv -Action click -X $nodeX -Y 887 | Out-Null   # node UNLOCK button
   Start-Sleep -Milliseconds 1000
   & $drv -Action shot -OutFile (Join-Path $OutDir "02-after-unlock.png") | Out-Null
-  & $drv -Action click -X 95 -Y 40 | Out-Null    # YOUR CARDS tab back
+  & $drv -Action click -X 1843 -Y 79 | Out-Null  # CLOSE the map
   Start-Sleep -Milliseconds 500
 }
 
