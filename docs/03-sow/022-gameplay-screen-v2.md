@@ -2,7 +2,7 @@
 
 ## Status
 
-**Review** - 2026-07-12 (implementation + adversarial review + e2e verification complete; awaiting user playtest sign-off)
+**Merged** - 2026-07-12
 
 ## References
 
@@ -266,7 +266,9 @@ No new per-frame despawn/respawn paths; rebuild-style systems remain gated on
 
 ## Sign-Off
 
-**Reviewed By:** pending (user playtest)
-**Date:** —
-**Decision:** pending
-**Status:** Branch `sow-022-gameplay-v2` ready for review
+**Reviewed By:** User playtest (2026-07-12) + ARCHITECT review; playtest-directed
+iterations landed on-branch (bubble symmetry, confidence face, ghost slots,
+signed heat, buyer callout, background race, minimize-crash guard)
+**Date:** 2026-07-12
+**Decision:** ✅ **ACCEPTED**
+**Status:** Merged to main
