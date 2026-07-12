@@ -1,7 +1,7 @@
 // SOW-013-A Phase 3: Asset loader using direct RON loading at startup
 
 use bevy::prelude::*;
-use crate::models::card::Card;
+use crate::models::card::{Card, CardType};
 use crate::models::buyer::BuyerPersona;
 use crate::game_state::GameState;
 use super::registry::GameAssets;
@@ -275,6 +275,27 @@ fn load_game_assets(mut commands: Commands, asset_server: Res<AssetServer>, mut 
         }
     }
 
+    // SOW-026: the lean starting collection must still build a legal deck
+    // (>=1 Product, >=1 Location) - fail loudly in debug, error in release.
+    let all_player_cards = collect_player_cards(&game_assets);
+    if let Err(e) = validate_fresh_collection(&all_player_cards) {
+        #[cfg(debug_assertions)]
+        panic!("Fresh collection validation failed: {}", e);
+        #[cfg(not(debug_assertions))]
+        error!("Fresh collection validation failed: {}", e);
+    }
+
+    // SOW-026: every scenario must demand at least one product attainable
+    // at-or-before its buyer's rung on the area ladder (warn-only - an
+    // OR-demand with one reachable product still pays out).
+    for warning in ladder_attainability_warnings(
+        &game_assets.buyers,
+        &all_player_cards,
+        &game_assets.shop_locations,
+    ) {
+        warn!("Shop ladder: {}", warning);
+    }
+
     // Create StoryComposer resource with full narrative defaults (handles fallback internally)
     let story_composer = crate::models::narrative::StoryComposer::new(game_assets.narrative_defaults.clone());
     commands.insert_resource(story_composer);
@@ -349,6 +370,86 @@ fn validate_persona_areas(
         }
     }
     Ok(())
+}
+
+/// SOW-026: every player-ownable card across the loaded pools
+fn collect_player_cards(game_assets: &GameAssets) -> Vec<Card> {
+    game_assets
+        .products
+        .values()
+        .chain(game_assets.locations.values())
+        .chain(game_assets.cover.iter())
+        .chain(game_assets.insurance.iter())
+        .chain(game_assets.modifiers.iter())
+        .cloned()
+        .collect()
+}
+
+/// SOW-026: the fresh (starting-collection) pool must reference real cards
+/// and build a legal default deck - the lean start gates products hard, so
+/// this is the guard that keeps "lean" from becoming "unplayable"
+fn validate_fresh_collection(all_cards: &[Card]) -> Result<(), String> {
+    let unlocked = crate::save::AccountState::starting_collection();
+
+    for id in &unlocked {
+        if !all_cards.iter().any(|c| &c.id == id) {
+            return Err(format!(
+                "starting collection references unknown card id '{id}'"
+            ));
+        }
+    }
+
+    let available: Vec<Card> = all_cards
+        .iter()
+        .filter(|c| unlocked.contains(&c.id))
+        .cloned()
+        .collect();
+    let deck = crate::data::create_default_deck_from_available(&available);
+    crate::data::validate_deck(&deck)
+        .map_err(|e| format!("fresh starting collection cannot build a legal deck: {e}"))
+}
+
+/// SOW-026: warnings for scenarios whose demanded products are ALL gated
+/// above the buyer's area on the shop ladder (rung = position in
+/// shop_locations.ron; a demand no dealer could ever stock is a dead payout).
+/// Starting-collection products are attainable everywhere.
+fn ladder_attainability_warnings(
+    buyers: &[BuyerPersona],
+    all_cards: &[Card],
+    areas: &[crate::models::shop_location::ShopLocationDef],
+) -> Vec<String> {
+    let rung = |area_id: &str| areas.iter().position(|a| a.id == area_id);
+    let starting = crate::save::AccountState::starting_collection();
+    let mut warnings = Vec::new();
+
+    for buyer in buyers {
+        let Some(buyer_rung) = rung(&buyer.area) else {
+            continue; // unknown areas already fail validate_persona_areas
+        };
+        for scenario in &buyer.scenarios {
+            if scenario.products.is_empty() {
+                continue;
+            }
+            let attainable = scenario.products.iter().any(|name| {
+                all_cards.iter().any(|c| {
+                    &c.name == name
+                        && matches!(c.card_type, CardType::Product { .. })
+                        && (starting.contains(&c.id)
+                            || c.shop_location
+                                .as_deref()
+                                .and_then(&rung)
+                                .is_some_and(|r| r <= buyer_rung))
+                })
+            });
+            if !attainable {
+                warnings.push(format!(
+                    "scenario '{}' of '{}' ({}) demands only products gated above that area",
+                    scenario.display_name, buyer.display_name, buyer.area
+                ));
+            }
+        }
+    }
+    warnings
 }
 
 /// SOW-024: Load areas (shop locations) from RON file
@@ -650,6 +751,108 @@ mod tests {
         // And the reframe's headline: the Wolf is Block clientele
         let wolf = buyers.iter().find(|b| b.display_name == "Wall Street Wolf").unwrap();
         assert_eq!(wolf.area, "the_block");
+    }
+
+    fn load_all_shipped_player_cards() -> Vec<Card> {
+        let mut all = Vec::new();
+        for (path, kind) in [
+            ("assets/cards/products.ron", "Product"),
+            ("assets/cards/locations.ron", "Location"),
+            ("assets/cards/cover.ron", "Cover"),
+            ("assets/cards/insurance.ron", "Insurance"),
+            ("assets/cards/modifiers.ron", "Modifier"),
+        ] {
+            all.extend(load_and_validate_cards(path, kind).unwrap_or_else(|e| panic!("{e}")));
+        }
+        all
+    }
+
+    #[test]
+    fn test_shipped_fresh_collection_builds_valid_deck() {
+        // SOW-026 acceptance criterion: the lean start must boot to a legal
+        // deck, and Weed must be the ONLY starting product (Reed's gradient)
+        let all = load_all_shipped_player_cards();
+        validate_fresh_collection(&all).expect("fresh collection must build a legal deck");
+
+        let starting = crate::save::AccountState::starting_collection();
+        let starting_products: Vec<&str> = all
+            .iter()
+            .filter(|c| {
+                starting.contains(&c.id) && matches!(c.card_type, CardType::Product { .. })
+            })
+            .map(|c| c.name.as_str())
+            .collect();
+        assert_eq!(starting_products, vec!["Weed"]);
+    }
+
+    #[test]
+    fn test_shipped_ladder_leaves_no_card_orphaned() {
+        // Everything trimmed from the start must be purchasable: every card
+        // the lean pass removed from the collection is now shop-stocked with
+        // a real price, and every shop-located card carries a price.
+        // (Cards with NO shop_location are buyer-only by design - excluded.)
+        let all = load_all_shipped_player_cards();
+        for card in &all {
+            if card.shop_location.is_some() {
+                assert!(
+                    card.shop_price.is_some(),
+                    "shop card '{}' has a location but no price",
+                    card.name
+                );
+            }
+        }
+        // The three cards the lean start trimmed are on the ladder
+        for trimmed in ["shrooms", "codeine", "at_the_park"] {
+            let card = all.iter().find(|c| c.id == trimmed).expect("trimmed card exists");
+            assert!(
+                card.shop_price.unwrap_or(0) > 0 && card.shop_cred_required.is_some(),
+                "'{trimmed}' must be a priced, cred-gated shop unlock"
+            );
+        }
+    }
+
+    #[test]
+    fn test_shipped_demands_attainable_on_ladder() {
+        // SOW-026: zero dead payouts - every scenario can demand SOMETHING
+        // attainable at-or-before its buyer's area
+        let all = load_all_shipped_player_cards();
+        let areas = load_shop_locations("assets/data/shop_locations.ron").expect("areas load");
+        let buyers = load_and_validate_buyers("assets/buyers.ron").expect("buyers load");
+        let warnings = ladder_attainability_warnings(&buyers, &all, &areas);
+        assert!(warnings.is_empty(), "unattainable demands: {warnings:?}");
+    }
+
+    #[test]
+    fn test_ladder_warning_when_all_demands_gated_above() {
+        use crate::models::test_helpers::create_product;
+        let mut premium = create_product("Fentanyl", 200, 50);
+        premium.shop_location = Some("the_block".to_string());
+        let areas = vec![
+            crate::models::shop_location::ShopLocationDef {
+                id: "the_corner".to_string(),
+                name: "The Corner".to_string(),
+                description: "test".to_string(),
+                unlocked: true,
+                price: 0,
+            },
+            crate::models::shop_location::ShopLocationDef {
+                id: "the_block".to_string(),
+                name: "The Block".to_string(),
+                description: "test".to_string(),
+                unlocked: false,
+                price: 2000,
+            },
+        ];
+        // Corner buyer demanding a Block-gated product = dead payout -> warn
+        let buyer = test_buyer(vec!["Fentanyl"], vec![]);
+        let warnings = ladder_attainability_warnings(&[buyer], &[premium.clone()], &areas);
+        assert_eq!(warnings.len(), 1);
+
+        // The same demand from a Block buyer is fine
+        let mut block_buyer = test_buyer(vec!["Fentanyl"], vec![]);
+        block_buyer.area = "the_block".to_string();
+        let warnings = ladder_attainability_warnings(&[block_buyer], &[premium], &areas);
+        assert!(warnings.is_empty());
     }
 
     #[test]

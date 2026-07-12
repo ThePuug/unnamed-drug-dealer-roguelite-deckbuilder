@@ -52,7 +52,7 @@
 
 | Feature | Status | Notes |
 |---------|:------:|-------|
-| Starting collection | ✅ | SOW-020 |
+| Starting collection | ✅ | SOW-026: lean 8-card start (Weed the only product); shop ladder carries everything else with cash+cred requirements |
 | Location-specific card pools | ✅ | SOW-020 |
 | Cash purchase of cards | ✅ | SOW-020 |
 | Permanent card unlocks | ✅ | SOW-020 |
