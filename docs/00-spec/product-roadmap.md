@@ -24,11 +24,8 @@ period when busted. **Cash is global.** The product needs:
 1. ✅ **SOW-023 Kingpin & Dealers Foundation** (P1) — merged.
 2. ✅ **SOW-024 Areas & Unlocks** (P3+P4) — merged; territories with interim
    random-area run selection.
-3. **SOW-025 Street Cred & Stationing** — dealers stationed per area (run
-   area = station, replacing the interim pick), move = cash + downtime,
-   +1 cred per Safe deal, cred-gated shop unlocks with "unlocked by <dealer>"
-   credit line. Locked decisions: studio repo
-   `design-updates/2026-07-12-stationing-and-street-cred.md`.
+3. ✅ **SOW-025 Street Cred & Stationing** — merged; stationed runs, cred
+   accrual, cash+downtime moves, cred-gated shops with credit line.
 4. **SOW-026 Content Authoring Pass** — lean start (Weed-only), shop stock as
    the progression ladder with cash+cred requirements, per-area buyer demands
    (the difficulty gradient is authoring, per Reed).
@@ -50,6 +47,20 @@ period when busted. **Cash is global.** The product needs:
   live character) and outcome-aware overlay buttons.
 
 ## Iteration Log
+
+### Iteration 4 — 2026-07-12
+
+- SOW-025 merged (170 tests): dealers stationed per area, +1 cred per Safe
+  deal (never decays), moves at $250 + 1-run downtime via the sentence
+  ticker, cred-gated shop items with "unlocked by <dealer>" credit line and
+  "NEEDS CRED N (best: M)" locked states — all verified live on the hustler
+  scenario, including a user-clicked double relocation during acceptance.
+- Pilot gates: Storage Unit (3 Corner cred), Heroin (5 Block cred); Shrooms
+  couldn't take the pilot (it's starting collection) — becomes real in the
+  SOW-026 re-laddering.
+- Tuning flags carried: move fee vs hire vs bail feel, cred thresholds,
+  sentence constant, Wolf ×2.8.
+- Next: SOW-026 Content Authoring Pass.
 
 ### Iteration 3 — 2026-07-12
 
