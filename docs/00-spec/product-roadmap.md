@@ -96,3 +96,9 @@ period when busted. **Cash is global.** The product needs:
   makes it a wall, not a wager → P1 is correctly first.
 - RFC-023 + SOW-023 authored (kingpin & dealers foundation).
 - Open questions logged in SOW-023 Discussion.
+
+## Backlog (post-core)
+
+- **Starter/Tutorial arc — "Road to Your First Dealer"** (Reed, 2026-07-12):
+  onboarding whose graduation is affording the first $500 hire; teaches
+  deal → heat → bank → cred along the way. After the map screen + ledger.
