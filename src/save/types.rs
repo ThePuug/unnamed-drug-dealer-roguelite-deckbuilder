@@ -212,6 +212,57 @@ impl SaveData {
         MOVE_FEE
     }
 
+    /// SOW-027: send a dealer underground - LAY_LOW_COST up front, benched
+    /// for LAY_LOW_RUNS runs, sheds LAY_LOW_COOLING heat on resurfacing.
+    /// Available-only with heat to shed: a jailed dealer's heat is settled
+    /// by release()/bail (heat_at_bust bookkeeping), and a relocating or
+    /// laying-low dealer is already committed elsewhere.
+    /// Returns false (no mutation) if ineligible or unaffordable.
+    pub fn lay_low(&mut self, dealer_idx: usize) -> bool {
+        let Some(dealer) = self.dealers.get(dealer_idx) else {
+            return false;
+        };
+        if !dealer.is_available() || dealer.character.heat == 0 {
+            return false;
+        }
+        if !self.account.spend(LAY_LOW_COST) {
+            return false;
+        }
+        self.dealers[dealer_idx].status = DealerStatus::LayingLow {
+            runs_remaining: LAY_LOW_RUNS,
+        };
+        true
+    }
+
+    /// SOW-027: the lay-low package price (exposed for UI labels)
+    pub fn lay_low_cost(&self) -> u64 {
+        LAY_LOW_COST
+    }
+
+    /// SOW-027: pay the crooked lawyer - LAWYER_COST for an immediate
+    /// LAWYER_COOLING heat reduction, no downtime. Same eligibility as
+    /// lay_low: available, with heat to shed.
+    /// Returns false (no mutation) if ineligible or unaffordable.
+    pub fn hire_lawyer(&mut self, dealer_idx: usize) -> bool {
+        let Some(dealer) = self.dealers.get(dealer_idx) else {
+            return false;
+        };
+        if !dealer.is_available() || dealer.character.heat == 0 {
+            return false;
+        }
+        if !self.account.spend(LAWYER_COST) {
+            return false;
+        }
+        let heat = &mut self.dealers[dealer_idx].character.heat;
+        *heat = heat.saturating_sub(LAWYER_COOLING);
+        true
+    }
+
+    /// SOW-027: the lawyer's fee (exposed for UI labels)
+    pub fn lawyer_cost(&self) -> u64 {
+        LAWYER_COST
+    }
+
     /// SOW-025: the roster's best street cred for an area - any dealer's
     /// reputation opens doors there. Returns (dealer index, cred); the shop
     /// shows WHO is effectively unlocking ("unlocked by <name>").
@@ -823,6 +874,18 @@ const HIRE_BASE_COST: u64 = 500;
 /// SOW-025: flat relocation fee (tuning candidate - see SOW-025 Discussion)
 const MOVE_FEE: u64 = 250;
 
+/// SOW-027 coolers (tuning candidates - see SOW-027 Discussion).
+/// Lay Low is the committed package: the dealer goes dark for
+/// LAY_LOW_RUNS runs and sheds LAY_LOW_COOLING heat on resurfacing.
+const LAY_LOW_COST: u64 = 200;
+pub const LAY_LOW_RUNS: u32 = 2;
+pub const LAY_LOW_COOLING: u32 = 40;
+
+/// SOW-027: the Crooked Lawyer is the instant chunk - cash now, heat
+/// gone now, no downtime. That immediacy is what the premium buys.
+const LAWYER_COST: u64 = 625;
+pub const LAWYER_COOLING: u32 = 25;
+
 /// SOW-025: where every fresh dealer starts (the home turf; matches the
 /// area flagged `unlocked: true` in shop_locations.ron)
 pub const DEFAULT_STATION: &str = "the_corner";
@@ -858,6 +921,11 @@ pub enum DealerStatus {
     /// SOW-025: mid-move - getting established in the new station.
     /// Ticks down like a sentence; no heat effects (moving is cash + time).
     Relocating {
+        runs_remaining: u32,
+    },
+    /// SOW-027: gone dark to shed heat - benched like a relocation, but
+    /// completing the package sheds LAY_LOW_COOLING heat.
+    LayingLow {
         runs_remaining: u32,
     },
 }
@@ -968,6 +1036,14 @@ impl DealerState {
         }
     }
 
+    /// SOW-027: remaining lay-low downtime in runs (None if not laying low)
+    pub fn laying_low_remaining(&self) -> Option<u32> {
+        match self.status {
+            DealerStatus::LayingLow { runs_remaining } => Some(runs_remaining),
+            _ => None,
+        }
+    }
+
     /// Sentence this dealer for a bust. Kingpins are never jailed - the
     /// caller handles a kingpin bust as game over.
     pub fn jail(&mut self) {
@@ -1016,6 +1092,16 @@ impl DealerState {
             DealerStatus::Relocating { ref mut runs_remaining } => {
                 *runs_remaining = runs_remaining.saturating_sub(1);
                 if *runs_remaining == 0 {
+                    self.status = DealerStatus::Available;
+                    return true;
+                }
+                false
+            }
+            // SOW-027: resurfacing from laying low sheds the package's heat
+            DealerStatus::LayingLow { ref mut runs_remaining } => {
+                *runs_remaining = runs_remaining.saturating_sub(1);
+                if *runs_remaining == 0 {
+                    self.character.heat = self.character.heat.saturating_sub(LAY_LOW_COOLING);
                     self.status = DealerStatus::Available;
                     return true;
                 }
@@ -1506,6 +1592,99 @@ mod tests {
         assert!(save.move_dealer(0, "the_block"));
         assert!(!save.move_dealer(0, "the_corner")); // mid-relocation = unavailable
         assert_eq!(save.account.cash_on_hand, 750); // only one fee charged
+    }
+
+    #[test]
+    fn test_lay_low_costs_cash_and_downtime_then_cools() {
+        // SOW-027: $200 up front, 2 runs dark, -40 heat on resurfacing
+        let mut save = SaveData::new();
+        save.account.cash_on_hand = 1000;
+        save.dealers[0].character.heat = 100;
+
+        assert!(save.lay_low(0));
+        assert_eq!(save.account.cash_on_hand, 1000 - LAY_LOW_COST);
+        assert_eq!(save.dealers[0].laying_low_remaining(), Some(LAY_LOW_RUNS));
+        assert!(!save.dealers[0].is_available()); // committed - can't run
+        assert_eq!(save.dealers[0].character.heat, 100); // cooling on completion, not up front
+
+        assert!(!save.dealers[0].tick_sentence()); // 1 run left
+        assert_eq!(save.dealers[0].character.heat, 100);
+        assert!(save.dealers[0].tick_sentence()); // resurfaces
+        assert!(save.dealers[0].is_available());
+        assert_eq!(save.dealers[0].character.heat, 100 - LAY_LOW_COOLING);
+    }
+
+    #[test]
+    fn test_lay_low_cooling_floors_at_zero() {
+        let mut save = SaveData::new();
+        save.account.cash_on_hand = 1000;
+        save.dealers[0].character.heat = 15; // less than the -40 package
+
+        assert!(save.lay_low(0));
+        save.dealers[0].tick_sentence();
+        save.dealers[0].tick_sentence();
+        assert_eq!(save.dealers[0].character.heat, 0);
+    }
+
+    #[test]
+    fn test_lay_low_rejections() {
+        let mut save = SaveData::new();
+        save.dealers.push(DealerState::recruit(&save.dealers));
+        save.account.cash_on_hand = 1000;
+
+        assert!(!save.lay_low(0)); // no heat to shed
+        assert!(!save.lay_low(9)); // out of range
+
+        save.dealers[1].character.heat = 50;
+        save.dealers[1].jail();
+        assert!(!save.lay_low(1)); // jailed - heat settles via release/bail
+
+        save.dealers[0].character.heat = 50;
+        save.account.cash_on_hand = LAY_LOW_COST - 1;
+        assert!(!save.lay_low(0)); // can't afford
+        assert_eq!(save.account.cash_on_hand, LAY_LOW_COST - 1); // no partial spend
+
+        save.account.cash_on_hand = 1000;
+        assert!(save.lay_low(0));
+        assert!(!save.lay_low(0)); // already laying low
+        assert_eq!(save.account.cash_on_hand, 1000 - LAY_LOW_COST); // one fee
+    }
+
+    #[test]
+    fn test_lawyer_cools_immediately_with_no_downtime() {
+        // SOW-027: $625 for -25 heat right now - the premium buys immediacy
+        let mut save = SaveData::new();
+        save.account.cash_on_hand = 1000;
+        save.dealers[0].character.heat = 60;
+
+        assert!(save.hire_lawyer(0));
+        assert_eq!(save.account.cash_on_hand, 1000 - LAWYER_COST);
+        assert_eq!(save.dealers[0].character.heat, 60 - LAWYER_COOLING);
+        assert!(save.dealers[0].is_available()); // no bench time
+
+        // Floors at zero (shedding 25 from 10)
+        save.account.cash_on_hand = 1000;
+        save.dealers[0].character.heat = 10;
+        assert!(save.hire_lawyer(0));
+        assert_eq!(save.dealers[0].character.heat, 0);
+    }
+
+    #[test]
+    fn test_lawyer_rejections() {
+        let mut save = SaveData::new();
+        save.account.cash_on_hand = 10_000;
+
+        assert!(!save.hire_lawyer(0)); // no heat to shed
+        assert!(!save.hire_lawyer(9)); // out of range
+
+        save.dealers[0].character.heat = 50;
+        save.account.cash_on_hand = LAWYER_COST - 1;
+        assert!(!save.hire_lawyer(0)); // can't afford
+        assert_eq!(save.dealers[0].character.heat, 50); // no mutation
+
+        save.account.cash_on_hand = 1000;
+        assert!(save.lay_low(0));
+        assert!(!save.hire_lawyer(0)); // laying low = committed, no lawyer
     }
 
     #[test]

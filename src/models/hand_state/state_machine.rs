@@ -231,10 +231,13 @@ impl HandState {
         cards.deck.len() + cards.hand.iter().filter(|s| s.is_some()).count()
     }
 
-    /// Get heat value from a card (applies Narc multiplier for Evidence cards)
-    fn get_card_heat(&self, card: &Card, _owner: Owner) -> i32 {
+    /// Get heat value from a card. SOW-027: the RFC-019 Heat upgrade cools
+    /// the player's own cards - it reduces POSITIVE heat only (a
+    /// negative-heat card is already a benefit the upgrade must never
+    /// worsen) and never touches narc or buyer cards.
+    fn get_card_heat(&self, card: &Card, owner: Owner) -> i32 {
         use crate::CardType;
-        match &card.card_type {
+        let base = match &card.card_type {
             CardType::Product { heat, .. } => *heat,
             CardType::Location { heat, .. } => *heat,
             CardType::Cover { heat, .. } => *heat,
@@ -246,6 +249,13 @@ impl HandState {
             // in the deck composition now
             CardType::Evidence { heat, .. } => *heat,
             CardType::Conviction { .. } => 0, // Conviction doesn't add heat directly
+        };
+        if owner == Owner::Player && base > 0 {
+            let heat_mult =
+                2.0 - self.get_stat_multiplier(&card.name, crate::save::UpgradeableStat::Heat); // Decrease
+            (base as f32 * heat_mult) as i32
+        } else {
+            base
         }
     }
 
@@ -432,6 +442,54 @@ mod tests {
         assert!(hand_state.cards(Owner::Narc).hand.iter().any(|s| s.is_some()));
         assert!(hand_state.cards(Owner::Player).hand.iter().any(|s| s.is_some()));
         assert!(hand_state.cards(Owner::Buyer).hand.iter().any(|s| s.is_some()));
+    }
+
+    #[test]
+    fn test_heat_upgrade_cools_positive_heat_player_cards() {
+        // SOW-027: RFC-019 Heat upgrade wired into played-card heat
+        use crate::save::{CardUpgrades, UpgradeableStat};
+        let mut hand_state = HandState::default();
+        let hot_product = create_product("Ice", 80, 15);
+
+        assert_eq!(hand_state.get_card_heat(&hot_product, Owner::Player), 15);
+
+        let mut upgrades = CardUpgrades::new();
+        upgrades.add_upgrade(UpgradeableStat::Heat);
+        hand_state.card_upgrades.insert("Ice".to_string(), upgrades);
+
+        // One upgrade: mult 1.1 -> heat x0.9; 15 * 0.9 = 13.5, truncates
+        // like every other engine multiplier
+        assert_eq!(hand_state.get_card_heat(&hot_product, Owner::Player), 13);
+    }
+
+    #[test]
+    fn test_heat_upgrade_never_worsens_negative_heat_cards() {
+        // SOW-027 acceptance criterion: a negative-heat card is already a
+        // benefit - the Heat upgrade must not shrink (or touch) it
+        use crate::save::{CardUpgrades, UpgradeableStat};
+        let mut hand_state = HandState::default();
+        let cooling_location = create_location("Safe House", 10, 30, -5);
+
+        let mut upgrades = CardUpgrades::new();
+        upgrades.add_upgrade(UpgradeableStat::Heat);
+        upgrades.add_upgrade(UpgradeableStat::Heat);
+        hand_state.card_upgrades.insert("Safe House".to_string(), upgrades);
+
+        assert_eq!(hand_state.get_card_heat(&cooling_location, Owner::Player), -5);
+    }
+
+    #[test]
+    fn test_heat_upgrade_ignores_non_player_cards() {
+        // Player upgrades never soften narc evidence heat
+        use crate::save::{CardUpgrades, UpgradeableStat};
+        let mut hand_state = HandState::default();
+        let evidence = create_evidence("Patrol", 5, 5);
+
+        let mut upgrades = CardUpgrades::new();
+        upgrades.add_upgrade(UpgradeableStat::Heat);
+        hand_state.card_upgrades.insert("Patrol".to_string(), upgrades);
+
+        assert_eq!(hand_state.get_card_heat(&evidence, Owner::Narc), 5);
     }
 
     #[test]
