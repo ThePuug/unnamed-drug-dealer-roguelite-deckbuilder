@@ -2,7 +2,7 @@
 
 ## Status
 
-**Review** - 2026-07-12 (all 4 phases on `sow-030-kingpin-ledger`; 217 tests, zero warnings; save-integrity verified byte-identical)
+**Accepted** - 2026-07-12 (all 4 phases on `sow-030-kingpin-ledger`; 225 tests, zero warnings; save-integrity byte-identical; adversarial review findings fixed)
 
 ## References
 
@@ -178,6 +178,32 @@ recruit()'s skip-used/modulo-wrap logic needed no change.
   history line; chips unshifted.
 - Save integrity: SHA256 identical before/after the whole session.
 
+### Adversarial review (pre-merge, coordinator) — 4 findings, fixed 3d23634
+
+A 19-agent review panel (4 dimensions, 3 skeptics per finding) sustained
+four LOW-severity findings; a fifth (LEDGER tab shifting the shop row)
+was refuted 0/3. All four fixed:
+
+1. **Roster/board panels rendered unbounded rows** into a fixed-height
+   layout with no scroll and no tail — after ~13 game-overs the living
+   empire's gold IN PROGRESS row clipped off-screen (the review noted
+   the story panel had a cap for exactly this reason, but the other two
+   panels didn't). Fixed: caps as pure `ledger_view` functions (roster
+   8, board 10) with the IN PROGRESS row PINNED below the fold and
+   truthful tails.
+2. **epitaph_stories claimed newest-first** but the archive flat-maps
+   dealers in roster order — a hire's old stories rendered above the
+   kingpin's newest. No global chronology is derivable, so the feed is
+   now honest ARCHIVE order (per dealer, oldest first) — reads like a
+   case file.
+3. **"… 1 earlier stories"** plural bug in cap/tail logic living
+   untested in the ECS layer, violating the module's own stated rule.
+   Fixed by moving it into ledger_view (plural-correct, 8 new tests).
+4. **playtest.ps1 -Hire** dealer-count switch didn't know the 2-dealer
+   scenarios — `-Scenario legacy -Hire` would click Ray's card instead
+   of HIRE (silently changing the active runner). Fixed for legacy AND
+   the pre-existing hustler gap.
+
 ### For Reed
 
 - **Score formula**: lifetime revenue is the arcade score (already
@@ -195,4 +221,47 @@ recruit()'s skip-used/modulo-wrap logic needed no change.
 
 ## Acceptance Review
 
-*Populated after implementation.*
+**Reviewer:** ARCHITECT role (coordinator) — 2026-07-12
+**Verdict: ACCEPT**
+
+### Verification performed
+
+- **Build/test:** 225 passed / 0 failed / 0 warnings on `3d23634`
+  (+21 from the implementation: 20 ledger_view + 1 forge shape; +8 from
+  the review fixes: panel caps, board pinning, archive order, plurals).
+- **Branch hygiene:** all commits on `sow-030-kingpin-ledger`, main and
+  assets untouched, Reed's local asset edits intact.
+- **Derive-don't-record held:** zero save-schema changes; SHA256 of
+  save.dat byte-identical across a full live ledger session (implementer-
+  verified, method recorded in Discussion).
+- **Adversarial review:** 19-agent panel; 4 LOW findings sustained, all
+  fixed same-day (see Discussion); 1 finding refuted 0/3. Trend note:
+  SOW-029's review caught 2 HIGH; this one only LOWs — the SOW-029
+  lessons (init_resource, FocusPolicy::Block) were applied by
+  instruction and verified in-diff, which is the process working.
+- **Acceptance criteria:** met. Ledger live with dossiers + browsable
+  board + IN PROGRESS row; map nodes carry the zone history line; E1
+  portrait-pool fix in; no duplicated derivation (shared zone-history
+  helpers pinned by test).
+
+### Assessment
+
+- The epitaph-ordering finding is the deepest lesson: **a flat archive
+  cannot be re-sorted into chronology after the fact** — the fix is
+  honest presentation now, and IF Reed ever wants a true cross-empire
+  timeline, that's the event-log SOW (with timestamps), not a sort.
+- Panel capping as pure functions continues the view-model discipline;
+  the "presentation derivation must live in the _view module" rule is
+  now explicit in both ledger_view and the review record.
+- Deviations all sound (own system group at the 20-tuple limit; legacy
+  forge scenario; non-clickable IN PROGRESS row).
+
+### Carried forward
+
+- **Reed judgment (open):** arcade score formula (lifetime revenue for
+  now); "name your fallen empire" epitaph naming — schema addition
+  awaiting his nod (+ tombstone frame art ask if wanted).
+- Story feeds have no scroll — caps + tails are the mechanism until a
+  scroll pass is justified.
+- StoryHistoryOverlay focus gap (pre-SOW-029) still queued for
+  stabilization.
