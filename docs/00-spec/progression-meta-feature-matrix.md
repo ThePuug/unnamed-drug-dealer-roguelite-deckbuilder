@@ -1,8 +1,8 @@
 # Progression & Meta-Game - Feature Matrix
 
 **Spec:** [progression-meta.md](progression-meta.md)
-**Last Updated:** 2026-07-12
-**Overall Status:** 31/39 features complete (79%)
+**Last Updated:** 2026-07-13
+**Overall Status:** 41/49 features complete (84%)
 
 ---
 
@@ -13,10 +13,15 @@
 | Cash System | 5 | 5 | 100% |
 | Location System | 10 | 10 | 100% |
 | Card Unlock System | 6 | 6 | 100% |
+| Supplier System | 5 | 5 | 100% |
 | Per-Run Card Upgrades | 7 | 7 | 100% |
 | Character System | 3 | 7 | 43% |
 | Achievements | 0 | 4 | 0% |
-| **Total** | **31** | **39** | **79%** |
+| History & Legacy | 5 | 5 | 100% |
+| **Total** | **41** | **49** | **84%** |
+
+(Summary repaired 2026-07-13: History & Legacy existed as a section since
+SOW-030 but was missing from this table.)
 
 ---
 
@@ -59,6 +64,18 @@
 | Permanent card unlocks | ✅ | SOW-020 |
 | Card pricing tiers | ✅ | SOW-020 |
 | Card purchase UI | ✅ | SOW-020 |
+
+---
+
+## Supplier System - 5/5 (100%)
+
+| Feature | Status | Notes |
+|---------|:------:|-------|
+| Named supplier per zone | ✅ | SOW-031: authored in shop_locations.ron with voice (Lil Smoke / Miss Velvet / The Broker); header on each zone's shop tab |
+| Fronts against product cards | ✅ | SOW-031: take now at 25% vig, lump due in 4 runs on the run ticker (runner's own run counts); card playable while fronted, owned forever on payoff |
+| Escalation ladder | ✅ | SOW-031: CutOff (stock locked, one final window) → muscle (20% cash seizure, or active dealer benched 1 run when broke) + repossession → Soured (permanent, cash only) |
+| Front visibility surfaces | ✅ | SOW-031: hub clock next to START RUN, PAY on the shop header, supplier line on map nodes, OWED TO SUPPLIERS on the ledger strip |
+| Zone flavor authored in content | ✅ | SOW-031 (SOW-029 carry): identity + narc_hint moved from code into shop_locations.ron, required at load |
 
 ---
 

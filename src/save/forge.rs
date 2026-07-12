@@ -141,6 +141,28 @@ pub fn scenario(name: &str) -> Option<SaveData> {
                 ],
             });
         }
+        // SOW-031: a live front mid-window - Shrooms on Lil Smoke's credit
+        // ($125 owed, 3 of 4 runs left), $60 cash (can pay after ~1 deal),
+        // 1 Corner cred (Shrooms' gate was already cleared to front it)
+        "fronted" => {
+            save.account.cash_on_hand = 60;
+            save.dealers[0].add_cred(DEFAULT_STATION);
+            save.take_front("shrooms", DEFAULT_STATION, 100)
+                .expect("fronted scenario takes the shrooms front");
+            save.fronts[0].runs_remaining = 3;
+        }
+        // SOW-031: the muscle is one run out - CutOff standing, $40 cash
+        // (seizure = $8), front expires on the next completed run. Also
+        // demonstrates the stock lock on the Corner shop tab.
+        "strapped" => {
+            save.account.cash_on_hand = 40;
+            save.dealers[0].add_cred(DEFAULT_STATION);
+            save.take_front("shrooms", DEFAULT_STATION, 100)
+                .expect("strapped scenario takes the shrooms front");
+            save.supplier_standing
+                .insert(DEFAULT_STATION.to_string(), SupplierStanding::CutOff);
+            save.fronts[0].runs_remaining = 1;
+        }
         _ => return None,
     }
     Some(save)
@@ -149,12 +171,12 @@ pub fn scenario(name: &str) -> Option<SaveData> {
 /// CLI entry: parse `<scenario> [--dir <path>]`, write the signed save
 pub fn run_cli(args: &[String]) {
     let Some(name) = args.first() else {
-        eprintln!("usage: forge <fresh|funded|roster|hot|mogul|hustler|nightowl|legacy> [--dir <path>]");
+        eprintln!("usage: forge <fresh|funded|roster|hot|mogul|hustler|nightowl|legacy|fronted|strapped> [--dir <path>]");
         std::process::exit(2);
     };
 
     let Some(save) = scenario(name) else {
-        eprintln!("unknown scenario '{name}' (fresh|funded|roster|hot|mogul|hustler|nightowl|legacy)");
+        eprintln!("unknown scenario '{name}' (fresh|funded|roster|hot|mogul|hustler|nightowl|legacy|fronted|strapped)");
         std::process::exit(2);
     };
     save.validate().expect("forged scenario must pass save validation");
@@ -181,7 +203,10 @@ mod tests {
     #[test]
     fn every_scenario_validates_and_roundtrips() {
         let dir = tempdir().unwrap();
-        for name in ["fresh", "funded", "roster", "hot", "mogul", "hustler", "nightowl", "legacy"] {
+        for name in [
+            "fresh", "funded", "roster", "hot", "mogul", "hustler", "nightowl", "legacy",
+            "fronted", "strapped",
+        ] {
             let save = scenario(name).expect(name);
             save.validate().unwrap_or_else(|e| panic!("{name} invalid: {e:?}"));
 
@@ -234,6 +259,26 @@ mod tests {
         assert!(!save.dealers[0].character.story_history.is_empty());
         assert_eq!(save.dealers[1].name, "Ray");
         assert!(!save.dealers[1].character.story_history.is_empty());
+    }
+
+    #[test]
+    fn fronted_scenario_shape() {
+        let save = scenario("fronted").unwrap();
+        let front = save.front_in(DEFAULT_STATION).expect("front live");
+        assert_eq!(front.card_id, "shrooms");
+        assert_eq!(front.owed, 125);
+        assert_eq!(front.runs_remaining, 3);
+        assert!(save.account.unlocked_cards.contains("shrooms"), "playable while fronted");
+        assert_eq!(save.standing_with(DEFAULT_STATION), SupplierStanding::Good);
+        assert_eq!(save.account.cash_on_hand, 60);
+    }
+
+    #[test]
+    fn strapped_scenario_shape() {
+        let save = scenario("strapped").unwrap();
+        assert_eq!(save.standing_with(DEFAULT_STATION), SupplierStanding::CutOff);
+        assert_eq!(save.front_in(DEFAULT_STATION).unwrap().runs_remaining, 1);
+        assert_eq!(save.account.cash_on_hand, 40); // muscle seizure will be $8
     }
 
     #[test]

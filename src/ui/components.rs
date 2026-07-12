@@ -426,6 +426,29 @@ pub struct ShopAreaUnlockButton {
 pub struct ShopFeedbackText;
 
 // ============================================================================
+// SOW-031: Suppliers & fronts
+// ============================================================================
+
+/// FRONT button on an unaffordable product card - take it on the zone
+/// supplier's credit (owed = price + vig, due on the run ticker)
+#[derive(Component)]
+pub struct FrontTakeButton {
+    pub card_id: String,
+    pub area_id: String,
+    pub price: u32,
+}
+
+/// PAY button wherever the debt is visible (shop supplier header)
+#[derive(Component)]
+pub struct FrontPayButton {
+    pub area_id: String,
+}
+
+/// Hub pressure indicator near START RUN ("FRONT DUE IN 2 RUNS — ...")
+#[derive(Component)]
+pub struct FrontPressureText;
+
+// ============================================================================
 // SOW-029: City Map overlay (deck-builder screen)
 // ============================================================================
 

@@ -728,6 +728,15 @@ fn load_actor_portraits(asset_server: &AssetServer, game_assets: &mut GameAssets
         ("Pretty Woman", "pretty-woman.png"),
         ("Street Walker", "street-walker.png"),
         ("Widow", "widow.png"),
+        // SOW-031 (Reed art drop): five dealer faces for the hire pool
+        ("Julie", "julie.png"),
+        ("Marcus", "marcus.png"),
+        ("Gladys", "gladys.png"),
+        ("Bubba", "bubba.png"),
+        ("Roxanne", "roxanne.png"),
+        // SOW-031: the no-chosen-face-yet placeholder (worn by the kingpin
+        // until character customization ships; generic by design)
+        ("Silhouette", "silhouette.png"),
     ]);
 
     let mut count = 0;
@@ -814,6 +823,9 @@ mod tests {
             description: String::new(),
             unlocked,
             price: if unlocked { 0 } else { 2000 },
+            identity: "CRAFT".to_string(),
+            narc_hint: "eyes".to_string(),
+            supplier: None,
         };
 
         // OK: one area, one persona living there (test_buyer defaults to the_corner)
@@ -856,6 +868,16 @@ mod tests {
         assert_eq!(ids, vec!["the_corner", "the_strip", "the_block"]);
         let strip = areas.iter().find(|a| a.id == "the_strip").unwrap();
         assert_eq!(strip.price, 1200); // between free Corner and $2,000 Block
+
+        // SOW-031: every shipped zone carries its authored flavor + a named
+        // supplier (validate_shop_locations enforces it; this pins the
+        // shipped names so a content edit that renames one is deliberate)
+        let suppliers: Vec<&str> = areas
+            .iter()
+            .map(|a| a.supplier.as_ref().expect("supplier").name.as_str())
+            .collect();
+        assert_eq!(suppliers, vec!["Lil Smoke", "Miss Velvet", "The Broker"]);
+        assert!(areas.iter().all(|a| !a.identity.is_empty() && !a.narc_hint.is_empty()));
 
         let buyers = load_and_validate_buyers("assets/buyers.ron").expect("buyers load");
         let pimp = buyers.iter().find(|b| b.display_name == "Pimp").unwrap();
@@ -999,6 +1021,9 @@ mod tests {
                 description: "test".to_string(),
                 unlocked: true,
                 price: 0,
+                identity: "CRAFT".to_string(),
+                narc_hint: "eyes".to_string(),
+                supplier: None,
             },
             crate::models::shop_location::ShopLocationDef {
                 id: "the_block".to_string(),
@@ -1006,6 +1031,9 @@ mod tests {
                 description: "test".to_string(),
                 unlocked: false,
                 price: 2000,
+                identity: "CRAFT".to_string(),
+                narc_hint: "eyes".to_string(),
+                supplier: None,
             },
         ];
         // Corner buyer demanding a Block-gated product = dead payout -> warn

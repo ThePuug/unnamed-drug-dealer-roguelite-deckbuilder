@@ -1079,3 +1079,32 @@ pub fn update_actor_portraits_system(
         }
     }
 }
+
+/// SOW-031: the hub's front clock next to START RUN - the most urgent
+/// front named to its supplier, red ink when a due date is one run out.
+/// Empty while the books are clean. Derivation lives in ui::front_view.
+pub fn update_front_pressure_system(
+    save_data: Option<Res<crate::save::SaveData>>,
+    game_assets: Res<crate::assets::GameAssets>,
+    mut query: Query<(&mut Text, &mut TextColor), With<FrontPressureText>>,
+) {
+    let Some(save_data) = save_data else {
+        return;
+    };
+    if !save_data.is_changed() {
+        return;
+    }
+    for (mut text, mut color) in query.iter_mut() {
+        match crate::ui::front_view::pressure_line(&save_data, &game_assets.shop_locations) {
+            Some(line) => {
+                **text = line;
+                *color = TextColor(if crate::ui::front_view::pressure_urgent(&save_data) {
+                    theme::ROSTER_STATUS_JAILED
+                } else {
+                    theme::LEDGER_BOARD_CURRENT
+                });
+            }
+            None => **text = String::new(),
+        }
+    }
+}

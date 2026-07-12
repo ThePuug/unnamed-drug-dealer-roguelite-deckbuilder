@@ -16,11 +16,15 @@ use crate::save::{DealerState, SaveData};
 pub struct ZoneNodeView {
     pub area_id: String,
     pub name: String,
-    /// Zone identity line ("STREET CRAFT — ...")
-    pub identity: &'static str,
+    /// Zone identity line ("STREET CRAFT — ...") - authored in
+    /// shop_locations.ron since SOW-031 (the SOW-029 carry)
+    pub identity: String,
     /// Narc texture in fiction voice - stays visible on locked zones
     /// (risk is part of the pitch)
-    pub narc_hint: &'static str,
+    pub narc_hint: String,
+    /// SOW-031: "SUPPLIER: LIL SMOKE · DUE IN 2 RUNS — $125" (name only
+    /// while locked; standing/due only where you can actually shop)
+    pub supplier_line: Option<String>,
     pub status: ZoneStatus,
     /// "Frat Bro ×2.5" per persona whose home is this area
     pub clientele: Vec<String>,
@@ -57,28 +61,9 @@ pub struct DealerChip {
     pub status_note: Option<String>,
 }
 
-// ============================================================================
-// Zone flavor (code-side until Reed next touches shop_locations.ron -
-// authoring these as content fields is flagged in the SOW Discussion)
-// ============================================================================
-
-pub fn zone_identity(area_id: &str) -> &'static str {
-    match area_id {
-        "the_corner" => "STREET CRAFT — WHERE IT ALL STARTS",
-        "the_strip" => "CROWD CRAFT — CLUBS, CASH, NOISE",
-        "the_block" => "MONEY CRAFT — PRIVATE & PREMIUM",
-        _ => "NEW TERRITORY",
-    }
-}
-
-pub fn narc_hint(area_id: &str) -> &'static str {
-    match area_id {
-        "the_corner" => "patrols & donut breaks",
-        "the_strip" => "vice sweeps — loud but forgiving",
-        "the_block" => "task force — they build cases",
-        _ => "watchful eyes",
-    }
-}
+// Zone flavor moved INTO shop_locations.ron (SOW-031, the SOW-029 carry):
+// identity + narc_hint are authored fields on ShopLocationDef, required at
+// load by validate_shop_locations - the code-side fallbacks retired.
 
 // ============================================================================
 // Derivations
@@ -193,8 +178,9 @@ pub fn zone_node_view<'a>(
     ZoneNodeView {
         area_id: area.id.clone(),
         name: area.name.clone(),
-        identity: zone_identity(&area.id),
-        narc_hint: narc_hint(&area.id),
+        identity: area.identity.clone(),
+        narc_hint: area.narc_hint.clone(),
+        supplier_line: super::front_view::supplier_map_line(area, save),
         status: zone_status(area, save),
         clientele: clientele_lines(personas, &area.id),
         payout_band: payout_band(personas, &area.id),
@@ -300,6 +286,12 @@ mod tests {
             description: String::new(),
             unlocked,
             price,
+            identity: "SOME CRAFT".to_string(),
+            narc_hint: "watchful eyes".to_string(),
+            supplier: Some(crate::models::shop_location::SupplierDef {
+                name: "Plug".to_string(),
+                voice: "Trust me.".to_string(),
+            }),
         }
     }
 
@@ -518,18 +510,17 @@ mod tests {
         let save = save_with_cash(500);
         let personas = vec![persona("Pimp", "the_strip", 2.0)];
         let cards = vec![product("Ecstasy", "the_strip", 1600)];
-        let node = zone_node_view(&area("the_strip", false, 1200), &save, &personas, cards.iter());
+        let strip = area("the_strip", false, 1200);
+        let node = zone_node_view(&strip, &save, &personas, cards.iter());
 
         assert_eq!(node.status, ZoneStatus::Locked { price: 1200, affordable: false });
         assert_eq!(node.clientele, vec!["Pimp ×2.0"]);
         assert_eq!(node.products, vec!["Ecstasy"]);
-        assert_eq!(node.narc_hint, narc_hint("the_strip"));
+        // Flavor comes straight from the authored def (SOW-031: RON-sourced)
+        assert_eq!(node.identity, strip.identity);
+        assert_eq!(node.narc_hint, strip.narc_hint);
+        // SOW-031: locked zones still name their supplier - the aspiration
+        assert_eq!(node.supplier_line.as_deref(), Some("SUPPLIER: PLUG"));
         assert!(node.dealers.is_empty(), "nobody can be stationed in a locked zone");
-    }
-
-    #[test]
-    fn unknown_area_gets_fallback_flavor() {
-        assert_eq!(zone_identity("the_docks"), "NEW TERRITORY");
-        assert_eq!(narc_hint("the_docks"), "watchful eyes");
     }
 }

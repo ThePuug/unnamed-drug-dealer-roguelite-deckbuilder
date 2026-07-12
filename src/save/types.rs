@@ -11,7 +11,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 /// RFC-023: Bumped 2 -> 3 (single character replaced by dealer roster;
 /// pre-release wipe convention - older saves start fresh)
 // SOW-025: v4 adds dealer stations + street cred (pre-release wipe convention)
-pub const SAVE_VERSION: u32 = 5; // SOW-026: lean starting collection
+// SOW-031: v6 adds fronts + supplier standings (pre-release wipe convention)
+pub const SAVE_VERSION: u32 = 6;
 
 /// Maximum sanity values for validation
 const MAX_HEAT: u32 = 10_000;
@@ -79,6 +80,59 @@ pub struct SaveData {
     /// history for the SOW-026 ledger (not displayed yet).
     #[serde(default)]
     pub fallen_empires: Vec<EmpireEpitaph>,
+    /// SOW-031: active fronts - cards taken on supplier credit, due on the
+    /// run ticker. Old saves default to none.
+    #[serde(default)]
+    pub fronts: Vec<FrontState>,
+    /// SOW-031: standing with each zone's supplier (area id -> standing).
+    /// Absent entries read Good - old saves start clean.
+    #[serde(default)]
+    pub supplier_standing: HashMap<String, SupplierStanding>,
+}
+
+/// SOW-031: a card taken on credit from a zone's supplier
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct FrontState {
+    pub card_id: String,
+    /// The zone whose supplier fronted it (the supplier is the face,
+    /// the zone is the account)
+    pub area_id: String,
+    /// The lump due: shop price + vig
+    pub owed: u64,
+    /// Runs until the due date. EVERY completed run ticks this, including
+    /// the runner's own (unlike jail) - that is the whole point: an
+    /// unproductive run still spends a tick toward consequence.
+    pub runs_remaining: u32,
+}
+
+/// SOW-031: how a zone's supplier sees the empire
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum SupplierStanding {
+    /// Fronts on offer, stock open
+    #[default]
+    Good,
+    /// Blew a due date: stock locked until the debt is settled, and the
+    /// front got one more window before the muscle visits
+    CutOff,
+    /// Blew the second window: muscle came, card repossessed, and this
+    /// supplier never fronts again (the supply-side prior_convictions)
+    Soured,
+}
+
+/// SOW-031: what happened when the front ticker crossed a due date
+#[derive(Debug, Clone, PartialEq)]
+pub enum FrontEvent {
+    /// First expiry: supplier cuts the empire off (stock locked) and
+    /// grants one final window
+    CutOff { area_id: String },
+    /// Second expiry: muscle seized cash
+    MuscleSeized { area_id: String, amount: u64 },
+    /// Second expiry with nothing to seize: the active dealer takes a
+    /// beating - benched one run (an unavailable dealer is spared; the
+    /// repossession and souring still land)
+    MuscleBenched { area_id: String, dealer: String },
+    /// The card went back and the bridge burned
+    Soured { area_id: String, card_id: String },
 }
 
 /// The tombstone of one empire: summary stats for the arcade leaderboard
@@ -134,6 +188,8 @@ impl SaveData {
             active_dealer: 0,
             account: AccountState::new(),
             fallen_empires: Vec::new(),
+            fronts: Vec::new(),
+            supplier_standing: HashMap::new(),
         }
     }
 
@@ -263,6 +319,154 @@ impl SaveData {
         LAWYER_COST
     }
 
+    // ------------------------------------------------------------------
+    // SOW-031: fronts - supplier credit against cards
+    // ------------------------------------------------------------------
+
+    /// The active front with a zone's supplier, if any (one per supplier)
+    pub fn front_in(&self, area_id: &str) -> Option<&FrontState> {
+        self.fronts.iter().find(|f| f.area_id == area_id)
+    }
+
+    /// Standing with a zone's supplier; absent entries read Good
+    pub fn standing_with(&self, area_id: &str) -> SupplierStanding {
+        self.supplier_standing
+            .get(area_id)
+            .copied()
+            .unwrap_or_default()
+    }
+
+    /// Total owed across all active fronts (the ledger's debt figure)
+    pub fn total_debt(&self) -> u64 {
+        self.fronts.iter().map(|f| f.owed).sum()
+    }
+
+    /// Take a card on credit from a zone's supplier: the card is playable
+    /// NOW, the lump (price + vig) is due in FRONT_WINDOW_RUNS. Error
+    /// strings are display-ready.
+    pub fn take_front(
+        &mut self,
+        card_id: &str,
+        area_id: &str,
+        shop_price: u32,
+    ) -> Result<(), &'static str> {
+        match self.standing_with(area_id) {
+            SupplierStanding::Good => {}
+            SupplierStanding::CutOff => return Err("settle your debt first"),
+            SupplierStanding::Soured => return Err("this bridge is burned"),
+        }
+        if self.front_in(area_id).is_some() {
+            return Err("one front at a time");
+        }
+        if self.account.unlocked_cards.contains(card_id) {
+            return Err("already owned");
+        }
+        if shop_price == 0 {
+            return Err("nothing to front");
+        }
+        self.fronts.push(FrontState {
+            card_id: card_id.to_string(),
+            area_id: area_id.to_string(),
+            owed: front_owed(shop_price),
+            runs_remaining: FRONT_WINDOW_RUNS,
+        });
+        self.account.unlocked_cards.insert(card_id.to_string());
+        Ok(())
+    }
+
+    /// Settle a front in cash, any time before the muscle visits. The card
+    /// becomes owned forever; a CutOff supplier goes back to Good (settled
+    /// means settled - Soured is the only permanent mark).
+    /// Returns false (no mutation) if there is no front or cash falls short.
+    pub fn pay_front(&mut self, area_id: &str) -> bool {
+        let Some(pos) = self.fronts.iter().position(|f| f.area_id == area_id) else {
+            return false;
+        };
+        if !self.account.spend(self.fronts[pos].owed) {
+            return false;
+        }
+        self.fronts.remove(pos);
+        if self.standing_with(area_id) == SupplierStanding::CutOff {
+            self.supplier_standing
+                .insert(area_id.to_string(), SupplierStanding::Good);
+        }
+        true
+    }
+
+    /// A run completed somewhere in the empire: every active front comes
+    /// one run closer to its due date - the RUNNER'S OWN RUN INCLUDED
+    /// (unlike jail; Reed: an unproductive run must still spend a tick).
+    /// Crossing a due date escalates: Good -> CutOff (stock locked, one
+    /// final window) -> muscle (seize MUSCLE_SEIZURE_PCT of cash, or bench
+    /// the active dealer one run when there is nothing to take) + the card
+    /// repossessed + Soured (permanent).
+    pub fn tick_fronts(&mut self) -> Vec<FrontEvent> {
+        let mut events = Vec::new();
+        let mut i = 0;
+        while i < self.fronts.len() {
+            let remaining = &mut self.fronts[i].runs_remaining;
+            *remaining = remaining.saturating_sub(1);
+            if *remaining > 0 {
+                i += 1;
+                continue;
+            }
+            let area_id = self.fronts[i].area_id.clone();
+            match self.standing_with(&area_id) {
+                SupplierStanding::Good => {
+                    self.supplier_standing
+                        .insert(area_id.clone(), SupplierStanding::CutOff);
+                    self.fronts[i].runs_remaining = FRONT_WINDOW_RUNS;
+                    events.push(FrontEvent::CutOff { area_id });
+                    i += 1;
+                }
+                _ => {
+                    // Second blown window (Soured here is unreachable by
+                    // construction - a soured supplier has no open front -
+                    // but the muscle handles it the same, defensively)
+                    let seizure = self.account.cash_on_hand * MUSCLE_SEIZURE_PCT / 100;
+                    // SOW-031 review fix: never bench the empire's ONLY
+                    // available runner. Relocating only ticks on completed
+                    // runs, so benching the last dealer who can run is a
+                    // saved, PERMANENT softlock. The repossession + souring
+                    // below are the real price; the beating needs somebody
+                    // else left standing to matter.
+                    let has_other_runner = self
+                        .dealers
+                        .iter()
+                        .enumerate()
+                        .any(|(i, d)| i != self.active_dealer && d.is_available());
+                    if seizure > 0 {
+                        self.account.cash_on_hand -= seizure;
+                        events.push(FrontEvent::MuscleSeized {
+                            area_id: area_id.clone(),
+                            amount: seizure,
+                        });
+                    } else if let Some(dealer) = self
+                        .dealers
+                        .get_mut(self.active_dealer)
+                        .filter(|d| d.is_available() && has_other_runner)
+                    {
+                        dealer.status = DealerStatus::Relocating { runs_remaining: 1 };
+                        let dealer = dealer.name.clone();
+                        events.push(FrontEvent::MuscleBenched {
+                            area_id: area_id.clone(),
+                            dealer,
+                        });
+                    }
+                    let front = self.fronts.remove(i);
+                    self.account.unlocked_cards.remove(&front.card_id);
+                    self.supplier_standing
+                        .insert(area_id.clone(), SupplierStanding::Soured);
+                    events.push(FrontEvent::Soured {
+                        area_id,
+                        card_id: front.card_id,
+                    });
+                }
+            }
+        }
+        events
+    }
+
     /// SOW-025: the roster's best street cred for an area - any dealer's
     /// reputation opens doors there. Returns (dealer index, cred); the shop
     /// shows WHO is effectively unlocking ("unlocked by <name>").
@@ -302,6 +506,18 @@ impl SaveData {
         fallen.push(EmpireEpitaph::from_save(self, current_timestamp()));
         *self = SaveData::new();
         self.fallen_empires = fallen;
+    }
+
+    /// SOW-031: normalize loaded state that predates a content decision.
+    /// The kingpin's portrait is not player-chosen today, so it is forced
+    /// to "Silhouette" (the generic no-chosen-face-yet placeholder)
+    /// unconditionally - older saves persisted "Barista". When character
+    /// customization ships, this normalization is the line that gets
+    /// replaced.
+    pub fn normalize(&mut self) {
+        for dealer in self.dealers.iter_mut().filter(|d| d.is_kingpin) {
+            dealer.portrait = "Silhouette".to_string();
+        }
     }
 
     /// Validate data sanity (defense in depth)
@@ -825,6 +1041,20 @@ pub const LAY_LOW_COOLING: u32 = 40;
 const LAWYER_COST: u64 = 625;
 pub const LAWYER_COOLING: u32 = 25;
 
+/// SOW-031 fronts (tuning candidates - see SOW-031 Discussion).
+/// The vig over shop price: a $500 card fronts at $625 owed.
+pub const FRONT_VIG_PCT: u64 = 25;
+/// Runs until the lump is due. Every completed run ticks it, the runner's
+/// own included - Reed: an unproductive run must still spend a tick.
+pub const FRONT_WINDOW_RUNS: u32 = 4;
+/// Muscle takes this cut of cash on hand at the second blown window
+pub const MUSCLE_SEIZURE_PCT: u64 = 20;
+
+/// What a front on a card at `shop_price` will put on the books
+pub fn front_owed(shop_price: u32) -> u64 {
+    shop_price as u64 * (100 + FRONT_VIG_PCT) / 100
+}
+
 /// SOW-025: where every fresh dealer starts (the home turf; matches the
 /// area flagged `unlocked: true` in shop_locations.ron)
 pub const DEFAULT_STATION: &str = "the_corner";
@@ -843,9 +1073,13 @@ pub const DEALER_NAME_POOL: [&str; 12] = [
 /// GameAssets.actor_portraits). Excludes the narc and every buyer persona -
 /// SOW-028 promoted the Pimp to the Strip's clientele, so his face left the
 /// pool (E1, art-backlog): a hire must never wear a buyer's face.
-pub const DEALER_PORTRAIT_POOL: [&str; 8] = [
+/// SOW-031 (Reed art drop): five new faces appended - 13 faces >= 12 names,
+/// so hires no longer wrap/duplicate faces until roster 14. Appended, not
+/// reordered: recruit() is deterministic by pool order.
+pub const DEALER_PORTRAIT_POOL: [&str; 13] = [
     "Barista", "Displaced Patriot", "Flower Child", "Hells Angel", "Hippie",
     "Pretty Woman", "Street Walker", "Widow",
+    "Julie", "Marcus", "Gladys", "Bubba", "Roxanne",
 ];
 
 /// Whether a dealer can be sent out on a run
@@ -918,11 +1152,14 @@ pub fn hire_cost(roster_len: usize) -> u64 {
 
 impl DealerState {
     /// The boss themselves - every fresh empire starts with the kingpin
-    /// dealing in person
+    /// dealing in person.
+    /// SOW-031: wears "Silhouette" - the generic no-chosen-face-yet
+    /// placeholder - until character customization ships. Barista goes
+    /// back to being a normal hire face.
     pub fn kingpin() -> Self {
         Self {
             name: "The Kingpin".to_string(),
-            portrait: DEALER_PORTRAIT_POOL[0].to_string(),
+            portrait: "Silhouette".to_string(),
             status: DealerStatus::Available,
             is_kingpin: true,
             prior_convictions: 0,
@@ -1332,6 +1569,252 @@ mod tests {
         assert_eq!(hire_cost(3), 2000);
         assert_eq!(hire_cost(4), 4000);
         assert_eq!(bail_cost(3), 900);
+    }
+
+    #[test]
+    fn test_kingpin_wears_the_silhouette_and_normalize_fixes_legacy() {
+        // Constructor: the boss never borrows a hire's face
+        let data = SaveData::new();
+        assert_eq!(data.dealers[0].portrait, "Silhouette");
+
+        // Legacy save state (kingpin persisted as "Barista") normalizes;
+        // hires keep whatever face they were recruited with
+        let mut legacy = SaveData::new();
+        legacy.account.cash_on_hand = 1000;
+        assert!(legacy.hire_dealer());
+        legacy.dealers[0].portrait = "Barista".to_string();
+        let hire_face = legacy.dealers[1].portrait.clone();
+        legacy.normalize();
+        assert_eq!(legacy.dealers[0].portrait, "Silhouette");
+        assert_eq!(legacy.dealers[1].portrait, hire_face);
+    }
+
+    #[test]
+    fn test_first_hire_now_gets_barista() {
+        // With the kingpin off "Barista", recruit()'s skip-used scan finds
+        // the pool's first face free for the first hire
+        let mut data = SaveData::new();
+        data.account.cash_on_hand = 500;
+        assert!(data.hire_dealer());
+        assert_eq!(data.dealers[1].portrait, "Barista");
+    }
+
+    // ------------------------------------------------------------------
+    // SOW-031: fronts
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_front_owed_carries_the_vig() {
+        assert_eq!(front_owed(500), 625); // the design doc's example
+        assert_eq!(front_owed(100), 125);
+        assert_eq!(front_owed(0), 0);
+    }
+
+    #[test]
+    fn test_take_front_makes_card_playable_and_books_the_debt() {
+        let mut data = SaveData::new();
+        assert!(data.take_front("shrooms", "the_corner", 100).is_ok());
+        assert!(data.account.unlocked_cards.contains("shrooms"));
+        let front = data.front_in("the_corner").expect("front live");
+        assert_eq!(front.owed, 125);
+        assert_eq!(front.runs_remaining, FRONT_WINDOW_RUNS);
+        assert_eq!(data.total_debt(), 125);
+    }
+
+    #[test]
+    fn test_take_front_guards() {
+        let mut data = SaveData::new();
+        assert!(data.take_front("shrooms", "the_corner", 100).is_ok());
+        // One front per supplier
+        assert_eq!(
+            data.take_front("codeine", "the_corner", 250),
+            Err("one front at a time")
+        );
+        // A different zone's supplier is a different account
+        assert!(data.take_front("ecstasy", "the_strip", 1600).is_ok());
+        // Already-owned cards can't be fronted
+        assert_eq!(
+            data.take_front("weed", "the_block", 100),
+            Err("already owned")
+        );
+        // Standing gates
+        data.supplier_standing
+            .insert("the_block".to_string(), SupplierStanding::CutOff);
+        assert_eq!(
+            data.take_front("coke", "the_block", 5000),
+            Err("settle your debt first")
+        );
+        data.supplier_standing
+            .insert("the_block".to_string(), SupplierStanding::Soured);
+        assert_eq!(
+            data.take_front("coke", "the_block", 5000),
+            Err("this bridge is burned")
+        );
+    }
+
+    #[test]
+    fn test_pay_front_owns_the_card_and_clears_cutoff() {
+        let mut data = SaveData::new();
+        data.account.cash_on_hand = 1000;
+        data.take_front("shrooms", "the_corner", 100).unwrap();
+        data.supplier_standing
+            .insert("the_corner".to_string(), SupplierStanding::CutOff);
+
+        // Too broke first: no mutation
+        data.account.cash_on_hand = 50;
+        assert!(!data.pay_front("the_corner"));
+        assert!(data.front_in("the_corner").is_some());
+
+        data.account.cash_on_hand = 200;
+        assert!(data.pay_front("the_corner"));
+        assert_eq!(data.account.cash_on_hand, 75);
+        assert!(data.front_in("the_corner").is_none());
+        assert!(data.account.unlocked_cards.contains("shrooms"));
+        assert_eq!(data.standing_with("the_corner"), SupplierStanding::Good);
+        // No front, nothing to pay
+        assert!(!data.pay_front("the_corner"));
+    }
+
+    #[test]
+    fn test_front_tick_counts_every_run_and_escalates_to_cutoff() {
+        let mut data = SaveData::new();
+        data.take_front("shrooms", "the_corner", 100).unwrap();
+
+        // Window runs down one per completed run - the runner's own included
+        for expected in (1..FRONT_WINDOW_RUNS).rev() {
+            assert!(data.tick_fronts().is_empty());
+            assert_eq!(data.front_in("the_corner").unwrap().runs_remaining, expected);
+        }
+
+        // Due date crossed: CutOff, debt stands, one more window granted
+        let events = data.tick_fronts();
+        assert_eq!(
+            events,
+            vec![FrontEvent::CutOff { area_id: "the_corner".to_string() }]
+        );
+        assert_eq!(data.standing_with("the_corner"), SupplierStanding::CutOff);
+        let front = data.front_in("the_corner").expect("debt still on the books");
+        assert_eq!(front.runs_remaining, FRONT_WINDOW_RUNS);
+        assert!(data.account.unlocked_cards.contains("shrooms"), "card still playable");
+    }
+
+    #[test]
+    fn test_second_blown_window_muscle_seizes_and_sours() {
+        let mut data = SaveData::new();
+        data.account.cash_on_hand = 500;
+        data.take_front("shrooms", "the_corner", 100).unwrap();
+        data.supplier_standing
+            .insert("the_corner".to_string(), SupplierStanding::CutOff);
+        data.fronts[0].runs_remaining = 1;
+
+        let events = data.tick_fronts();
+        assert_eq!(
+            events,
+            vec![
+                FrontEvent::MuscleSeized { area_id: "the_corner".to_string(), amount: 100 },
+                FrontEvent::Soured {
+                    area_id: "the_corner".to_string(),
+                    card_id: "shrooms".to_string()
+                },
+            ]
+        );
+        assert_eq!(data.account.cash_on_hand, 400); // 20% of 500
+        assert!(!data.account.unlocked_cards.contains("shrooms"), "repossessed");
+        assert!(data.front_in("the_corner").is_none());
+        assert_eq!(data.standing_with("the_corner"), SupplierStanding::Soured);
+        // Soured is permanent - paying can't fix what muscle settled
+        assert_eq!(
+            data.take_front("shrooms", "the_corner", 100),
+            Err("this bridge is burned")
+        );
+    }
+
+    #[test]
+    fn test_broke_muscle_benches_the_active_dealer_when_backup_exists() {
+        let mut data = SaveData::new();
+        data.account.cash_on_hand = 500;
+        assert!(data.hire_dealer());
+        data.account.cash_on_hand = 4; // 20% rounds to 0 - nothing worth taking
+        data.take_front("shrooms", "the_corner", 100).unwrap();
+        data.supplier_standing
+            .insert("the_corner".to_string(), SupplierStanding::CutOff);
+        data.fronts[0].runs_remaining = 1;
+
+        let events = data.tick_fronts();
+        assert!(matches!(
+            events[0],
+            FrontEvent::MuscleBenched { ref dealer, .. } if dealer == "The Kingpin"
+        ));
+        assert!(!data.dealers[0].is_available(), "benched one run");
+        assert_eq!(data.dealers[0].relocating_remaining(), Some(1));
+        assert_eq!(data.standing_with("the_corner"), SupplierStanding::Soured);
+        // The beating is downtime, not jail - the kingpin invariant holds
+        assert!(data.dealers[0].jail_remaining().is_none());
+        // The hire keeps the empire runnable - no softlock
+        assert!(data.dealers[1].is_available());
+    }
+
+    #[test]
+    fn test_broke_muscle_never_benches_the_only_runner() {
+        // SOW-031 review: Relocating only ticks on COMPLETED runs, so
+        // benching a solo empire's only available dealer would be a saved,
+        // permanent softlock. The muscle spares the runner; the
+        // repossession and the souring still land.
+        let mut data = SaveData::new();
+        data.account.cash_on_hand = 4;
+        data.take_front("shrooms", "the_corner", 100).unwrap();
+        data.supplier_standing
+            .insert("the_corner".to_string(), SupplierStanding::CutOff);
+        data.fronts[0].runs_remaining = 1;
+
+        let events = data.tick_fronts();
+        assert_eq!(events.len(), 1, "no bench event - only the souring");
+        assert!(matches!(events[0], FrontEvent::Soured { .. }));
+        assert!(data.dealers[0].is_available(), "the only runner keeps running");
+        assert_eq!(data.standing_with("the_corner"), SupplierStanding::Soured);
+        assert!(!data.account.unlocked_cards.contains("shrooms"), "repossession lands");
+    }
+
+    #[test]
+    fn test_muscle_spares_an_unavailable_dealer_but_still_sours() {
+        let mut data = SaveData::new();
+        data.account.cash_on_hand = 0;
+        data.dealers[0].status = DealerStatus::LayingLow { runs_remaining: 2 };
+        data.take_front("shrooms", "the_corner", 100).unwrap();
+        data.supplier_standing
+            .insert("the_corner".to_string(), SupplierStanding::CutOff);
+        data.fronts[0].runs_remaining = 1;
+
+        let events = data.tick_fronts();
+        // No seizure, no bench - just the repossession and the scar
+        assert_eq!(events.len(), 1);
+        assert!(matches!(events[0], FrontEvent::Soured { .. }));
+        assert_eq!(data.standing_with("the_corner"), SupplierStanding::Soured);
+    }
+
+    #[test]
+    fn test_fresh_save_has_no_fronts_and_clean_standings() {
+        // Old-save handling is the SOW-021 policy: bincode carries no
+        // field-level migration, so SAVE_VERSION was bumped (5 -> 6) and
+        // version-mismatched saves fall back to fresh (pinned by
+        // io::test_old_version_rejected). What must hold here: a fresh
+        // empire starts clean.
+        let data = SaveData::new();
+        assert!(data.fronts.is_empty());
+        assert_eq!(data.standing_with("the_corner"), SupplierStanding::Good);
+        assert_eq!(data.total_debt(), 0);
+    }
+
+    #[test]
+    fn test_reset_empire_clears_fronts_and_standings() {
+        let mut data = SaveData::new();
+        data.take_front("shrooms", "the_corner", 100).unwrap();
+        data.supplier_standing
+            .insert("the_strip".to_string(), SupplierStanding::Soured);
+        data.reset_empire();
+        assert!(data.fronts.is_empty(), "debts die with the empire");
+        assert_eq!(data.standing_with("the_strip"), SupplierStanding::Good);
+        assert_eq!(data.fallen_empires.len(), 1);
     }
 
     #[test]

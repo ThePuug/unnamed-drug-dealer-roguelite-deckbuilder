@@ -283,7 +283,7 @@ fn spawn_zone_node(
                 TextColor(ink(Color::WHITE, locked)),
             ));
             card.spawn((
-                Text::new(node.identity),
+                Text::new(node.identity.as_str()),
                 TextFont::from_font_size(11.0),
                 TextColor(ink(theme::V2_LABEL, false)), // label color reads dim already
             ));
@@ -358,6 +358,17 @@ fn spawn_zone_node(
                         TextColor(theme::SHOP_CREDIT_LINE_TEXT),
                     ));
                 }
+            }
+
+            // SOW-031: the zone's supplier - name while locked (part of the
+            // pitch), plus standing/due where you can shop. Also below the
+            // chips: the harness chip-y contract stays intact.
+            if let Some(line) = &node.supplier_line {
+                card.spawn((
+                    Text::new(line.as_str()),
+                    TextFont::from_font_size(12.0),
+                    TextColor(ink(theme::LEDGER_BOARD_CURRENT, locked)),
+                ));
             }
 
             // Action area pinned to the card bottom

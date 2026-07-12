@@ -7,7 +7,7 @@
 // mutates. If a stat can't be derived, it doesn't ship this SOW.
 
 use crate::models::shop_location::ShopLocationDef;
-use crate::save::{DealerState, EmpireEpitaph, SaveData};
+use crate::save::{DealerState, EmpireEpitaph, SaveData, SupplierStanding};
 
 // ============================================================================
 // Panel 1: THE EMPIRE - the tombstone being carved
@@ -26,6 +26,9 @@ pub struct EmpireSummary {
     pub zones_unlocked: usize,
     /// Times anyone in the roster went through the system
     pub convictions: u32,
+    /// SOW-031: outstanding across all active fronts (not an epitaph
+    /// field - debts die with the empire; shown only while nonzero)
+    pub debt: u64,
 }
 
 pub fn empire_summary(save: &SaveData) -> EmpireSummary {
@@ -36,6 +39,7 @@ pub fn empire_summary(save: &SaveData) -> EmpireSummary {
         dealers_hired: save.dealers.len().saturating_sub(1) as u32,
         zones_unlocked: save.account.unlocked_locations.len(),
         convictions: save.dealers.iter().map(|d| d.prior_convictions).sum(),
+        debt: save.total_debt(),
     }
 }
 
@@ -283,20 +287,30 @@ pub fn zone_deals_closed(save: &SaveData, area_id: &str) -> u32 {
 }
 
 /// One line of zone history for the map node card: "12 deals closed ·
-/// best: Ray (4)". None while the zone has no history to tell.
+/// best: Ray (4)". SOW-031: a soured supplier is history too - "supplier
+/// burned" (the name is on the supplier line right above). None while the
+/// zone has nothing to tell.
 pub fn zone_history_line(save: &SaveData, area_id: &str) -> Option<String> {
     let deals = zone_deals_closed(save, area_id);
-    if deals == 0 {
+    let burned = save.standing_with(area_id) == SupplierStanding::Soured;
+    if deals == 0 && !burned {
         return None;
     }
-    let plural = if deals == 1 { "" } else { "s" };
-    let best = save
-        .best_cred(area_id)
-        .and_then(|(i, cred)| save.dealers.get(i).map(|d| (d.name.clone(), cred)));
-    Some(match best {
-        Some((name, cred)) => format!("{deals} deal{plural} closed · best: {name} ({cred})"),
-        None => format!("{deals} deal{plural} closed"),
-    })
+    let mut parts: Vec<String> = Vec::new();
+    if deals > 0 {
+        let plural = if deals == 1 { "" } else { "s" };
+        parts.push(format!("{deals} deal{plural} closed"));
+        if let Some((name, cred)) = save
+            .best_cred(area_id)
+            .and_then(|(i, cred)| save.dealers.get(i).map(|d| (d.name.clone(), cred)))
+        {
+            parts.push(format!("best: {name} ({cred})"));
+        }
+    }
+    if burned {
+        parts.push("supplier burned".to_string());
+    }
+    Some(parts.join(" · "))
 }
 
 // ============================================================================
@@ -315,6 +329,9 @@ mod tests {
             description: String::new(),
             unlocked: id == "the_corner",
             price: 1000,
+            identity: "CRAFT".to_string(),
+            narc_hint: "eyes".to_string(),
+            supplier: None,
         }
     }
 
@@ -652,6 +669,45 @@ mod tests {
             zone_history_line(&save, "the_corner").as_deref(),
             Some("1 deal closed · best: The Kingpin (1)")
         );
+    }
+
+    #[test]
+    fn zone_history_surfaces_a_burned_supplier() {
+        use crate::save::SupplierStanding;
+        let mut save = roster_save();
+        // Soured alone is history worth telling
+        save.supplier_standing
+            .insert("the_corner".to_string(), SupplierStanding::Soured);
+        assert_eq!(
+            zone_history_line(&save, "the_corner").as_deref(),
+            Some("supplier burned")
+        );
+        // And it rides after the deals when both exist
+        save.dealers[0].add_cred("the_corner");
+        assert_eq!(
+            zone_history_line(&save, "the_corner").as_deref(),
+            Some("1 deal closed · best: The Kingpin (1) · supplier burned")
+        );
+    }
+
+    #[test]
+    fn empire_summary_carries_outstanding_debt() {
+        use crate::save::FrontState;
+        let mut save = roster_save();
+        assert_eq!(empire_summary(&save).debt, 0);
+        save.fronts.push(FrontState {
+            card_id: "shrooms".to_string(),
+            area_id: "the_corner".to_string(),
+            owed: 125,
+            runs_remaining: 3,
+        });
+        save.fronts.push(FrontState {
+            card_id: "ecstasy".to_string(),
+            area_id: "the_strip".to_string(),
+            owed: 2000,
+            runs_remaining: 4,
+        });
+        assert_eq!(empire_summary(&save).debt, 2125);
     }
 
     #[test]

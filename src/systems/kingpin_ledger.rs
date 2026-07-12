@@ -240,7 +240,7 @@ pub fn populate_ledger_system(
 /// Panel 1: THE EMPIRE - the numbers the epitaph will freeze
 fn spawn_empire_strip(parent: &mut ChildSpawnerCommands, save: &SaveData) {
     let s = ledger_view::empire_summary(save);
-    let stats: [(String, &str, Color); 6] = [
+    let mut stats: Vec<(String, &str, Color)> = vec![
         (format_cash(s.lifetime_revenue), "LIFETIME REVENUE", theme::SHOP_CREDIT_LINE_TEXT),
         (format_cash(s.cash_on_hand), "CASH ON HAND", Color::WHITE),
         (s.decks_played.to_string(), "DECKS PLAYED", Color::WHITE),
@@ -248,6 +248,11 @@ fn spawn_empire_strip(parent: &mut ChildSpawnerCommands, save: &SaveData) {
         (s.zones_unlocked.to_string(), "ZONES UNLOCKED", Color::WHITE),
         (s.convictions.to_string(), "CONVICTIONS", theme::ROSTER_STATUS_JAILED),
     ];
+    // SOW-031: the books show what the suppliers are owed - only while
+    // they're owed anything (a clean empire keeps a six-stat strip)
+    if s.debt > 0 {
+        stats.push((format_cash(s.debt), "OWED TO SUPPLIERS", theme::ROSTER_STATUS_JAILED));
+    }
 
     parent
         .spawn((
