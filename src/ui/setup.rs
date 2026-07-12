@@ -7,9 +7,11 @@ use super::theme;
 use super::components::*;
 use crate::models::fonts::EmojiFont;
 
-/// SOW-024: Spawn the area selector row - unlocked areas as select buttons,
-/// locked areas as purchase buttons showing their price. Shared by
-/// setup_deck_builder and the post-purchase refresh in shop.rs.
+/// SOW-024: Spawn the area selector row - unlocked areas as select buttons
+/// for browsing that area's shop stock. Shared by setup_deck_builder and
+/// the post-purchase refresh in shop.rs.
+/// SOW-029: locked areas no longer render purchase buttons here - zone
+/// unlocking moved to the city map (one purchase surface).
 pub fn spawn_area_selector_buttons(
     parent: &mut ChildSpawnerCommands,
     areas: &[crate::models::shop_location::ShopLocationDef],
@@ -17,61 +19,35 @@ pub fn spawn_area_selector_buttons(
 ) {
     let mut first_unlocked = true;
     for area in areas {
-        if unlocked.contains(&area.id) {
-            let bg = if first_unlocked {
-                theme::CONTINUE_BUTTON_BG // Active by default
-            } else {
-                theme::BUTTON_NEUTRAL_BG
-            };
-            first_unlocked = false;
-
-            parent.spawn((
-                Button,
-                Node {
-                    width: Val::Px(140.0),
-                    height: Val::Px(40.0),
-                    justify_content: JustifyContent::Center,
-                    align_items: AlignItems::Center,
-                    ..default()
-                },
-                BackgroundColor(bg),
-                ShopLocationButton { location_id: area.id.clone() },
-            ))
-            .with_children(|btn| {
-                btn.spawn((
-                    Text::new(&area.name),
-                    TextFont::from_font_size(14.0),
-                    TextColor(Color::WHITE),
-                ));
-            });
-        } else {
-            // Locked: a purchase invitation (affordability styling is kept
-            // current by update_area_unlock_button_visuals)
-            parent.spawn((
-                Button,
-                Node {
-                    width: Val::Px(210.0),
-                    height: Val::Px(40.0),
-                    justify_content: JustifyContent::Center,
-                    align_items: AlignItems::Center,
-                    border: UiRect::all(Val::Px(1.0)),
-                    ..default()
-                },
-                BackgroundColor(theme::BUTTON_DISABLED_BG),
-                BorderColor::all(theme::BUTTON_NEUTRAL_BG),
-                ShopAreaUnlockButton {
-                    location_id: area.id.clone(),
-                    price: area.price,
-                },
-            ))
-            .with_children(|btn| {
-                btn.spawn((
-                    Text::new(format!("{} — ${}", area.name.to_uppercase(), area.price)),
-                    TextFont::from_font_size(13.0),
-                    TextColor(Color::WHITE),
-                ));
-            });
+        if !unlocked.contains(&area.id) {
+            continue;
         }
+        let bg = if first_unlocked {
+            theme::CONTINUE_BUTTON_BG // Active by default
+        } else {
+            theme::BUTTON_NEUTRAL_BG
+        };
+        first_unlocked = false;
+
+        parent.spawn((
+            Button,
+            Node {
+                width: Val::Px(140.0),
+                height: Val::Px(40.0),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            BackgroundColor(bg),
+            ShopLocationButton { location_id: area.id.clone() },
+        ))
+        .with_children(|btn| {
+            btn.spawn((
+                Text::new(&area.name),
+                TextFont::from_font_size(14.0),
+                TextColor(Color::WHITE),
+            ));
+        });
     }
 }
 
@@ -96,6 +72,9 @@ pub fn setup_deck_builder(
 
     // SOW-020: Initialize shop state resource
     commands.insert_resource(crate::systems::ShopState::new());
+    // SOW-029: fresh map state each time the hub spawns (closed, no
+    // armed move)
+    commands.insert_resource(crate::systems::city_map::MapUiState::default());
 
     // Deck builder root container - 1920x1080 design, will be scaled/positioned by scale_ui_to_fit_system
     commands.spawn((
@@ -159,6 +138,28 @@ pub fn setup_deck_builder(
             .with_children(|btn| {
                 btn.spawn((
                     Text::new("SHOP"),
+                    TextFont::from_font_size(16.0),
+                    TextColor(Color::WHITE),
+                ));
+            });
+
+            // SOW-029: CITY MAP - territories, stationing, and zone unlocks
+            // (replaces the selector row's locked-area purchase buttons)
+            tabs.spawn((
+                Button,
+                Node {
+                    width: Val::Px(150.0),
+                    height: Val::Px(40.0),
+                    justify_content: JustifyContent::Center,
+                    align_items: AlignItems::Center,
+                    ..default()
+                },
+                BackgroundColor(theme::ROSTER_MOVE_BG),
+                MapButton,
+            ))
+            .with_children(|btn| {
+                btn.spawn((
+                    Text::new("CITY MAP"),
                     TextFont::from_font_size(16.0),
                     TextColor(Color::WHITE),
                 ));
@@ -386,6 +387,9 @@ pub fn setup_deck_builder(
                 });
             });
         });
+
+        // SOW-029: City map overlay (hidden; nodes populated on open)
+        crate::systems::city_map::spawn_map_overlay(parent);
     });
 
     // Story History Overlay (initially hidden)

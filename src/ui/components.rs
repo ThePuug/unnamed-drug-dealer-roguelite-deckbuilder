@@ -412,7 +412,9 @@ pub struct ShopPurchaseButton {
     pub price: u32,
 }
 
-/// SOW-024: Purchase button for a locked area ("THE BLOCK — $2,000")
+/// SOW-024: Purchase button for a locked area ("THE BLOCK — $2,000").
+/// SOW-029: lives on the city map's locked nodes (one purchase path,
+/// handled by area_unlock_button_system wherever it's spawned).
 #[derive(Component)]
 pub struct ShopAreaUnlockButton {
     pub location_id: String,
@@ -422,3 +424,34 @@ pub struct ShopAreaUnlockButton {
 /// SOW-024: One-line expansion feedback ("New turf: The Block")
 #[derive(Component)]
 pub struct ShopFeedbackText;
+
+// ============================================================================
+// SOW-029: City Map overlay (deck-builder screen)
+// ============================================================================
+
+/// Hub button that opens/closes the map ("CITY MAP" in the tab row)
+#[derive(Component)]
+pub struct MapButton;
+
+/// Full-screen overlay root (child of DeckBuilderRoot - inherits the
+/// design-space scaling and the state-exit cleanup)
+#[derive(Component)]
+pub struct MapOverlay;
+
+#[derive(Component)]
+pub struct MapCloseButton;
+
+/// Container for the three zone node cards (children rebuilt on save or
+/// map-state change by populate_map_nodes_system)
+#[derive(Component)]
+pub struct MapNodesRow;
+
+/// Header hint line (idle instructions / armed-move cost)
+#[derive(Component)]
+pub struct MapHintText;
+
+/// Stationed-dealer chip - click to arm the move flow with this dealer
+#[derive(Component)]
+pub struct MapDealerChipButton {
+    pub dealer_index: usize,
+}

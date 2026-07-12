@@ -55,6 +55,10 @@ fn main() {
         .init_resource::<DecayInfo>()
         .init_resource::<shop::ShopState>() // SOW-020: Shop state for deck builder
         .init_resource::<UpgradeChoiceDeferred>() // SOW-021: DECIDE LATER flag
+        // SOW-029: map systems run whenever DeckBuilding is active, including
+        // the pending-upgrades frame where setup_deck_builder early-returns
+        // before its insert_resource - a bare ResMut panics without this
+        .init_resource::<systems::city_map::MapUiState>()
         .add_systems(Startup, setup)
         // Character persistence systems
         .add_systems(OnEnter(GameState::DeckBuilding), (
@@ -130,8 +134,12 @@ fn main() {
             shop_location_button_system,
             populate_shop_cards_system,
             shop_purchase_system,
-            area_unlock_button_system,        // SOW-024: buy territories
+            area_unlock_button_system,        // SOW-024: buy territories (SOW-029: from the map)
             update_area_unlock_button_visuals,
+            // SOW-029: City map overlay
+            map_toggle_system,
+            map_dealer_chip_system,
+            populate_map_nodes_system,
             update_shop_tab_visuals,
             update_location_button_visuals,
             ui::ui_scroll_system, // Bevy 0.18: Manual scroll handling
