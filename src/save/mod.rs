@@ -73,9 +73,9 @@ impl SaveManager {
         self.save_path.exists()
     }
 
-    /// Delete save file (for permadeath)
-    pub fn delete_character(&self, data: &mut SaveData) -> Result<(), SaveError> {
-        data.character = None;
+    /// RFC-023: Reset the whole empire and persist it (kingpin-bust game over)
+    pub fn reset_empire(&self, data: &mut SaveData) -> Result<(), SaveError> {
+        data.reset_empire();
         self.save(data)
     }
 }
@@ -105,14 +105,14 @@ mod tests {
     fn test_save_and_load_roundtrip() {
         let (manager, _dir) = test_save_manager();
 
-        let mut data = SaveData::new();
-        data.character = Some(CharacterState::new());
+        let data = SaveData::new();
 
         manager.save(&data).unwrap();
         let loaded = manager.load().unwrap();
 
-        assert!(loaded.character.is_some());
-        assert_eq!(loaded.character.unwrap().heat, 0);
+        assert_eq!(loaded.dealers.len(), 1);
+        assert!(loaded.dealers[0].is_kingpin);
+        assert_eq!(loaded.active_character().heat, 0);
     }
 
     #[test]
@@ -128,7 +128,9 @@ mod tests {
         let (manager, _dir) = test_save_manager();
 
         let data = manager.load_or_create();
-        assert!(data.character.is_none());
+        // RFC-023: a fresh empire always has the kingpin on the roster
+        assert_eq!(data.dealers.len(), 1);
+        assert!(data.dealers[0].is_kingpin);
     }
 
     #[test]
@@ -136,8 +138,7 @@ mod tests {
         let (manager, _dir) = test_save_manager();
 
         // Create and save valid data
-        let mut data = SaveData::new();
-        data.character = Some(CharacterState::new());
+        let data = SaveData::new();
         manager.save(&data).unwrap();
 
         // Save again to create backup (backup only created on overwrite)
@@ -148,7 +149,7 @@ mod tests {
 
         // Load should recover from backup
         let loaded = manager.load().unwrap();
-        assert!(loaded.character.is_some());
+        assert_eq!(loaded.dealers.len(), 1);
     }
 
     #[test]
@@ -179,19 +180,22 @@ mod tests {
     }
 
     #[test]
-    fn test_delete_character() {
+    fn test_reset_empire_persists_a_fresh_roster() {
         let (manager, _dir) = test_save_manager();
 
-        // Create save with character
+        // Build up an empire, then lose it all
         let mut data = SaveData::new();
-        data.character = Some(CharacterState::new());
+        data.account.cash_on_hand = 5000;
+        assert!(data.hire_dealer());
+        data.active_character_mut().heat = 75;
         manager.save(&data).unwrap();
 
-        // Delete character
-        manager.delete_character(&mut data).unwrap();
+        manager.reset_empire(&mut data).unwrap();
 
-        // Verify character is gone
+        // Persisted state is a fresh kingpin-only empire
         let loaded = manager.load().unwrap();
-        assert!(loaded.character.is_none());
+        assert_eq!(loaded.dealers.len(), 1);
+        assert!(loaded.dealers[0].is_kingpin);
+        assert_eq!(loaded.active_character().heat, 0);
     }
 }

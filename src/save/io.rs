@@ -122,13 +122,13 @@ mod tests {
         let save_path = dir.path().join("save.dat");
         let backup_path = dir.path().join("save.dat.bak");
 
-        let mut data = SaveData::new();
-        data.character = Some(CharacterState::new());
+        let data = SaveData::new();
 
         save_atomic(&save_path, &backup_path, &data).unwrap();
 
         let loaded = load_save(&save_path).unwrap();
-        assert!(loaded.character.is_some());
+        assert_eq!(loaded.dealers.len(), 1);
+        assert!(loaded.dealers[0].is_kingpin);
     }
 
     #[test]
@@ -138,15 +138,12 @@ mod tests {
         let backup_path = dir.path().join("save.dat.bak");
 
         // First save
-        let mut data1 = SaveData::new();
-        data1.character = Some(CharacterState::new());
+        let data1 = SaveData::new();
         save_atomic(&save_path, &backup_path, &data1).unwrap();
 
         // Modify and save again
         let mut data2 = data1.clone();
-        if let Some(ref mut c) = data2.character {
-            c.heat = 50;
-        }
+        data2.active_character_mut().heat = 50;
         save_atomic(&save_path, &backup_path, &data2).unwrap();
 
         // Backup should exist
@@ -154,11 +151,11 @@ mod tests {
 
         // Backup should have original data (heat = 0)
         let backup_data = load_save(&backup_path).unwrap();
-        assert_eq!(backup_data.character.unwrap().heat, 0);
+        assert_eq!(backup_data.active_character().heat, 0);
 
         // Current save should have new data (heat = 50)
         let current_data = load_save(&save_path).unwrap();
-        assert_eq!(current_data.character.unwrap().heat, 50);
+        assert_eq!(current_data.active_character().heat, 50);
     }
 
     #[test]

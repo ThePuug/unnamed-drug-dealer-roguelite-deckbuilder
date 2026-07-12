@@ -271,15 +271,19 @@ pub fn go_home_button_system(
             .map(|data| data.account.unlocked_cards.clone())
             .unwrap_or_else(|| crate::save::AccountState::starting_collection());
 
-        // Transfer deck heat and stories to character before despawning HandState
+        // Transfer deck heat and stories to the active dealer before despawning HandState
         if let (Some(mut save_data), Some(save_manager)) = (save_data, save_manager) {
-            if let Some(ref mut character) = save_data.character {
+            // RFC-023: busted runs were already priced at resolution (jail
+            // for a dealer, empire reset for the kingpin) - transferring
+            // here too would double-charge the heat
+            if !matches!(hand_state.outcome, Some(HandOutcome::Busted)) {
+                let character = save_data.active_character_mut();
                 let deck_heat = hand_state.current_heat;
                 // Signed transfer: a cooling session reduces career heat (floor 0)
                 character.apply_session_heat(deck_heat);
                 character.last_played = crate::save::current_timestamp();
 
-                // Add session stories to character history
+                // Add session stories to the dealer's history
                 character.story_history.extend(hand_state.session_stories.iter().cloned());
 
                 // Count as completed deck if outcome was Safe
@@ -287,12 +291,20 @@ pub fn go_home_button_system(
                     character.mark_deck_completed();
                 }
 
-                bevy::log::info!("Go Home - transferred {} deck heat to character (total: {}), {} stories",
+                bevy::log::info!("Go Home - transferred {} deck heat to dealer (total: {}), {} stories",
                       deck_heat, character.heat, hand_state.session_stories.len());
+            }
 
-                if let Err(e) = save_manager.save(&save_data) {
-                    bevy::log::warn!("Failed to save on go home: {:?}", e);
-                }
+            // RFC-023: a completed run anywhere in the empire serves a unit
+            // of every OTHER jailed dealer's sentence (turn-based jail)
+            let runner = save_data.active_dealer;
+            let released = save_data.complete_run_tick(runner);
+            if !released.is_empty() {
+                bevy::log::info!("Released from jail: {}", released.join(", "));
+            }
+
+            if let Err(e) = save_manager.save(&save_data) {
+                bevy::log::warn!("Failed to save on go home: {:?}", e);
             }
         }
 
@@ -383,11 +395,11 @@ pub fn start_run_button_system(
                 random_buyer.active_scenario_index = Some(scenario_index);
             }
 
-            // RFC-018: Get heat tier from character for Narc difficulty scaling
+            // RFC-018/023: Narc difficulty scales with the ACTIVE dealer's heat -
+            // difficulty is a property of WHO you send out
             let heat_tier = save_data
                 .as_ref()
-                .and_then(|save| save.character.as_ref())
-                .map(|c| c.heat_tier())
+                .map(|save| save.active_character().heat_tier())
                 .unwrap_or(crate::save::HeatTier::Cold);
 
             // Create new HandState with selected deck and heat tier
@@ -398,13 +410,12 @@ pub fn start_run_button_system(
             );
             hand_state.buyer_persona = Some(random_buyer);
 
-            // RFC-017: Copy play counts from CharacterState for upgrade tier calculation
-            // RFC-019: Copy card upgrades from CharacterState for stat multipliers
+            // RFC-017/019/023: Copy the active dealer's play counts and upgrade
+            // choices into the hand engine (copied back out at run end)
             if let Some(ref save) = save_data {
-                if let Some(ref character) = save.character {
-                    hand_state.card_play_counts = character.card_play_counts.clone();
-                    hand_state.card_upgrades = character.card_upgrades.clone();
-                }
+                let character = save.active_character();
+                hand_state.card_play_counts = character.card_play_counts.clone();
+                hand_state.card_upgrades = character.card_upgrades.clone();
             }
 
             hand_state.draw_cards(); // This will also initialize buyer hand

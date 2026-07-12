@@ -586,20 +586,19 @@ pub fn populate_deck_builder_cards_system(
                     ui::CardDisplayState::Inactive
                 };
 
-                // RFC-017: Get upgrade info from character state if available
-                let upgrade_info = save_data.as_ref().and_then(|save| {
-                    save.character.as_ref().map(|character| {
-                        let play_count = character.get_play_count(&card.name);
-                        let tier = character.get_card_tier(&card.name);
-                        ui::UpgradeInfo {
-                            tier_name: tier.name().to_string(),
-                            plays: play_count,
-                            plays_to_next: tier.plays_to_next(),
-                            multiplier: tier.multiplier(),
-                            star_color: tier.star_color(),
-                            is_foil: tier.is_foil(),
-                        }
-                    })
+                // RFC-017/023: Get upgrade info from the ACTIVE dealer's record
+                let upgrade_info = save_data.as_ref().map(|save| {
+                    let character = save.active_character();
+                    let play_count = character.get_play_count(&card.name);
+                    let tier = character.get_card_tier(&card.name);
+                    ui::UpgradeInfo {
+                        tier_name: tier.name().to_string(),
+                        plays: play_count,
+                        plays_to_next: tier.plays_to_next(),
+                        multiplier: tier.multiplier(),
+                        star_color: tier.star_color(),
+                        is_foil: tier.is_foil(),
+                    }
                 });
 
                 // Use template-based rendering for deck builder cards

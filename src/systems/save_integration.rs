@@ -1,7 +1,7 @@
 // Character state and save integration systems
 
 use bevy::prelude::*;
-use crate::save::{SaveManager, SaveData, CharacterState, HeatTier};
+use crate::save::{SaveManager, SaveData};
 use crate::models::hand_state::{HandState, HandPhase, HandOutcome};
 use crate::ui::components::{CharacterHeatText, CharacterTierText, DecayInfoDisplay, AccountCashText, LifetimeRevenueText, StoryHistoryText, StoryHistoryButton, StoryHistoryOverlay, StoryHistoryCloseButton};
 
@@ -29,12 +29,16 @@ pub fn load_character_system(
 
     let save_data = save_manager.load_or_create();
 
-    if let Some(character) = &save_data.character {
-        info!("Loaded character with Heat: {}, Decks played: {}",
-            character.heat, character.decks_played);
-    } else {
-        info!("No existing character - will create on first run");
-    }
+    // RFC-023: sentences are turn-based (ticked in go_home_button_system as
+    // runs complete) - nothing to sweep on load
+
+    info!(
+        "Loaded roster: {} dealer(s); active: {} (Heat: {}, Decks played: {})",
+        save_data.dealers.len(),
+        save_data.active_dealer_state().name,
+        save_data.active_character().heat,
+        save_data.active_character().decks_played
+    );
 
     commands.insert_resource(save_data);
     character_loaded.0 = true;
@@ -46,32 +50,49 @@ pub fn apply_decay_system(
     save_manager: Res<SaveManager>,
     mut decay_info: ResMut<DecayInfo>,
 ) {
-    if let Some(ref mut character) = save_data.character {
-        let decay = character.apply_decay();
-        if decay > 0 {
-            info!("Heat decayed by {} (from time elapsed)", decay);
-            decay_info.decay_amount = decay;
-            decay_info.displayed = false;
+    // RFC-023: decay applies per dealer; jailed dealers skip it - serving
+    // the term IS their heat reset, decaying them too would double-dip
+    let active_idx = save_data.active_dealer;
+    let mut total_decay = 0;
+    let mut active_decay = 0;
+    for (idx, dealer) in save_data.dealers.iter_mut().enumerate() {
+        if !dealer.is_available() {
+            continue;
+        }
+        let decay = dealer.character.apply_decay();
+        if idx == active_idx {
+            active_decay = decay;
+        }
+        total_decay += decay;
+    }
 
-            // Save the decayed state
-            if let Err(e) = save_manager.save(&save_data) {
-                warn!("Failed to save after decay: {:?}", e);
-            }
+    if total_decay > 0 {
+        info!("Heat decayed by {} across the roster (from time elapsed)", total_decay);
+        // The on-screen callout describes the dealer you're about to send out
+        decay_info.decay_amount = active_decay;
+        decay_info.displayed = false;
+
+        // Save the decayed state
+        if let Err(e) = save_manager.save(&save_data) {
+            warn!("Failed to save after decay: {:?}", e);
         }
     }
 }
 
-/// System to create new character when starting a run without one
-pub fn ensure_character_on_run_start(
+/// RFC-023: Defensive roster guard at run start. The roster invariant says
+/// this never fires (a fresh save recruits one dealer), but a run must
+/// always have someone to send out.
+pub fn ensure_roster_on_run_start(
     mut save_data: ResMut<SaveData>,
     save_manager: Res<SaveManager>,
 ) {
-    if save_data.character.is_none() {
-        info!("Creating new character for first run");
-        save_data.character = Some(CharacterState::new());
+    if save_data.dealers.is_empty() {
+        warn!("Roster empty at run start - recruiting a replacement");
+        save_data.dealers.push(crate::save::DealerState::recruit(&[]));
+        save_data.active_dealer = 0;
 
         if let Err(e) = save_manager.save(&save_data) {
-            warn!("Failed to save new character: {:?}", e);
+            warn!("Failed to save new recruit: {:?}", e);
         }
     }
 }
@@ -81,6 +102,7 @@ pub fn save_after_resolution_system(
     hand_state_query: Query<&HandState, Changed<HandState>>,
     mut save_data: ResMut<SaveData>,
     save_manager: Res<SaveManager>,
+    mut commands: Commands,
 ) {
     for hand_state in hand_state_query.iter() {
         // Only save when hand reaches terminal state with an outcome
@@ -92,13 +114,7 @@ pub fn save_after_resolution_system(
             continue;
         };
 
-        // Check if we have a character to update
-        if save_data.character.is_none() {
-            continue;
-        }
-
         // RFC-016: Add profit to account-wide cash on Safe outcome
-        // Do this first before potentially deleting character
         if *outcome == HandOutcome::Safe && hand_state.last_profit > 0 {
             save_data.account.add_profit(hand_state.last_profit);
             info!(
@@ -109,7 +125,8 @@ pub fn save_after_resolution_system(
 
             // RFC-017: Increment play counts for player cards on successful deal
             // Only player card types get upgrades (not Narc Evidence/Conviction)
-            if let Some(ref mut character) = save_data.character {
+            {
+                let character = save_data.active_character_mut();
                 for card in &hand_state.cards_played {
                     // Player card types: Product, Location, Cover, DealModifier, Insurance
                     let is_player_card = matches!(
@@ -143,30 +160,46 @@ pub fn save_after_resolution_system(
             }
         }
 
-        // Log outcome (heat transfer happens in mark_deck_completed_system when deck ends)
-        if let Some(ref character) = save_data.character {
-            match outcome {
-                HandOutcome::Busted => {
-                    // Permadeath - delete character (account cash survives!)
-                    info!("Character busted! Permadeath triggered. Account cash preserved: ${}",
-                          save_data.account.cash_on_hand);
-                }
-                HandOutcome::Safe => {
-                    info!("Hand resolved Safe, Deck heat: {}, Character heat: {}",
-                          hand_state.current_heat, character.heat);
-                }
-                HandOutcome::Folded => {
-                    info!("Hand resolved as Folded, Deck heat: {}", hand_state.current_heat);
-                }
-                HandOutcome::InvalidDeal | HandOutcome::BuyerBailed => {
-                    info!("Deal incomplete: {:?}", outcome);
-                }
+        // Log outcome (heat transfer happens in go_home_button_system)
+        match outcome {
+            HandOutcome::Busted => {
+                info!("{} busted! Jail time incoming. Account cash preserved: ${}",
+                      save_data.active_dealer_state().name,
+                      save_data.account.cash_on_hand);
+            }
+            HandOutcome::Safe => {
+                info!("Hand resolved Safe, Deck heat: {}, Dealer heat: {}",
+                      hand_state.current_heat, save_data.active_character().heat);
+            }
+            HandOutcome::Folded => {
+                info!("Hand resolved as Folded, Deck heat: {}", hand_state.current_heat);
+            }
+            HandOutcome::InvalidDeal | HandOutcome::BuyerBailed => {
+                info!("Deal incomplete: {:?}", outcome);
             }
         }
 
-        // Handle permadeath after character borrow is released
+        // RFC-023: a bust JAILS the active dealer - sentence scales with
+        // their heat at the moment of bust (session heat transferred first
+        // so the crime is priced at the heat it happened at). If the
+        // KINGPIN busts, the empire ends: the one remaining permadeath.
         if *outcome == HandOutcome::Busted {
-            save_data.character = None;
+            if save_data.active_dealer_state().is_kingpin {
+                info!("THE KINGPIN WAS BUSTED - the empire falls. Starting fresh.");
+                save_data.reset_empire();
+                // Drop the stale deck selection so the fresh empire rebuilds
+                // its deck builder from the fresh account's collection
+                commands.remove_resource::<crate::models::deck_builder::DeckBuilder>();
+            } else {
+                let session_heat = hand_state.current_heat;
+                let dealer = save_data.active_dealer_state_mut();
+                dealer.character.apply_session_heat(session_heat);
+                dealer.jail();
+                if let Some(runs) = dealer.jail_remaining() {
+                    info!("{} jailed for {} run(s) (heat {} at bust)",
+                          dealer.name, runs, dealer.character.heat);
+                }
+            }
         }
 
         // Save updated state
@@ -197,11 +230,10 @@ pub fn update_character_heat_display_system(
         return;
     };
 
-    let (heat, tier) = if let Some(ref character) = save_data.character {
-        (character.heat, character.heat_tier())
-    } else {
-        (0, HeatTier::Cold)
-    };
+    // RFC-023: the deck-builder readout describes the ACTIVE dealer
+    // (Phase 3 replaces this with the roster panel)
+    let character = save_data.active_character();
+    let (heat, tier) = (character.heat, character.heat_tier());
 
     // Update heat text
     for mut text in heat_text_query.iter_mut() {
@@ -292,9 +324,9 @@ pub fn update_story_history_display_system(
         return;
     };
 
-    let stories = save_data.character.as_ref()
-        .map(|c| &c.story_history)
-        .filter(|h| !h.is_empty());
+    // RFC-023: the active dealer's rap sheet (kingpin-wide ledger is SOW-026)
+    let history = &save_data.active_character().story_history;
+    let stories = (!history.is_empty()).then_some(history);
 
     for mut text in story_text_query.iter_mut() {
         if let Some(history) = stories {

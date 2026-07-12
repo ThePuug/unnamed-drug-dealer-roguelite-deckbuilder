@@ -47,9 +47,8 @@ pub fn setup_upgrade_choice_ui(
 
 /// SOW-021: Spawn the batched upgrade screen - one row per pending upgrade
 fn spawn_upgrade_choice_ui(commands: &mut Commands, save_data: &SaveData) {
-    let Some(ref character) = save_data.character else {
-        return;
-    };
+    // RFC-023: pending upgrades belong to the active dealer
+    let character = save_data.active_character();
 
     if character.pending_upgrades.is_empty() {
         return;
@@ -259,16 +258,14 @@ pub fn upgrade_option_click_system(
     }
 
     // Snapshot before the closure takes a mutable capture of save_data
-    let first_pending = save_data.character.as_ref()
-        .and_then(|c| c.next_pending_upgrade())
+    let first_pending = save_data.active_character()
+        .next_pending_upgrade()
         .map(|p| (p.card_name.clone(), p.options));
 
     // Helper to apply an upgrade for a specific card and refresh the screen
     let mut handle_upgrade = |card_name: &str, stat: UpgradeableStat| {
         let (applied, has_more) = {
-            let Some(ref mut character) = save_data.character else {
-                return;
-            };
+            let character = save_data.active_character_mut();
             let applied = character.apply_upgrade_choice_for(card_name, stat);
             let has_more = character.has_pending_upgrades();
             (applied, has_more)
@@ -341,11 +338,10 @@ pub fn check_pending_upgrades_system(
         return;
     }
 
-    if let Some(ref character) = save_data.character {
-        if character.has_pending_upgrades() {
-            info!("Found {} pending upgrades, entering UpgradeChoice state",
-                  character.pending_upgrades.len());
-            next_state.set(GameState::UpgradeChoice);
-        }
+    let character = save_data.active_character(); // RFC-023: active dealer
+    if character.has_pending_upgrades() {
+        info!("Found {} pending upgrades, entering UpgradeChoice state",
+              character.pending_upgrades.len());
+        next_state.set(GameState::UpgradeChoice);
     }
 }

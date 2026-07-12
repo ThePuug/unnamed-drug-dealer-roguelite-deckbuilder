@@ -17,7 +17,8 @@ pub fn setup_deck_builder(
     // SOW-021: unless the player chose DECIDE LATER - then the deck builder MUST
     // spawn or DeckBuilding becomes an empty screen (soft-lock)
     if let Some(ref data) = save_data {
-        if let Some(ref character) = data.character {
+        {
+            let character = data.active_character(); // RFC-023: active dealer
             if character.has_pending_upgrades() && !deferred.0 {
                 return;
             }

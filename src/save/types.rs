@@ -8,7 +8,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 /// Current save file format version
 /// SOW-021: Bumped 1 -> 2 (upgrade thresholds changed from testing to spec values;
 /// older saves are rejected and the game starts a fresh account)
-pub const SAVE_VERSION: u32 = 2;
+/// RFC-023: Bumped 2 -> 3 (single character replaced by dealer roster;
+/// pre-release wipe convention - older saves start fresh)
+pub const SAVE_VERSION: u32 = 3;
 
 /// Maximum sanity values for validation
 const MAX_HEAT: u32 = 10_000;
@@ -61,9 +63,12 @@ pub struct SaveFile {
 /// The game's persistent state
 #[derive(Resource, Serialize, Deserialize, Clone, Debug)]
 pub struct SaveData {
-    /// Current character (None if permadeath occurred or new game)
-    pub character: Option<CharacterState>,
-    /// Account-wide state (persists forever, survives permadeath)
+    /// RFC-023: The kingpin's dealer roster. Invariant: never empty - a
+    /// fresh save recruits one starter dealer.
+    pub dealers: Vec<DealerState>,
+    /// Which dealer runs the next session
+    pub active_dealer: usize,
+    /// Account-wide state (persists forever - the kingpin's books)
     /// RFC-016: Account Cash System
     #[serde(default)]
     pub account: AccountState,
@@ -72,15 +77,103 @@ pub struct SaveData {
 impl SaveData {
     pub fn new() -> Self {
         Self {
-            character: None,
+            // RFC-023: every empire starts with the kingpin dealing in person
+            dealers: vec![DealerState::kingpin()],
+            active_dealer: 0,
             account: AccountState::new(),
         }
     }
 
+    /// The dealer selected to run sessions (roster is never empty and the
+    /// index is validated on load, so plain indexing is safe)
+    pub fn active_dealer_state(&self) -> &DealerState {
+        &self.dealers[self.active_dealer]
+    }
+
+    pub fn active_dealer_state_mut(&mut self) -> &mut DealerState {
+        let idx = self.active_dealer;
+        &mut self.dealers[idx]
+    }
+
+    /// The active dealer's career record (heat/upgrades/stories) - the
+    /// drop-in replacement for the old singular `character`
+    pub fn active_character(&self) -> &CharacterState {
+        &self.active_dealer_state().character
+    }
+
+    pub fn active_character_mut(&mut self) -> &mut CharacterState {
+        &mut self.active_dealer_state_mut().character
+    }
+
+    /// Cost to hire the next dealer at the current roster size
+    #[allow(dead_code)] // consumed by SOW-023 Phase 3 (operations panel)
+    pub fn next_hire_cost(&self) -> u64 {
+        hire_cost(self.dealers.len())
+    }
+
+    /// Hire a new dealer, spending from the kingpin's account.
+    /// Returns false (no mutation) if the account can't afford it.
+    #[allow(dead_code)] // consumed by SOW-023 Phase 3 (operations panel)
+    pub fn hire_dealer(&mut self) -> bool {
+        let cost = self.next_hire_cost();
+        if !self.account.spend(cost) {
+            return false;
+        }
+        self.dealers.push(DealerState::recruit(&self.dealers));
+        true
+    }
+
+    /// A run just completed somewhere in the empire: every jailed dealer's
+    /// sentence ticks down, EXCEPT the runner's (a dealer jailed by this very
+    /// run must not start serving on it). Returns the names released.
+    pub fn complete_run_tick(&mut self, runner: usize) -> Vec<String> {
+        self.dealers
+            .iter_mut()
+            .enumerate()
+            .filter(|(idx, _)| *idx != runner)
+            .filter_map(|(_, d)| d.tick_sentence().then(|| d.name.clone()))
+            .collect()
+    }
+
+    /// Pay to release a jailed dealer before the sentence ends. Costs
+    /// bail_cost(runs_remaining) from global cash; the heat reduction stays
+    /// proportional to time actually served (the bail tradeoff).
+    /// Returns false (no mutation) if not jailed or unaffordable.
+    #[allow(dead_code)] // consumed by SOW-023 Phase 3 (operations panel)
+    pub fn bail_out(&mut self, dealer_idx: usize) -> bool {
+        let Some(dealer) = self.dealers.get(dealer_idx) else {
+            return false;
+        };
+        let Some(remaining) = dealer.jail_remaining() else {
+            return false;
+        };
+        if !self.account.spend(bail_cost(remaining)) {
+            return false;
+        }
+        self.dealers[dealer_idx].release();
+        true
+    }
+
+    /// RFC-023: the KINGPIN busting ends the empire - the one remaining
+    /// permadeath. Everything resets, including the books.
+    pub fn reset_empire(&mut self) {
+        *self = SaveData::new();
+    }
+
     /// Validate data sanity (defense in depth)
     pub fn validate(&self) -> Result<(), SaveError> {
-        if let Some(ref character) = self.character {
-            character.validate()?;
+        if self.dealers.is_empty() {
+            return Err(SaveError::ValidationError("Dealer roster is empty".into()));
+        }
+        if self.active_dealer >= self.dealers.len() {
+            return Err(SaveError::ValidationError(format!(
+                "Active dealer index {} out of range ({} dealers)",
+                self.active_dealer,
+                self.dealers.len()
+            )));
+        }
+        for dealer in &self.dealers {
+            dealer.validate()?;
         }
         self.account.validate()?;
         Ok(())
@@ -627,6 +720,196 @@ impl Default for CharacterState {
     }
 }
 
+// ============================================================================
+// RFC-023: Kingpin & Dealers
+// ============================================================================
+
+/// Jail sentences are TURN-BASED (Reed, 2026-07-12): one run per 25 heat at
+/// bust, plus a mandatory minimum. Sentences tick down as OTHER dealers
+/// complete runs - the empire keeps moving while someone sits.
+const JAIL_HEAT_PER_RUN: u32 = 25;
+
+/// Bail: $300 per remaining sentence run (early release costs money AND
+/// forfeits the un-served heat reduction)
+#[allow(dead_code)] // consumed by SOW-023 Phase 3 (operations panel)
+const BAIL_COST_PER_RUN: u64 = 300;
+
+/// First hire beyond the kingpin costs $500; each subsequent hire doubles
+#[allow(dead_code)] // consumed by SOW-023 Phase 3 (operations panel)
+const HIRE_BASE_COST: u64 = 500;
+
+/// Street names for recruited dealers
+pub const DEALER_NAME_POOL: [&str; 12] = [
+    "Slim", "Mouse", "Ghost", "Dice", "Rico", "Tex",
+    "Lucky", "Smokes", "Blade", "Ace", "Vega", "Halo",
+];
+
+/// Actor portraits not used by the narc or any buyer persona - these faces
+/// become the dealer roster (keys into GameAssets.actor_portraits)
+pub const DEALER_PORTRAIT_POOL: [&str; 9] = [
+    "Barista", "Displaced Patriot", "Flower Child", "Hells Angel", "Hippie",
+    "Pimp", "Pretty Woman", "Street Walker", "Widow",
+];
+
+/// Whether a dealer can be sent out on a run
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub enum DealerStatus {
+    Available,
+    /// Busted: benched for a number of runs. Serving time reduces heat
+    /// proportionally, so `heat_at_bust` is captured at sentencing.
+    Jailed {
+        runs_remaining: u32,
+        sentence_total: u32,
+        heat_at_bust: i32,
+    },
+}
+
+/// A dealer in the kingpin's roster: an identity plus the career record that
+/// used to be the singular CharacterState. `dealers[0]` is the KINGPIN -
+/// you start the game dealing yourself. Non-kingpin busts mean jail;
+/// a KINGPIN bust ends the empire (the only remaining permadeath).
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct DealerState {
+    pub name: String,
+    /// Key into GameAssets.actor_portraits
+    pub portrait: String,
+    pub status: DealerStatus,
+    /// The boss. Never jailed, never hire-gated; busting ends the game.
+    #[serde(default)]
+    pub is_kingpin: bool,
+    /// Times this dealer has been through the system (release scar - the
+    /// heat zeroes but the record doesn't; future difficulty hook)
+    #[serde(default)]
+    pub prior_convictions: u32,
+    /// Career record: heat, play counts, upgrades, stories (RFC-017/018/019)
+    pub character: CharacterState,
+}
+
+/// Sentence length in runs for a bust at the given heat:
+/// 1 mandatory run + 1 per 25 heat (negative heat can't shorten below 1)
+pub fn jail_sentence_from_heat(heat: i32) -> u32 {
+    1 + (heat.max(0) as u32) / JAIL_HEAT_PER_RUN
+}
+
+/// Cost to bail a dealer with the given remaining sentence
+#[allow(dead_code)] // consumed by SOW-023 Phase 3 (operations panel)
+pub fn bail_cost(runs_remaining: u32) -> u64 {
+    BAIL_COST_PER_RUN.saturating_mul(u64::from(runs_remaining))
+}
+
+/// Cost to hire the NEXT dealer given the current roster size (kingpin
+/// included): $500, $1000, $2000, ... - the roster is a progression sink
+#[allow(dead_code)] // consumed by SOW-023 Phase 3 (operations panel)
+pub fn hire_cost(roster_len: usize) -> u64 {
+    HIRE_BASE_COST.saturating_mul(1u64 << (roster_len.saturating_sub(1)).min(40))
+}
+
+impl DealerState {
+    /// The boss themselves - every fresh empire starts with the kingpin
+    /// dealing in person
+    pub fn kingpin() -> Self {
+        Self {
+            name: "The Kingpin".to_string(),
+            portrait: DEALER_PORTRAIT_POOL[0].to_string(),
+            status: DealerStatus::Available,
+            is_kingpin: true,
+            prior_convictions: 0,
+            character: CharacterState::new(),
+        }
+    }
+
+    /// Recruit a new dealer, picking the first name/portrait not already on
+    /// the roster. Deterministic (pool order) so hiring is unit-testable;
+    /// pools cycle if ever exhausted.
+    pub fn recruit(existing: &[DealerState]) -> Self {
+        let name = DEALER_NAME_POOL
+            .iter()
+            .find(|n| !existing.iter().any(|d| d.name == **n))
+            .copied()
+            .unwrap_or(DEALER_NAME_POOL[existing.len() % DEALER_NAME_POOL.len()]);
+        let portrait = DEALER_PORTRAIT_POOL
+            .iter()
+            .find(|p| !existing.iter().any(|d| d.portrait == **p))
+            .copied()
+            .unwrap_or(DEALER_PORTRAIT_POOL[existing.len() % DEALER_PORTRAIT_POOL.len()]);
+
+        Self {
+            name: name.to_string(),
+            portrait: portrait.to_string(),
+            status: DealerStatus::Available,
+            is_kingpin: false,
+            prior_convictions: 0,
+            character: CharacterState::new(),
+        }
+    }
+
+    /// Sentence this dealer for a bust. Kingpins are never jailed - the
+    /// caller handles a kingpin bust as game over.
+    pub fn jail(&mut self) {
+        debug_assert!(!self.is_kingpin, "kingpin busts end the empire, not jail");
+        let heat_at_bust = self.character.heat as i32;
+        let sentence = jail_sentence_from_heat(heat_at_bust);
+        self.status = DealerStatus::Jailed {
+            runs_remaining: sentence,
+            sentence_total: sentence,
+            heat_at_bust,
+        };
+    }
+
+    /// Walk out of jail. Heat reduction is proportional to time served:
+    /// full sentence -> heat 0; bailed after k of n runs -> keep the
+    /// un-served share of heat_at_bust. Either way the record gains a
+    /// prior conviction.
+    pub fn release(&mut self) {
+        if let DealerStatus::Jailed { runs_remaining, sentence_total, heat_at_bust } = self.status {
+            let served = sentence_total.saturating_sub(runs_remaining);
+            let reduction = if sentence_total > 0 {
+                (i64::from(heat_at_bust) * i64::from(served) / i64::from(sentence_total)) as i32
+            } else {
+                heat_at_bust
+            };
+            self.character.heat = (heat_at_bust - reduction).max(0) as u32;
+            self.prior_convictions += 1;
+            self.status = DealerStatus::Available;
+        }
+    }
+
+    /// One completed run elsewhere in the empire counts toward this
+    /// dealer's sentence. Auto-releases at zero. Returns true on release.
+    pub fn tick_sentence(&mut self) -> bool {
+        if let DealerStatus::Jailed { ref mut runs_remaining, .. } = self.status {
+            *runs_remaining = runs_remaining.saturating_sub(1);
+            if *runs_remaining == 0 {
+                self.release();
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Remaining sentence in runs (None if not jailed)
+    pub fn jail_remaining(&self) -> Option<u32> {
+        match self.status {
+            DealerStatus::Jailed { runs_remaining, .. } => Some(runs_remaining),
+            DealerStatus::Available => None,
+        }
+    }
+
+    pub fn is_available(&self) -> bool {
+        self.status == DealerStatus::Available
+    }
+
+    pub fn validate(&self) -> Result<(), SaveError> {
+        if self.name.is_empty() {
+            return Err(SaveError::ValidationError("Dealer has empty name".into()));
+        }
+        if self.is_kingpin && self.status != DealerStatus::Available {
+            return Err(SaveError::ValidationError("Kingpin cannot be jailed".into()));
+        }
+        self.character.validate()
+    }
+}
+
 /// Account-wide state that persists forever (survives permadeath)
 ///
 /// RFC-016: Account Cash System
@@ -784,6 +1067,167 @@ mod tests {
         assert_eq!(HeatTier::from_heat(1000), HeatTier::Inferno);
     }
 
+    // ---- RFC-023: kingpin, dealers, jail, bail, hiring ----
+
+    #[test]
+    fn test_fresh_empire_starts_with_the_kingpin() {
+        let data = SaveData::new();
+        assert_eq!(data.dealers.len(), 1);
+        assert_eq!(data.active_dealer, 0);
+        assert!(data.dealers[0].is_kingpin);
+        assert!(data.dealers[0].is_available());
+        assert!(data.validate().is_ok());
+    }
+
+    #[test]
+    fn test_jail_sentence_scales_with_heat() {
+        assert_eq!(jail_sentence_from_heat(0), 1); // mandatory minimum
+        assert_eq!(jail_sentence_from_heat(-20), 1); // cooling can't shorten it
+        assert_eq!(jail_sentence_from_heat(24), 1);
+        assert_eq!(jail_sentence_from_heat(25), 2);
+        assert_eq!(jail_sentence_from_heat(100), 5);
+    }
+
+    #[test]
+    fn test_full_sentence_zeroes_heat_and_scars_the_record() {
+        let mut dealer = DealerState::recruit(&[]);
+        dealer.character.heat = 50; // sentence: 1 + 50/25 = 3 runs
+
+        dealer.jail();
+        assert_eq!(dealer.jail_remaining(), Some(3));
+
+        assert!(!dealer.tick_sentence()); // 2 left
+        assert!(!dealer.tick_sentence()); // 1 left
+        assert_eq!(dealer.character.heat, 50); // unchanged while inside
+        assert!(dealer.tick_sentence()); // released
+
+        assert!(dealer.is_available());
+        assert_eq!(dealer.character.heat, 0); // full serve -> full reduction
+        assert_eq!(dealer.prior_convictions, 1); // the record remains
+    }
+
+    #[test]
+    fn test_bail_reduction_is_proportional_to_time_served() {
+        let mut data = SaveData::new();
+        data.account.cash_on_hand = 10_000;
+        assert!(data.hire_dealer());
+        data.dealers[1].character.heat = 100; // sentence: 5 runs
+        data.dealers[1].jail();
+
+        // Serve 2 of 5 runs (ticked by other dealers' completed runs)
+        data.complete_run_tick(0);
+        data.complete_run_tick(0);
+        assert_eq!(data.dealers[1].jail_remaining(), Some(3));
+
+        // Bail: $300 x 3 remaining
+        let cash_before = data.account.cash_on_hand;
+        assert!(data.bail_out(1));
+        assert_eq!(data.account.cash_on_hand, cash_before - 900);
+        assert!(data.dealers[1].is_available());
+        // Served 2/5 -> reduction 40 of 100 -> walks out at heat 60
+        assert_eq!(data.dealers[1].character.heat, 60);
+        assert_eq!(data.dealers[1].prior_convictions, 1);
+
+        // Bailing an available dealer is refused
+        assert!(!data.bail_out(1));
+    }
+
+    #[test]
+    fn test_run_tick_excludes_the_runner_and_releases_at_zero() {
+        let mut data = SaveData::new();
+        data.account.cash_on_hand = 10_000;
+        assert!(data.hire_dealer());
+        data.dealers[1].character.heat = 10; // sentence: 1 run
+        data.dealers[1].jail();
+
+        // The just-jailed dealer's own run must not count toward the sentence
+        let released = data.complete_run_tick(1);
+        assert!(released.is_empty());
+        assert_eq!(data.dealers[1].jail_remaining(), Some(1));
+
+        // Someone else runs: sentence served, auto-release
+        let released = data.complete_run_tick(0);
+        assert_eq!(released, vec![data.dealers[1].name.clone()]);
+        assert!(data.dealers[1].is_available());
+    }
+
+    #[test]
+    fn test_hire_cost_doubles_with_roster_size() {
+        assert_eq!(hire_cost(1), 500); // kingpin only -> first hire
+        assert_eq!(hire_cost(2), 1000);
+        assert_eq!(hire_cost(3), 2000);
+        assert_eq!(hire_cost(4), 4000);
+        assert_eq!(bail_cost(3), 900);
+    }
+
+    #[test]
+    fn test_hire_dealer_spends_and_recruits_unique_identity() {
+        let mut data = SaveData::new();
+        data.account.cash_on_hand = 1400;
+
+        // First hire: $500
+        assert!(data.hire_dealer());
+        assert_eq!(data.dealers.len(), 2);
+        assert_eq!(data.account.cash_on_hand, 900);
+        assert!(!data.dealers[1].is_kingpin);
+        assert_ne!(data.dealers[0].name, data.dealers[1].name);
+        assert_ne!(data.dealers[0].portrait, data.dealers[1].portrait);
+
+        // Second hire: $1000 > $900 - refused, no mutation
+        assert!(!data.hire_dealer());
+        assert_eq!(data.dealers.len(), 2);
+        assert_eq!(data.account.cash_on_hand, 900);
+    }
+
+    #[test]
+    fn test_kingpin_bust_resets_the_empire() {
+        let mut data = SaveData::new();
+        data.account.cash_on_hand = 50_000;
+        assert!(data.hire_dealer());
+        data.active_character_mut().heat = 90;
+
+        data.reset_empire();
+        assert_eq!(data.dealers.len(), 1);
+        assert!(data.dealers[0].is_kingpin);
+        assert_eq!(data.active_character().heat, 0);
+        assert_eq!(data.account.cash_on_hand, AccountState::new().cash_on_hand);
+    }
+
+    #[test]
+    fn test_roster_roundtrip_with_jailed_dealer() {
+        let mut data = SaveData::new();
+        data.account.cash_on_hand = 500;
+        assert!(data.hire_dealer());
+        data.dealers[1].character.heat = 40;
+        data.dealers[1].jail();
+        data.active_dealer = 0;
+
+        // Serialize through the same path the save file uses
+        let bytes = bincode::serialize(&data).unwrap();
+        let loaded: SaveData = bincode::deserialize(&bytes).unwrap();
+        assert_eq!(loaded.dealers.len(), 2);
+        assert_eq!(
+            loaded.dealers[1].status,
+            DealerStatus::Jailed { runs_remaining: 2, sentence_total: 2, heat_at_bust: 40 }
+        );
+        assert!(loaded.validate().is_ok());
+    }
+
+    #[test]
+    fn test_validate_rejects_bad_active_index_and_jailed_kingpin() {
+        let mut data = SaveData::new();
+        data.active_dealer = 3;
+        assert!(data.validate().is_err());
+
+        let mut data = SaveData::new();
+        data.dealers[0].status = DealerStatus::Jailed {
+            runs_remaining: 1,
+            sentence_total: 1,
+            heat_at_bust: 0,
+        };
+        assert!(data.validate().is_err());
+    }
+
     #[test]
     fn test_apply_session_heat_signed_with_floor() {
         // SOW-022 follow-up: session heat is signed; a cooling run reduces
@@ -908,8 +1352,7 @@ mod tests {
 
     #[test]
     fn test_save_data_validation() {
-        let mut data = SaveData::new();
-        data.character = Some(CharacterState::new());
+        let data = SaveData::new();
 
         assert!(data.validate().is_ok());
     }
@@ -984,7 +1427,6 @@ mod tests {
     fn test_save_data_with_account() {
         let mut data = SaveData::new();
         data.account.add_profit(500);
-        data.character = Some(CharacterState::new());
 
         assert!(data.validate().is_ok());
         assert_eq!(data.account.cash_on_hand, 500);

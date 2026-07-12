@@ -57,7 +57,7 @@ fn main() {
             setup_deck_builder,
         ).chain())
         .add_systems(OnEnter(GameState::InRun), (
-            ensure_character_on_run_start,
+            ensure_roster_on_run_start, // RFC-023: defensive roster invariant
             clear_upgrade_deferral, // SOW-021: re-prompt pending upgrades after next run
         ))
         .add_systems(OnExit(GameState::DeckBuilding), cleanup_deck_builder_ui)
@@ -139,11 +139,10 @@ fn initialize_deck_builder_from_assets(
 ) {
     // RFC-019: Skip if pending upgrades (we're about to redirect to UpgradeChoice)
     // SOW-021: unless the player deferred them (DECIDE LATER) - then we stay here
+    // RFC-023: pending upgrades belong to the active dealer
     if let Some(ref data) = save_data {
-        if let Some(ref character) = data.character {
-            if character.has_pending_upgrades() && !deferred.0 {
-                return;
-            }
+        if data.active_character().has_pending_upgrades() && !deferred.0 {
+            return;
         }
     }
 
