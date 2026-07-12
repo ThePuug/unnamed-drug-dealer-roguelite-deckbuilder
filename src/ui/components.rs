@@ -16,24 +16,9 @@ pub struct BackgroundImage; // POC: Location background image container (clips o
 #[derive(Component)]
 pub struct BackgroundImageNode; // POC: Actual image node inside container
 
-#[derive(Component)]
-pub struct BuyerScenarioCard;  // SOW-010: Oversized card displaying scenario info
-
-#[derive(Component)]
-pub struct BuyerScenarioCardText;  // SOW-010: Text content of scenario card
-
 // ============================================================================
 // Play Area Components
 // ============================================================================
-
-#[derive(Component)]
-pub struct PlayAreaNarc;
-
-#[derive(Component)]
-pub struct PlayAreaDealer; // SOW-008: Shows dealer (now buyer) played cards
-
-#[derive(Component)]
-pub struct BuyerVisibleHand; // SOW-009: Displays Buyer's 3 visible cards (not yet played)
 
 #[derive(Component)]
 pub struct BuyerPortrait; // Buyer actor portrait image
@@ -55,9 +40,6 @@ pub struct PlayedCardDisplay;
 // ============================================================================
 // Betting UI Components (SOW-002 Phase 5)
 // ============================================================================
-
-#[derive(Component)]
-pub struct BettingActionsContainer;
 
 #[derive(Component)]
 pub struct CheckButton;
@@ -119,43 +101,172 @@ pub struct ActiveSlot {
 }
 
 #[derive(Component)]
-pub struct HeatBar;
-
-#[derive(Component)]
-pub struct HeatBarFill;
-
-#[derive(Component)]
-pub struct HeatBarText;
-
-#[derive(Component)]
 pub struct ActiveSlotsContainer;
 
-#[derive(Component)]
-pub struct EvidencePool;
-
-#[derive(Component)]
-pub struct CoverPool;
-
-#[derive(Component)]
-pub struct DealModPool;
-
-/// SOW-021: Round and turn indicator ("Round 2/3 — YOUR TURN")
+/// SOW-021/SOW-022: Round header text ("ROUND 2 / 3 · DEAL IN PROGRESS")
 #[derive(Component)]
 pub struct TurnIndicatorText;
 
 #[derive(Component)]
-pub struct DeckCounter; // Deck cards remaining counter
+pub struct DeckCounter; // Deck cards remaining counter ("DECK · n")
+
+// ============================================================================
+// SOW-022: Game Play v2 Screen
+// ============================================================================
+
+/// Radial vignette over the location background
+#[derive(Component)]
+pub struct ScreenVignette;
+
+// -- YOUR STANDING panel --
 
 #[derive(Component)]
-pub struct DiscardPile;
+pub struct StandingCashText;
 
 #[derive(Component)]
-pub struct BuyerDeckPanel;
+pub struct StandingHeatValueText;
+
+/// Tier chip container (border color follows heat tier)
+#[derive(Component)]
+pub struct StandingHeatTierChip;
 
 #[derive(Component)]
-pub struct NarcVisibleHand;
+pub struct StandingHeatTierText;
 
-// SOW-AAA: PlayerHandPanel removed (unused)
+#[derive(Component)]
+pub struct StandingHeatBarFill;
+
+/// Container for conviction-threshold tick marks inside the heat track
+#[derive(Component)]
+pub struct StandingHeatTicks;
+
+/// Container for the tick labels row under the heat track
+#[derive(Component)]
+pub struct StandingHeatTickLabels;
+
+// -- Turn pill --
+
+#[derive(Component)]
+pub struct TurnPill;
+
+#[derive(Component)]
+pub struct TurnPillDot;
+
+#[derive(Component)]
+pub struct TurnPillText;
+
+// -- Narc character cluster --
+
+#[derive(Component)]
+pub struct NarcIntentBubble;
+
+#[derive(Component)]
+pub struct NarcIntentTitleText;
+
+/// Row that holds the intent stat entries (rebuilt on change)
+#[derive(Component)]
+pub struct NarcIntentStatsRow;
+
+#[derive(Component)]
+pub struct NarcSpotlight;
+
+// (hand-size count chips removed - they added little over the action bubbles)
+
+// -- Buyer character cluster --
+
+#[derive(Component)]
+pub struct BuyerSpotlight;
+
+#[derive(Component)]
+pub struct BuyerNameText;
+
+/// Hoverable wants bubble (carries Interaction)
+#[derive(Component)]
+pub struct BuyerBubble;
+
+#[derive(Component)]
+pub struct BuyerScenarioNameText;
+
+#[derive(Component)]
+pub struct BuyerDemandText;
+
+#[derive(Component)]
+pub struct BuyerPayoutText;
+
+/// Expanded detail shown while hovering the wants bubble
+#[derive(Component)]
+pub struct BuyerDetailPanel;
+
+#[derive(Component)]
+pub struct BuyerDetailText;
+
+/// Confidence face on the scenario placard - how close the buyer is to
+/// bailing (replaces the BAILS AT HEAT chip; exact thresholds live in the
+/// hover detail)
+#[derive(Component)]
+pub struct BuyerConfidenceEmoji;
+
+#[derive(Component)]
+pub struct BuyerConfidenceText;
+
+/// "PLAYED · <card>" speech bubble for buyer reactions, symmetric with the
+/// narc intent bubble (SOW-022 follow-up: buyer plays had no on-screen feedback)
+#[derive(Component)]
+pub struct BuyerPlayedBubble;
+
+#[derive(Component)]
+pub struct BuyerPlayedTitleText;
+
+#[derive(Component)]
+pub struct BuyerPlayedStatsRow;
+
+// -- Evidence vs Cover balance bar --
+
+#[derive(Component)]
+pub struct BalanceEvidenceText;
+
+#[derive(Component)]
+pub struct BalanceCoverText;
+
+#[derive(Component)]
+pub struct BalanceStatusChip;
+
+#[derive(Component)]
+pub struct BalanceStatusChipText;
+
+#[derive(Component)]
+pub struct BalancePayoutChipText;
+
+#[derive(Component)]
+pub struct BalanceEvidenceFill;
+
+#[derive(Component)]
+pub struct BalanceCoverFill;
+
+#[derive(Component)]
+pub struct BalanceDivider;
+
+// -- Deck / discard stacks --
+
+/// Top face of the deck stack (card-back image filled at runtime)
+#[derive(Component)]
+pub struct DeckStackImage;
+
+#[derive(Component)]
+pub struct DiscardCountText;
+
+/// Slot the discard stack's face-up top card is spawned into
+#[derive(Component)]
+pub struct DiscardTopCardSlot;
+
+// -- Hand fan --
+
+/// Positioned wrapper around one fanned hand card; hover adjusts transform/z
+#[derive(Component)]
+pub struct HandCardWrapper {
+    pub angle_deg: f32,
+    pub base_z: i32,
+}
 
 // ============================================================================
 // SOW-011-B: Hand Resolution Overlay

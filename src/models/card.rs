@@ -49,10 +49,11 @@ pub struct Card {
 }
 
 /// Totals calculated from all played cards
+/// (SOW-022 follow-up: `heat` field removed - it silently diverged from
+/// `HandState.current_heat`, the single heat ledger, and was consumed nowhere)
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Totals {
     pub evidence: u32,
     pub cover: u32,
-    pub heat: i32,
     pub profit: u32,
 }

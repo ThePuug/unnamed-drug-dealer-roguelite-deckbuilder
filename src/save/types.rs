@@ -447,6 +447,12 @@ impl CharacterState {
         HeatTier::from_heat(self.heat)
     }
 
+    /// Apply a signed session heat delta to career heat (GO HOME transfer).
+    /// Session heat can be negative (cooling run); career heat floors at 0.
+    pub fn apply_session_heat(&mut self, session_heat: i32) {
+        self.heat = (i64::from(self.heat) + i64::from(session_heat)).max(0) as u32;
+    }
+
     /// Calculate and apply heat decay based on elapsed time
     /// Returns the amount of heat that decayed
     pub fn apply_decay(&mut self) -> u32 {
@@ -776,6 +782,20 @@ mod tests {
         // Inferno: 150+
         assert_eq!(HeatTier::from_heat(150), HeatTier::Inferno);
         assert_eq!(HeatTier::from_heat(1000), HeatTier::Inferno);
+    }
+
+    #[test]
+    fn test_apply_session_heat_signed_with_floor() {
+        // SOW-022 follow-up: session heat is signed; a cooling run reduces
+        // career heat, floored at 0
+        let mut state = CharacterState::new();
+        state.heat = 50;
+        state.apply_session_heat(20);
+        assert_eq!(state.heat, 70);
+        state.apply_session_heat(-30);
+        assert_eq!(state.heat, 40);
+        state.apply_session_heat(-100);
+        assert_eq!(state.heat, 0); // floors, never wraps
     }
 
     #[test]

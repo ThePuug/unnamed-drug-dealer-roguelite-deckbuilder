@@ -4,16 +4,16 @@
 // Updated for Bevy 0.18
 
 use bevy::prelude::*;
-use crate::{HandState, CardType, Card, HandPhase, HandOutcome, Owner};
+use crate::{HandState, CardType, Card, HandPhase, HandOutcome};
 use super::components::*;
 use super::helpers;
 use super::theme;
+use super::view;
 
 /// Update active slots with current Product/Location/Conviction/Insurance cards
 pub fn update_active_slots_system(
     mut hand_state_query: Query<&mut HandState, Changed<HandState>>,
     slots_query: Query<(Entity, &ActiveSlot)>,
-    discard_pile_query: Query<Entity, With<super::components::DiscardPile>>,
     mut commands: Commands,
     children_query: Query<&Children>,
     _card_display_query: Query<Entity, With<PlayedCardDisplay>>,
@@ -54,30 +54,10 @@ pub fn update_active_slots_system(
     }
 
     // Move replaced cards to discard pile
+    // (SOW-022: the discard STACK display derives from cards_played in
+    // update_deck_discard_system; discard_pile remains the engine-facing record)
     for card in replaced_cards {
         hand_state.discard_pile.push(card);
-    }
-
-    // Update discard pile display (vertical list of card names)
-    if let Ok(discard_entity) = discard_pile_query.single() {
-        // Clear old discard items (except header)
-        if let Ok(children) = children_query.get(discard_entity) {
-            // Skip first child (header "Discard Pile")
-            for child in children.iter().skip(1) {
-                commands.entity(child).despawn();
-            }
-        }
-
-        // Add discarded cards (most recent first)
-        commands.entity(discard_entity).with_children(|parent| {
-            for card in hand_state.discard_pile.iter().rev() {
-                parent.spawn((
-                    Text::new(&card.name),
-                    TextFont::from_font_size(11.0),
-                    TextColor(theme::TEXT_SECONDARY),
-                ));
-            }
-        });
     }
 
     // For each slot type, determine which card (if any) is active
@@ -97,49 +77,18 @@ pub fn update_active_slots_system(
             SlotType::Insurance => hand_state.active_insurance(true),
         };
 
-        // Spawn card or placeholder (Medium size, no margin for override slots)
+        // Spawn card or placeholder into the table slot
         commands.entity(slot_entity).with_children(|parent| {
             if let Some(card) = active_card {
-                // RFC-017: Get upgrade info for player cards
-                // RFC-018: Get upgrade info for Narc cards (Evidence/Conviction)
-                let upgrade_info = match card.card_type {
-                    CardType::Product { .. } | CardType::Location { .. } | CardType::Insurance { .. } => {
-                        let tier = hand_state.get_card_tier(&card.name);
-                        let play_count = hand_state.card_play_counts.get(&card.name).copied().unwrap_or(0);
-                        Some(helpers::UpgradeInfo {
-                            tier_name: tier.name().to_string(),
-                            plays: play_count,
-                            plays_to_next: tier.plays_to_next(),
-                            multiplier: tier.multiplier(),
-                            star_color: tier.star_color(),
-                            is_foil: tier.is_foil(),
-                        })
-                    }
-                    CardType::Evidence { .. } | CardType::Conviction { .. } => {
-                        // RFC-018: Narc cards use ⚖ (scales) with same color tiers
-                        let tier = hand_state.narc_upgrade_tier;
-                        if tier != crate::save::UpgradeTier::Base {
-                            Some(helpers::UpgradeInfo {
-                                tier_name: "⚖".to_string(), // Scales of Justice
-                                plays: 0,
-                                plays_to_next: None, // No progress for Narc cards
-                                multiplier: tier.multiplier(),
-                                star_color: tier.star_color(),
-                                is_foil: tier.is_foil(),
-                            })
-                        } else {
-                            None // Base tier shows no badge
-                        }
-                    }
-                    _ => None, // Cover/DealModifier don't show tier badges
-                };
+                // RFC-017/018 badge info (SOW-022: shared helper)
+                let upgrade_info = helpers::upgrade_info_for(&hand_state, card);
 
-                // Spawn actual card with Medium size, no margin - use template with upgrade
+                // SOW-022: Table-size card on "the deal on the table"
                 helpers::spawn_card_display_with_upgrade(
                     parent,
                     &card.name,
                     &card.card_type,
-                    helpers::CardSize::Medium,
+                    helpers::CardSize::Table,
                     helpers::CardDisplayState::Active,
                     PlayedCardDisplay,
                     game_assets.card_template.clone(),
@@ -147,73 +96,251 @@ pub fn update_active_slots_system(
                     upgrade_info,
                 );
             } else {
-                // Spawn ghosted placeholder (Medium size, no margin)
-                let (color, label) = match slot.slot_type {
-                    SlotType::Location => (theme::LOCATION_CARD_COLOR, "Location"),
-                    SlotType::Product => (theme::PRODUCT_CARD_COLOR, "Product"),
-                    SlotType::Conviction => (theme::CONVICTION_CARD_COLOR, "Conviction"),
-                    SlotType::Insurance => (theme::INSURANCE_CARD_COLOR, "Insurance"),
+                // SOW-022: every empty slot gets the ghost treatment. The "+"
+                // prefix invites a play - Location/Product/Insurance are the
+                // player's to fill; Conviction is the narc's threat slot, so
+                // its ghost states the slot without inviting anything.
+                let (label, border, bg, text) = match slot.slot_type {
+                    SlotType::Location => (
+                        "+ LOCATION",
+                        theme::GHOST_LOCATION_BORDER,
+                        theme::GHOST_LOCATION_BG,
+                        theme::GHOST_LOCATION_TEXT,
+                    ),
+                    SlotType::Product => (
+                        "+ PRODUCT",
+                        theme::GHOST_PRODUCT_BORDER,
+                        theme::GHOST_PRODUCT_BG,
+                        theme::GHOST_PRODUCT_TEXT,
+                    ),
+                    SlotType::Conviction => (
+                        "CONVICTION",
+                        theme::GHOST_CONVICTION_BORDER,
+                        theme::GHOST_CONVICTION_BG,
+                        theme::GHOST_CONVICTION_TEXT,
+                    ),
+                    SlotType::Insurance => (
+                        "+ INSURANCE",
+                        theme::GHOST_INSURANCE_BORDER,
+                        theme::GHOST_INSURANCE_BG,
+                        theme::GHOST_INSURANCE_TEXT,
+                    ),
                 };
 
-                helpers::spawn_placeholder(
-                    parent,
-                    label,
-                    helpers::CardSize::Medium,
-                    color,
-                    game_assets.card_placeholder.clone(),
-                );
+                let (width, height) = helpers::CardSize::Table.dimensions();
+                parent.spawn((
+                    Node {
+                        width: Val::Px(width),
+                        height: Val::Px(height),
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
+                        border: UiRect::all(Val::Px(2.0)),
+                        border_radius: BorderRadius::all(Val::Px(12.0)),
+                        ..default()
+                    },
+                    BackgroundColor(bg),
+                    BorderColor::all(border),
+                    PlayedCardDisplay,
+                ))
+                .with_children(|parent| {
+                    parent.spawn((
+                        Text::new(label),
+                        TextFont::from_font_size(12.0),
+                        TextColor(text),
+                    ));
+                });
             }
         });
     }
 }
 
-/// Update heat bar fill and color based on current heat
-pub fn update_heat_bar_system(
+/// SOW-022: YOUR STANDING panel - session cash, heat value/tier, 0..100 heat
+/// track with conviction-threshold tick marks
+pub fn update_standing_panel_system(
     hand_state_query: Query<&HandState, Changed<HandState>>,
-    mut bar_fill_query: Query<&mut Node, (With<HeatBarFill>, Without<HeatBar>)>,
-    mut bar_color_query: Query<&mut BackgroundColor, With<HeatBarFill>>,
-    mut bar_text_query: Query<&mut Text, With<HeatBarText>>,
+    mut texts: Query<&mut Text>,
+    cash_query: Query<Entity, With<StandingCashText>>,
+    heat_value_query: Query<Entity, With<StandingHeatValueText>>,
+    tier_text_query: Query<Entity, With<StandingHeatTierText>>,
+    mut text_colors: Query<&mut TextColor>,
+    mut tier_chip_query: Query<&mut BorderColor, With<StandingHeatTierChip>>,
+    mut fill_query: Query<&mut Node, With<StandingHeatBarFill>>,
+    ticks_query: Query<Entity, With<StandingHeatTicks>>,
+    tick_labels_query: Query<Entity, With<StandingHeatTickLabels>>,
+    children_query: Query<&Children>,
+    mut commands: Commands,
 ) {
     let Ok(hand_state) = hand_state_query.single() else {
         return;
     };
 
-    // Heat is accumulated immediately when cards are played, use current_heat directly
-    let current_heat = hand_state.current_heat;
-
-    // Get threshold from buyer scenario (None = no limit, show as 999)
-    let heat_threshold = hand_state.buyer_persona.as_ref()
-        .and_then(|p| p.active_scenario_index)
-        .and_then(|idx| hand_state.buyer_persona.as_ref()?.scenarios.get(idx))
-        .and_then(|s| s.heat_threshold)
-        .unwrap_or(999);
-
-    // Update heat bar fill percentage
-    let fill_percentage = if heat_threshold > 0 {
-        ((current_heat as f32 / heat_threshold as f32) * 100.0).min(100.0)
-    } else {
-        0.0
+    let mut set_text = |entity: Option<Entity>, value: String| {
+        if let Some(entity) = entity {
+            if let Ok(mut text) = texts.get_mut(entity) {
+                if **text != value {
+                    **text = value;
+                }
+            }
+        }
     };
 
-    if let Ok(mut node) = bar_fill_query.single_mut() {
-        node.height = Val::Percent(fill_percentage);
+    set_text(cash_query.single().ok(), view::format_cash(hand_state.cash));
+    set_text(heat_value_query.single().ok(), hand_state.current_heat.to_string());
+
+    // Heat tier chip (name + color from the shared HeatTier scale; session
+    // heat is signed - negative reads as Cold)
+    let tier = crate::save::HeatTier::from_heat(hand_state.current_heat.max(0) as u32);
+    let (r, g, b) = tier.color();
+    let tier_color = Color::srgb(r, g, b);
+    set_text(tier_text_query.single().ok(), tier.name().to_uppercase());
+    if let Ok(tier_entity) = tier_text_query.single() {
+        if let Ok(mut color) = text_colors.get_mut(tier_entity) {
+            color.0 = tier_color;
+        }
+    }
+    if let Ok(mut border) = tier_chip_query.single_mut() {
+        *border = BorderColor::all(tier_color.with_alpha(0.5));
     }
 
-    // Update heat bar color based on percentage
-    if let Ok(mut color) = bar_color_query.single_mut() {
-        let bar_color = if fill_percentage >= 80.0 {
-            theme::HEAT_BAR_RED
-        } else if fill_percentage >= 50.0 {
-            theme::HEAT_BAR_YELLOW
+    // Track fill on the fixed 0..100 scale (negative heat shows an empty bar)
+    if let Ok(mut node) = fill_query.single_mut() {
+        let pct = hand_state.current_heat.clamp(0, view::HEAT_BAR_MAX as i32) as f32
+            / view::HEAT_BAR_MAX as f32
+            * 100.0;
+        node.width = Val::Percent(pct);
+    }
+
+    // Conviction-threshold tick marks + labels (content-driven)
+    let ticks = view::conviction_ticks(hand_state);
+
+    if let Ok(ticks_entity) = ticks_query.single() {
+        if let Ok(children) = children_query.get(ticks_entity) {
+            for child in children.iter() {
+                commands.entity(child).despawn();
+            }
+        }
+        commands.entity(ticks_entity).with_children(|parent| {
+            for (threshold, _) in &ticks {
+                parent.spawn((
+                    Node {
+                        position_type: PositionType::Absolute,
+                        left: Val::Percent(*threshold as f32 / view::HEAT_BAR_MAX as f32 * 100.0),
+                        top: Val::Px(-2.0),
+                        bottom: Val::Px(-2.0),
+                        width: Val::Px(1.0),
+                        ..default()
+                    },
+                    BackgroundColor(theme::STANDING_TICK),
+                ));
+            }
+        });
+    }
+
+    if let Ok(labels_entity) = tick_labels_query.single() {
+        if let Ok(children) = children_query.get(labels_entity) {
+            for child in children.iter() {
+                commands.entity(child).despawn();
+            }
+        }
+        commands.entity(labels_entity).with_children(|parent| {
+            for (index, (threshold, name)) in ticks.iter().enumerate() {
+                // The nearest (lowest) threshold carries its card name
+                let (label, color) = if index == 0 {
+                    (format!("{name} {threshold}"), theme::STANDING_TICK_LABEL_FIRST)
+                } else {
+                    (threshold.to_string(), theme::STANDING_TICK_LABEL)
+                };
+                parent.spawn((
+                    Text::new(label),
+                    TextFont::from_font_size(9.0),
+                    TextColor(color),
+                    Node {
+                        position_type: PositionType::Absolute,
+                        left: Val::Percent(*threshold as f32 / view::HEAT_BAR_MAX as f32 * 100.0),
+                        ..default()
+                    },
+                    // center the label on the tick
+                    UiTransform::from_translation(Val2::percent(-50.0, 0.0)),
+                ));
+            }
+        });
+    }
+}
+
+/// SOW-022: Evidence vs Cover balance bar with SAFE/AT RISK + payout chips
+pub fn update_balance_bar_system(
+    hand_state_query: Query<&HandState, Changed<HandState>>,
+    mut texts: Query<&mut Text>,
+    evidence_text_query: Query<Entity, With<BalanceEvidenceText>>,
+    cover_text_query: Query<Entity, With<BalanceCoverText>>,
+    status_text_query: Query<Entity, With<BalanceStatusChipText>>,
+    payout_text_query: Query<Entity, With<BalancePayoutChipText>>,
+    mut text_colors: Query<&mut TextColor>,
+    mut status_chip_query: Query<(&mut BackgroundColor, &mut BorderColor), With<BalanceStatusChip>>,
+    mut fills: Query<&mut Node>,
+    evidence_fill_query: Query<Entity, With<BalanceEvidenceFill>>,
+    cover_fill_query: Query<Entity, With<BalanceCoverFill>>,
+    divider_query: Query<Entity, With<BalanceDivider>>,
+) {
+    let Ok(hand_state) = hand_state_query.single() else {
+        return;
+    };
+
+    let totals = hand_state.calculate_totals(true);
+
+    let mut set_text = |entity: Option<Entity>, value: String| {
+        if let Some(entity) = entity {
+            if let Ok(mut text) = texts.get_mut(entity) {
+                if **text != value {
+                    **text = value;
+                }
+            }
+        }
+    };
+
+    set_text(evidence_text_query.single().ok(), format!("EVIDENCE {}", totals.evidence));
+    set_text(cover_text_query.single().ok(), format!("COVER {}", totals.cover));
+
+    let multiplier = hand_state.get_profit_multiplier();
+    set_text(payout_text_query.single().ok(), format!("PAYOUT ×{multiplier:.1}"));
+
+    // SAFE / AT RISK chip (ties go to the player - resolution.rs)
+    let is_safe = totals.evidence <= totals.cover;
+    set_text(
+        status_text_query.single().ok(),
+        if is_safe { "SAFE".to_string() } else { "AT RISK".to_string() },
+    );
+    if let Ok(entity) = status_text_query.single() {
+        if let Ok(mut color) = text_colors.get_mut(entity) {
+            color.0 = if is_safe { theme::SAFE_CHIP_TEXT } else { theme::RISK_CHIP_TEXT };
+        }
+    }
+    if let Ok((mut bg, mut border)) = status_chip_query.single_mut() {
+        if is_safe {
+            *bg = theme::SAFE_CHIP_BG.into();
+            *border = BorderColor::all(theme::SAFE_CHIP_BORDER);
         } else {
-            theme::HEAT_BAR_GREEN
-        };
-        *color = bar_color.into();
+            *bg = theme::RISK_CHIP_BG.into();
+            *border = BorderColor::all(theme::RISK_CHIP_BORDER);
+        }
     }
 
-    // Update heat bar text
-    if let Ok(mut text) = bar_text_query.single_mut() {
-        **text = format!("{current_heat}/{heat_threshold}");
+    // Bar split
+    let evidence_pct = view::balance_split(totals.evidence, totals.cover);
+    if let Ok(entity) = evidence_fill_query.single() {
+        if let Ok(mut node) = fills.get_mut(entity) {
+            node.width = Val::Percent(evidence_pct);
+        }
+    }
+    if let Ok(entity) = cover_fill_query.single() {
+        if let Ok(mut node) = fills.get_mut(entity) {
+            node.width = Val::Percent(100.0 - evidence_pct);
+        }
+    }
+    if let Ok(entity) = divider_query.single() {
+        if let Ok(mut node) = fills.get_mut(entity) {
+            node.left = Val::Percent(evidence_pct);
+        }
     }
 }
 
@@ -327,8 +454,8 @@ pub fn update_resolution_overlay_system(
             }
         }
 
-        // Session totals (always show)
-        results.push_str(&format!("\n\n─────────────────\nSession: ${} banked • +{} Heat",
+        // Session totals (always show; heat is signed - a cooling session shows negative)
+        results.push_str(&format!("\n\n─────────────────\nSession: ${} banked • {:+} Heat",
             hand_state.cash, cumulative_heat));
 
         **results_text = results;
@@ -360,6 +487,13 @@ pub fn scale_ui_to_fit_system(
 
     let window_width = window.width();
     let window_height = window.height();
+
+    // SOW-022 follow-up: a minimized window reports 0x0, which would set
+    // UiScale to 0 and cascade NaNs through text/layout math (crash on
+    // minimize). Keep the last good scale until the window is visible again.
+    if window_width < 1.0 || window_height < 1.0 {
+        return;
+    }
     let window_aspect = window_width / window_height;
 
     // Calculate scale to fit screen while maintaining aspect ratio
@@ -397,20 +531,24 @@ pub fn scale_ui_to_fit_system(
     }
 }
 
-/// POC: Update background image based on active location
-/// Uses "cover" scaling: maintains aspect ratio, scales to fill screen
+/// Update background image based on active location.
+/// Uses "cover" scaling: maintains aspect ratio, scales to fill screen.
+///
+/// SOW-022 follow-up: runs every frame WITHOUT `Changed<HandState>`. Images
+/// stream in asynchronously, and the old change-gated version consumed the
+/// trigger even when the asset wasn't loaded yet - a location played while its
+/// art was still loading left a stale background until the next state change
+/// (or until NEW DEAL if it was the hand's final play). All writes below are
+/// guarded by comparisons, so nothing is dirtied once the display is correct;
+/// this also picks up window resizes, which the old version ignored.
 pub fn update_background_system(
-    hand_state_query: Query<&HandState, Changed<HandState>>,
+    hand_state_query: Query<&HandState>,
     mut background_image_query: Query<(&mut ImageNode, &mut Node), With<BackgroundImageNode>>,
     game_assets: Res<crate::assets::GameAssets>,
     images: Res<Assets<Image>>,
     windows: Query<&Window>,
     ui_scale: Res<UiScale>,
 ) {
-    let Ok(hand_state) = hand_state_query.single() else {
-        return;
-    };
-
     let Ok((mut image_node, mut node)) = background_image_query.single_mut() else {
         return;
     };
@@ -419,46 +557,65 @@ pub fn update_background_system(
         return;
     };
 
-    // Get the active location
-    if let Some(location_card) = hand_state.active_location(true) {
-        // Try to find the background image for this location
-        if let Some(image_handle) = game_assets.background_images.get(&location_card.name) {
-            // Check if image is loaded
-            if let Some(image_asset) = images.get(image_handle) {
-                image_node.image = image_handle.clone();
+    let active_location = hand_state_query
+        .single()
+        .ok()
+        .and_then(|hand_state| hand_state.active_location(true).cloned());
 
-                // Account for UiScale when calculating dimensions
-                let window_width = window.width() / ui_scale.0;
-                let window_height = window.height() / ui_scale.0;
-                let window_aspect = window_width / window_height;
-
-                let image_width = image_asset.width() as f32;
-                let image_height = image_asset.height() as f32;
-                let image_aspect = image_width / image_height;
-
-                // Scale to cover window (fills entire area, crops overflow)
-                let (scaled_width, scaled_height) = if window_aspect > image_aspect {
-                    // Window is wider - fit to width, crop height
-                    (window_width, window_width / image_aspect)
-                } else {
-                    // Window is taller - fit to height, crop width
-                    (window_height * image_aspect, window_height)
-                };
-
-                node.width = Val::Px(scaled_width);
-                node.height = Val::Px(scaled_height);
-
-                info!("Background: {}", location_card.name);
-            }
-        }
-    } else {
-        // No active location - clear the background image
+    let Some(location_card) = active_location else {
+        // No active hand/location - clear the background image
         if image_node.image != Handle::default() {
             image_node.image = Handle::default();
             node.width = Val::Px(0.0);
             node.height = Val::Px(0.0);
             info!("Background cleared");
         }
+        return;
+    };
+
+    let Some(image_handle) = game_assets.background_images.get(&location_card.name) else {
+        return; // no art authored for this location - keep whatever is showing
+    };
+
+    // Not loaded yet: leave the current background and retry next frame
+    let Some(image_asset) = images.get(image_handle) else {
+        return;
+    };
+
+    if image_node.image != *image_handle {
+        image_node.image = image_handle.clone();
+        info!("Background: {}", location_card.name);
+    }
+
+    // Guard against a minimized (0x0) window - the aspect math below would
+    // produce NaN node sizes
+    if window.width() < 1.0 || window.height() < 1.0 || ui_scale.0 <= 0.0 {
+        return;
+    }
+
+    // Account for UiScale when calculating dimensions
+    let window_width = window.width() / ui_scale.0;
+    let window_height = window.height() / ui_scale.0;
+    let window_aspect = window_width / window_height;
+
+    let image_width = image_asset.width() as f32;
+    let image_height = image_asset.height() as f32;
+    let image_aspect = image_width / image_height;
+
+    // Scale to cover window (fills entire area, crops overflow)
+    let (scaled_width, scaled_height) = if window_aspect > image_aspect {
+        // Window is wider - fit to width, crop height
+        (window_width, window_width / image_aspect)
+    } else {
+        // Window is taller - fit to height, crop width
+        (window_height * image_aspect, window_height)
+    };
+
+    if node.width != Val::Px(scaled_width) {
+        node.width = Val::Px(scaled_width);
+    }
+    if node.height != Val::Px(scaled_height) {
+        node.height = Val::Px(scaled_height);
     }
 }
 
@@ -494,41 +651,67 @@ pub fn ui_scroll_system(
     }
 }
 
-/// SOW-021: Round and turn indicator - the player must always know which of
-/// the 3 rounds they are in and whose action is in progress
-pub fn update_turn_indicator_system(
+/// SOW-021/SOW-022: Round header + actor pill - the player must always know
+/// which of the 3 rounds they are in and whose action is in progress
+pub fn update_turn_display_system(
     hand_state_query: Query<&HandState>,
-    mut indicator_query: Query<(&mut Text, &mut TextColor), With<TurnIndicatorText>>,
+    mut header_query: Query<&mut Text, (With<TurnIndicatorText>, Without<TurnPillText>)>,
+    mut pill_text_query: Query<(&mut Text, &mut TextColor), (With<TurnPillText>, Without<TurnIndicatorText>)>,
+    mut pill_query: Query<(&mut BackgroundColor, &mut BorderColor), (With<TurnPill>, Without<TurnPillDot>)>,
+    mut dot_query: Query<&mut BackgroundColor, (With<TurnPillDot>, Without<TurnPill>)>,
 ) {
     let Ok(hand_state) = hand_state_query.single() else {
         return;
     };
-    let Ok((mut text, mut color)) = indicator_query.single_mut() else {
-        return;
+
+    // Header line ("ROUND 2 / 3 · DEAL IN PROGRESS") - write only on change
+    if let Ok(mut text) = header_query.single_mut() {
+        let header = view::round_header(hand_state);
+        if **text != header {
+            **text = header;
+        }
+    }
+
+    let (label, actor) = view::turn_pill(hand_state);
+    let (bg, border, dot, text_color) = match actor {
+        view::PillActor::Narc => (
+            theme::PILL_NARC_BG,
+            theme::PILL_NARC_BORDER,
+            theme::PILL_NARC_DOT,
+            theme::PILL_NARC_TEXT,
+        ),
+        view::PillActor::Player => (
+            theme::PILL_PLAYER_BG,
+            theme::PILL_PLAYER_BORDER,
+            theme::PILL_PLAYER_DOT,
+            theme::PILL_PLAYER_TEXT,
+        ),
+        view::PillActor::Buyer => (
+            theme::PILL_BUYER_BG,
+            theme::PILL_BUYER_BORDER,
+            theme::PILL_BUYER_DOT,
+            theme::PILL_BUYER_TEXT,
+        ),
+        view::PillActor::Neutral => (
+            theme::PILL_NEUTRAL_BG,
+            theme::PILL_NEUTRAL_BORDER,
+            theme::PILL_NEUTRAL_DOT,
+            theme::PILL_NEUTRAL_TEXT,
+        ),
     };
 
-    let round = hand_state.current_round;
-    let (label, text_color) = match hand_state.current_state {
-        HandPhase::Draw => (format!("Round {}/3 — dealing...", round), theme::TEXT_SECONDARY),
-        HandPhase::PlayerPhase => {
-            if hand_state.all_players_acted() {
-                (format!("Round {}/3", round), theme::TEXT_SECONDARY)
-            } else if hand_state.current_player() == Owner::Player {
-                (format!("Round {}/3 — YOUR TURN", round), theme::TEXT_PRIMARY)
-            } else {
-                (format!("Round {}/3 — Narc is acting...", round), theme::EVIDENCE_CARD_COLOR)
+    if let Ok((mut text, mut color)) = pill_text_query.single_mut() {
+        // Label change gates all pill restyling (avoids per-frame dirtying)
+        if **text != label {
+            **text = label.to_string();
+            color.0 = text_color;
+            if let Ok((mut pill_bg, mut pill_border)) = pill_query.single_mut() {
+                *pill_bg = bg.into();
+                *pill_border = BorderColor::all(border);
+            }
+            if let Ok(mut dot_bg) = dot_query.single_mut() {
+                *dot_bg = dot.into();
             }
         }
-        HandPhase::DealerReveal => {
-            (format!("Round {}/3 — Buyer reacting...", round), theme::TEXT_SECONDARY)
-        }
-        HandPhase::FoldDecision => (format!("Round {}/3", round), theme::TEXT_SECONDARY),
-        HandPhase::Resolve | HandPhase::Bust => ("Hand complete".to_string(), theme::TEXT_SECONDARY),
-    };
-
-    // Only write on change to avoid dirtying the Text component every frame
-    if **text != label {
-        **text = label;
-        *color = TextColor(text_color);
     }
 }

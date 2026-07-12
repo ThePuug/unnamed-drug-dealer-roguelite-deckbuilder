@@ -23,7 +23,8 @@ pub enum HandPhase {
     Draw,
     PlayerPhase,
     DealerReveal,
-    FoldDecision,
+    // SOW-022: FoldDecision removed (legacy since SOW-008 - fold happens
+    // during PlayerPhase via the BAIL OUT button, variant was never constructed)
     Resolve,
     Bust,
 }
@@ -49,7 +50,10 @@ pub struct HandState {
     pub discard_pile: Vec<Card>,
     pub outcome: Option<HandOutcome>,
     pub cash: u32,
-    pub current_heat: u32,
+    /// Signed session heat: the running sum of every played card's heat.
+    /// Can go negative (heat-system spec: "sum all heat modifiers") - a
+    /// cooling session reduces career heat on GO HOME (floored at 0 there).
+    pub current_heat: i32,
     pub current_player_index: usize,
     pub checks_this_hand: Vec<(Owner, u8)>,
     pub buyer_persona: Option<BuyerPersona>,

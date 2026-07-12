@@ -12,3 +12,4 @@ Cargo.lock
 # claude like to create these from time to time
 **/nul
 story_variations.txt
+rustc-ice-*.txt

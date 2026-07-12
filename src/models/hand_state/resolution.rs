@@ -47,7 +47,7 @@ impl HandState {
             // Step 2: Check Conviction override (using current cumulative deck heat)
             if let Some(conviction) = self.active_conviction(true) {
                 if let CardType::Conviction { heat_threshold } = conviction.card_type {
-                    if self.current_heat >= heat_threshold {
+                    if self.current_heat >= heat_threshold as i32 {
                         // Conviction overrides insurance - run ends
                         HandOutcome::Busted
                     } else {
@@ -116,8 +116,8 @@ impl HandState {
                 // site, so without it the upgrade choice would do nothing
                 let penalty_mult =
                     2.0 - self.get_stat_multiplier(&insurance_name, crate::save::UpgradeableStat::HeatPenalty);
-                let effective_penalty = (heat_penalty as f32 * penalty_mult).round() as u32;
-                self.current_heat = self.current_heat.saturating_add(effective_penalty);
+                let effective_penalty = (heat_penalty as f32 * penalty_mult).round() as i32;
+                self.current_heat += effective_penalty;
 
                 // Burn insurance card (remove from deck permanently)
                 self.cards_mut(Owner::Player).deck.retain(|card| card.name != insurance_name);
@@ -216,7 +216,7 @@ mod tests {
         // Note: Heat is accumulated when cards are played via play_card(), not when pushed to cards_played
         // In this test we push directly, so only insurance heat_penalty is added during activation
         let insurance_heat = if let CardType::Insurance { heat_penalty, .. } = insurance.card_type { heat_penalty } else { 0 };
-        assert_eq!(hand_state.current_heat, insurance_heat as u32);
+        assert_eq!(hand_state.current_heat, insurance_heat);
     }
 
     #[test]

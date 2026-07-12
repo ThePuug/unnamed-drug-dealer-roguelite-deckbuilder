@@ -467,7 +467,56 @@ pub fn setup_deck_builder(
     });
 }
 
-pub fn create_ui(commands: &mut Commands) {
+// ============================================================================
+// SOW-022: Game Play v2 screen
+// ============================================================================
+// Layout transcribed from the "Game Play v2" design mockup (1920x1080).
+// Static composition only - all live values are bound by update systems.
+
+/// Spawn a standalone emoji glyph Text (NotoEmoji handle - see font rules in
+/// GUIDANCE: emoji never share a Text with words)
+fn spawn_emoji(parent: &mut ChildSpawnerCommands, glyph: &str, size: f32, color: Color, emoji_font: &EmojiFont) {
+    parent.spawn((
+        Text::new(glyph),
+        TextFont {
+            font: emoji_font.0.clone(),
+            font_size: size,
+            ..default()
+        },
+        TextColor(color),
+    ));
+}
+
+/// Radial spotlight gradient behind an actor portrait
+pub fn spotlight_gradient(color: Color) -> BackgroundGradient {
+    BackgroundGradient(vec![Gradient::Radial(RadialGradient {
+        position: UiPosition::CENTER,
+        shape: RadialGradientShape::FarthestSide,
+        stops: vec![
+            ColorStop::new(color, Val::Percent(0.0)),
+            ColorStop::new(color.with_alpha(0.0), Val::Percent(70.0)),
+        ],
+        color_space: default(),
+    })])
+}
+
+/// PASS button face (enabled/disabled variants swapped by input system)
+pub fn pass_button_gradient(enabled: bool) -> BackgroundGradient {
+    let (top, bottom) = if enabled {
+        (theme::PASS_BUTTON_TOP, theme::PASS_BUTTON_BOTTOM)
+    } else {
+        (theme::PASS_BUTTON_DISABLED_TOP, theme::PASS_BUTTON_DISABLED_BOTTOM)
+    };
+    BackgroundGradient(vec![Gradient::Linear(LinearGradient::new(
+        LinearGradient::TO_BOTTOM,
+        vec![
+            ColorStop::new(top, Val::Percent(0.0)),
+            ColorStop::new(bottom, Val::Percent(100.0)),
+        ],
+    ))])
+}
+
+pub fn create_ui(commands: &mut Commands, emoji_font: &EmojiFont) {
     // Background image layer (behind everything)
     commands.spawn((
         Node {
@@ -480,11 +529,10 @@ pub fn create_ui(commands: &mut Commands) {
             ..default()
         },
         GlobalZIndex(-1),
-        BackgroundColor(theme::UI_ROOT_BG),
+        BackgroundColor(theme::GAMEPLAY_CANVAS_BG),
         BackgroundImage,
     ))
     .with_children(|parent| {
-        // Image node inside container
         parent.spawn((
             Node::default(),
             ImageNode::default(),
@@ -492,398 +540,1086 @@ pub fn create_ui(commands: &mut Commands) {
         ));
     });
 
-    // UI Root container - 1920x1080 design, will be scaled/positioned by scale_ui_to_fit_system
+    // UI Root container - 1920x1080 design, scaled/positioned by scale_ui_to_fit_system
     commands.spawn((
         Node {
             width: Val::Px(1920.0),
             height: Val::Px(1080.0),
-            flex_direction: FlexDirection::Row,
-            padding: UiRect::all(Val::Px(8.0)),
             ..default()
         },
         UiRoot,
     ))
     .with_children(|parent| {
         // ====================================================================
-        // LEFT COLUMN: Narc Hand (full height)
+        // Vignette over the location background
         // ====================================================================
         parent.spawn((
             Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(0.0),
+                top: Val::Px(0.0),
+                width: Val::Percent(100.0),
                 height: Val::Percent(100.0),
-                flex_direction: FlexDirection::Column,
-                row_gap: Val::Px(8.0),
-                justify_content: JustifyContent::FlexEnd,
                 ..default()
             },
-            PlayAreaNarc,
+            BackgroundGradient(vec![Gradient::Radial(RadialGradient {
+                position: UiPosition::anchor(Vec2::new(0.0, -0.18)), // 50% 32%
+                shape: RadialGradientShape::Ellipse(Val::Percent(120.0), Val::Percent(90.0)),
+                stops: vec![
+                    ColorStop::new(theme::VIGNETTE_INNER, Val::Percent(0.0)),
+                    ColorStop::new(theme::VIGNETTE_MID, Val::Percent(62.0)),
+                    ColorStop::new(theme::VIGNETTE_OUTER, Val::Percent(100.0)),
+                ],
+                color_space: default(),
+            })]),
+            ScreenVignette,
+        ));
+
+        // ====================================================================
+        // YOUR STANDING panel (left-mid: cash + heat)
+        // ====================================================================
+        parent.spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(36.0),
+                top: Val::Px(452.0),
+                width: Val::Px(300.0),
+                flex_direction: FlexDirection::Column,
+                padding: UiRect::axes(Val::Px(16.0), Val::Px(14.0)),
+                row_gap: Val::Px(13.0),
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(14.0)),
+                ..default()
+            },
+            BackgroundColor(theme::STANDING_PANEL_BG),
+            BorderColor::all(theme::STANDING_PANEL_BORDER),
+            BoxShadow::new(Color::srgba(0.0, 0.0, 0.0, 0.45), Val::Px(0.0), Val::Px(0.0), Val::Px(0.0), Val::Px(24.0)),
         ))
         .with_children(|parent| {
-            // Narc's visible hand section
             parent.spawn((
-                Node {
-                    flex_direction: FlexDirection::Column,
-                    row_gap: Val::Px(5.0),
-                    ..default()
-                },
-                NarcVisibleHand,
-            ));
-        });
-
-        // ====================================================================
-        // CENTER COLUMN: Game Area (4 rows)
-        // ====================================================================
-        parent.spawn(Node {
-            flex_grow: 1.0,
-            height: Val::Percent(100.0),
-            flex_direction: FlexDirection::Column,
-            row_gap: Val::Px(5.0),
-            ..default()
-        })
-        .with_children(|parent| {
-            // ================================================================
-            // ROW 1: Deal Row - Slots/Scenario/Heat (center aligned)
-            // ================================================================
-            parent.spawn(Node {
-                width: Val::Percent(100.0),
-                flex_direction: FlexDirection::Row,
-                justify_content: JustifyContent::Center,
-                align_items: AlignItems::FlexEnd,
-                column_gap: Val::Px(12.0),
-                padding: UiRect::vertical(Val::Px(5.0)),
-                ..default()
-            })
-            .with_children(|parent| {
-                    // Active card slots (horizontal row)
-                    parent.spawn((
-                        Node {
-                            flex_direction: FlexDirection::Row,
-                            column_gap: Val::Px(10.0),
-                            align_items: AlignItems::FlexEnd,
-                            ..default()
-                        },
-                        ActiveSlotsContainer,
-                    ))
-                    .with_children(|parent| {
-                        // Create empty slot containers - let cards define size
-                        for slot_type in [SlotType::Location, SlotType::Product, SlotType::Conviction, SlotType::Insurance] {
-                            parent.spawn((
-                                Node {
-                                    flex_direction: FlexDirection::Column,
-                                    justify_content: JustifyContent::Center,
-                                    align_items: AlignItems::Center,
-                                    ..default()
-                                },
-                                ActiveSlot { slot_type },
-                            ));
-                        }
-                    });
-
-                    // Scenario card - landscape orientation (870:601 aspect ratio, 275px height)
-                    parent.spawn((
-                        Node {
-                            width: Val::Px(398.09),
-                            height: Val::Px(275.0),
-                            flex_direction: FlexDirection::Column,
-                            padding: UiRect::all(Val::Px(8.0)),
-                            border: UiRect::all(Val::Px(2.0)),
-                            align_self: AlignSelf::FlexEnd,
-                            ..default()
-                        },
-                        BackgroundColor(theme::SCENARIO_CARD_BG),
-                        BorderColor::all(theme::SCENARIO_CARD_BORDER),
-                        BuyerScenarioCard,
-                    ))
-                    .with_children(|parent| {
-                        parent.spawn((
-                            Text::new("Buyer Scenario Info"),
-                            TextFont::from_font_size(16.0),
-                            TextColor(theme::SCENARIO_CARD_TEXT),
-                            BuyerScenarioCardText,
-                        ));
-                    });
-
-                    // Vertical heat bar - 275px to match card height
-                    parent.spawn(Node {
-                        width: Val::Px(42.0),
-                        height: Val::Px(275.0),
-                        flex_direction: FlexDirection::Column,
-                        align_self: AlignSelf::FlexEnd,
-                        justify_content: JustifyContent::FlexEnd,
-                        ..default()
-                    })
-                    .with_children(|parent| {
-                        // Heat bar container
-                        parent.spawn((
-                            Node {
-                                width: Val::Percent(100.0),
-                                flex_grow: 1.0,
-                                flex_direction: FlexDirection::Column,
-                                justify_content: JustifyContent::FlexEnd,
-                                border: UiRect::all(Val::Px(2.0)),
-                                ..default()
-                            },
-                            BackgroundColor(theme::HEAT_BAR_BG),
-                            BorderColor::all(theme::CARD_BORDER_NORMAL),
-                            HeatBar,
-                        ))
-                        .with_children(|parent| {
-                            // Heat bar fill
-                            parent.spawn((
-                                Node {
-                                    width: Val::Percent(100.0),
-                                    height: Val::Percent(0.0),
-                                    ..default()
-                                },
-                                BackgroundColor(theme::HEAT_BAR_GREEN),
-                                HeatBarFill,
-                            ));
-                        });
-
-                        // Heat bar text below
-                        parent.spawn((
-                            Text::new("0/100"),
-                            TextFont::from_font_size(11.0),
-                            TextColor(theme::TEXT_SECONDARY),
-                            TextLayout::new_with_justify(bevy::text::Justify::Center),
-                            HeatBarText,
-                        ));
-                    });
-
-                    // Discard pile - 275px to match card height
-                    parent.spawn((
-                        Node {
-                            width: Val::Px(190.0),
-                            height: Val::Px(275.0),
-                            flex_direction: FlexDirection::Column,
-                            padding: UiRect::all(Val::Px(6.0)),
-                            border: UiRect::all(Val::Px(2.0)),
-                            row_gap: Val::Px(3.0),
-                            align_self: AlignSelf::FlexEnd,
-                            ..default()
-                        },
-                        BackgroundColor(Color::srgba(0.1, 0.1, 0.1, 0.8)),
-                        BorderColor::all(theme::CARD_BORDER_NORMAL),
-                        DiscardPile,
-                    ))
-                    .with_children(|parent| {
-                        // Discard pile header
-                        parent.spawn((
-                            Text::new("Discard Pile"),
-                            TextFont::from_font_size(12.0),
-                            TextColor(theme::TEXT_SECONDARY),
-                        ));
-                    });
-            });
-
-            // ================================================================
-            // ROW 2: Counters Row - Evidence, Cover, Multiplier totals
-            // ================================================================
-            parent.spawn(Node {
-                width: Val::Percent(100.0),
-                flex_direction: FlexDirection::Row,
-                column_gap: Val::Px(30.0),
-                justify_content: JustifyContent::Center,
-                padding: UiRect::vertical(Val::Px(5.0)),
-                ..default()
-            })
-            .with_children(|parent| {
-                // SOW-021: Round + turn indicator (updated by update_turn_indicator_system)
-                parent.spawn((
-                    Text::new("Round 1/3"),
-                    TextFont::from_font_size(16.0),
-                    TextColor(theme::TEXT_PRIMARY),
-                    TurnIndicatorText,
-                ));
-
-                // Evidence total
-                parent.spawn((
-                    Text::new("● Evidence: 0"),
-                    TextFont::from_font_size(16.0),
-                    TextColor(theme::EVIDENCE_CARD_COLOR),
-                    EvidencePool,
-                ));
-
-                // Cover total
-                parent.spawn((
-                    Text::new("● Cover: 0"),
-                    TextFont::from_font_size(16.0),
-                    TextColor(theme::COVER_CARD_COLOR),
-                    CoverPool,
-                ));
-
-                // Multiplier total
-                parent.spawn((
-                    Text::new("● Multiplier: ×1.0"),
-                    TextFont::from_font_size(16.0),
-                    TextColor(theme::DEAL_MODIFIER_CARD_COLOR),
-                    DealModPool,
-                ));
-            });
-
-            // ================================================================
-            // ROW 3: Play Area Row - Played cards only (no wrapper, direct container)
-            // ================================================================
-            parent.spawn((
-                Node {
-                    width: Val::Percent(100.0),
-                    flex_grow: 1.0, // Take available space
-                    flex_direction: FlexDirection::Row,
-                    flex_wrap: FlexWrap::Wrap,
-                    justify_content: JustifyContent::Center,
-                    align_content: AlignContent::FlexStart, // Align cards to top
-                    ..default()
-                },
-                PlayAreaDealer,
+                Text::new("YOUR STANDING"),
+                TextFont::from_font_size(11.0),
+                TextColor(theme::V2_LABEL),
             ));
 
-            // ================================================================
-            // ROW 4: Player Hand Row - 3 columns (Narc Image | Player Hand | Buyer Image)
-            // ================================================================
+            // Cash row
             parent.spawn(Node {
                 width: Val::Percent(100.0),
                 flex_direction: FlexDirection::Row,
                 justify_content: JustifyContent::SpaceBetween,
-                align_items: AlignItems::FlexEnd,
-                padding: UiRect::vertical(Val::Px(5.0)),
+                align_items: AlignItems::Center,
                 ..default()
             })
             .with_children(|parent| {
-                // Left: Narc portrait - 50% larger than 70% (255 * 1.5 = 383)
-                parent.spawn((
-                    Node {
-                        width: Val::Px(383.0),
-                        height: Val::Px(383.0),
-                        ..default()
-                    },
-                    ImageNode::default(),
-                    NarcPortrait,
-                ));
-
-                // Center: Player hand + betting buttons
                 parent.spawn(Node {
                     flex_direction: FlexDirection::Row,
-                    justify_content: JustifyContent::Center,
-                    align_items: AlignItems::FlexEnd,
-                    column_gap: Val::Px(15.0),
+                    align_items: AlignItems::Center,
+                    column_gap: Val::Px(6.0),
                     ..default()
                 })
                 .with_children(|parent| {
-                    // Player hand cards
+                    spawn_emoji(parent, "💵", 13.0, theme::STANDING_CASH_LABEL, emoji_font);
+                    parent.spawn((
+                        Text::new("CASH"),
+                        TextFont::from_font_size(13.0),
+                        TextColor(theme::STANDING_CASH_LABEL),
+                    ));
+                });
+                parent.spawn((
+                    Text::new("$0"),
+                    TextFont::from_font_size(24.0),
+                    TextColor(theme::STANDING_CASH_VALUE),
+                    StandingCashText,
+                ));
+            });
+
+            // Divider
+            parent.spawn((
+                Node {
+                    width: Val::Percent(100.0),
+                    height: Val::Px(1.0),
+                    ..default()
+                },
+                BackgroundColor(theme::STANDING_DIVIDER),
+            ));
+
+            // Heat block
+            parent.spawn(Node {
+                width: Val::Percent(100.0),
+                flex_direction: FlexDirection::Column,
+                ..default()
+            })
+            .with_children(|parent| {
+                // Header: "HEAT" label | tier chip + value
+                parent.spawn(Node {
+                    width: Val::Percent(100.0),
+                    flex_direction: FlexDirection::Row,
+                    justify_content: JustifyContent::SpaceBetween,
+                    align_items: AlignItems::Center,
+                    margin: UiRect::bottom(Val::Px(8.0)),
+                    ..default()
+                })
+                .with_children(|parent| {
+                    parent.spawn(Node {
+                        flex_direction: FlexDirection::Row,
+                        align_items: AlignItems::Center,
+                        column_gap: Val::Px(6.0),
+                        ..default()
+                    })
+                    .with_children(|parent| {
+                        spawn_emoji(parent, "🔥", 13.0, theme::STANDING_HEAT_LABEL, emoji_font);
+                        parent.spawn((
+                            Text::new("HEAT"),
+                            TextFont::from_font_size(13.0),
+                            TextColor(theme::STANDING_HEAT_LABEL),
+                        ));
+                    });
+                    parent.spawn(Node {
+                        flex_direction: FlexDirection::Row,
+                        align_items: AlignItems::Center,
+                        column_gap: Val::Px(9.0),
+                        ..default()
+                    })
+                    .with_children(|parent| {
+                        // Heat tier chip (text/border colored by tier at runtime)
+                        parent.spawn((
+                            Node {
+                                padding: UiRect::axes(Val::Px(8.0), Val::Px(2.0)),
+                                border: UiRect::all(Val::Px(1.0)),
+                                border_radius: BorderRadius::MAX,
+                                ..default()
+                            },
+                            BorderColor::all(theme::STANDING_HEAT_VALUE),
+                            StandingHeatTierChip,
+                        ))
+                        .with_children(|parent| {
+                            parent.spawn((
+                                Text::new("COLD"),
+                                TextFont::from_font_size(10.0),
+                                TextColor(theme::STANDING_HEAT_VALUE),
+                                StandingHeatTierText,
+                            ));
+                        });
+                        parent.spawn((
+                            Text::new("0"),
+                            TextFont::from_font_size(22.0),
+                            TextColor(theme::STANDING_HEAT_VALUE),
+                            StandingHeatValueText,
+                        ));
+                        parent.spawn((
+                            Text::new("/ 100"),
+                            TextFont::from_font_size(12.0),
+                            TextColor(theme::STANDING_HEAT_VALUE_DIM),
+                        ));
+                    });
+                });
+
+                // Heat track (fixed 0..100 scale)
+                parent.spawn((
+                    Node {
+                        position_type: PositionType::Relative,
+                        width: Val::Percent(100.0),
+                        height: Val::Px(14.0),
+                        border: UiRect::all(Val::Px(1.0)),
+                        border_radius: BorderRadius::all(Val::Px(7.0)),
+                        ..default()
+                    },
+                    BackgroundColor(theme::STANDING_HEAT_TRACK_BG),
+                    BorderColor::all(theme::STANDING_HEAT_TRACK_BORDER),
+                ))
+                .with_children(|parent| {
                     parent.spawn((
                         Node {
-                            flex_direction: FlexDirection::Row,
-                            justify_content: JustifyContent::Center,
-                            column_gap: Val::Px(10.0),
+                            position_type: PositionType::Absolute,
+                            left: Val::Px(0.0),
+                            top: Val::Px(0.0),
+                            bottom: Val::Px(0.0),
+                            width: Val::Percent(0.0),
+                            border_radius: BorderRadius::all(Val::Px(7.0)),
                             ..default()
                         },
-                        PlayerHandDisplay,
+                        BackgroundGradient(vec![Gradient::Linear(LinearGradient::new(
+                            LinearGradient::TO_RIGHT,
+                            vec![
+                                ColorStop::new(theme::STANDING_HEAT_FILL_LOW, Val::Percent(0.0)),
+                                ColorStop::new(theme::STANDING_HEAT_FILL_HIGH, Val::Percent(100.0)),
+                            ],
+                        ))]),
+                        StandingHeatBarFill,
                     ));
+                    // Conviction-threshold tick marks (children rebuilt at runtime)
+                    parent.spawn((
+                        Node {
+                            position_type: PositionType::Absolute,
+                            left: Val::Px(0.0),
+                            top: Val::Px(0.0),
+                            width: Val::Percent(100.0),
+                            height: Val::Percent(100.0),
+                            ..default()
+                        },
+                        StandingHeatTicks,
+                    ));
+                });
 
-                    // Betting buttons (vertically stacked)
+                // Tick labels row (children rebuilt at runtime)
+                parent.spawn((
+                    Node {
+                        position_type: PositionType::Relative,
+                        width: Val::Percent(100.0),
+                        height: Val::Px(13.0),
+                        margin: UiRect::top(Val::Px(3.0)),
+                        ..default()
+                    },
+                    StandingHeatTickLabels,
+                ));
+            });
+        });
+
+        // ====================================================================
+        // Turn indicator (top center): round header + actor pill
+        // ====================================================================
+        parent.spawn(Node {
+            position_type: PositionType::Absolute,
+            left: Val::Px(0.0),
+            top: Val::Px(34.0),
+            width: Val::Percent(100.0),
+            flex_direction: FlexDirection::Column,
+            align_items: AlignItems::Center,
+            row_gap: Val::Px(6.0),
+            ..default()
+        })
+        .with_children(|parent| {
+            parent.spawn((
+                Text::new("ROUND 1 / 3  ·  DEAL IN PROGRESS"),
+                TextFont::from_font_size(12.0),
+                TextColor(theme::V2_LABEL),
+                TurnIndicatorText,
+            ));
+            parent.spawn((
+                Node {
+                    flex_direction: FlexDirection::Row,
+                    align_items: AlignItems::Center,
+                    column_gap: Val::Px(10.0),
+                    padding: UiRect::axes(Val::Px(22.0), Val::Px(8.0)),
+                    border: UiRect::all(Val::Px(1.0)),
+                    border_radius: BorderRadius::MAX,
+                    ..default()
+                },
+                BackgroundColor(theme::PILL_NEUTRAL_BG),
+                BorderColor::all(theme::PILL_NEUTRAL_BORDER),
+                BoxShadow::new(Color::srgba(0.0, 0.0, 0.0, 0.35), Val::Px(0.0), Val::Px(0.0), Val::Px(0.0), Val::Px(26.0)),
+                TurnPill,
+            ))
+            .with_children(|parent| {
+                parent.spawn((
+                    Node {
+                        width: Val::Px(9.0),
+                        height: Val::Px(9.0),
+                        border_radius: BorderRadius::MAX,
+                        ..default()
+                    },
+                    BackgroundColor(theme::PILL_NEUTRAL_DOT),
+                    TurnPillDot,
+                ));
+                parent.spawn((
+                    Text::new("DEALING..."),
+                    TextFont::from_font_size(16.0),
+                    TextColor(theme::PILL_NEUTRAL_TEXT),
+                    TurnPillText,
+                ));
+            });
+        });
+
+        // ====================================================================
+        // Narc character cluster (top-left)
+        // ====================================================================
+        parent.spawn(Node {
+            position_type: PositionType::Absolute,
+            left: Val::Px(150.0),
+            top: Val::Px(120.0),
+            width: Val::Px(360.0),
+            height: Val::Px(300.0),
+            ..default()
+        })
+        .with_children(|parent| {
+            // Turn spotlight behind portrait
+            parent.spawn((
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: Val::Px(0.0),
+                    top: Val::Px(70.0),
+                    width: Val::Px(230.0),
+                    height: Val::Px(230.0),
+                    ..default()
+                },
+                spotlight_gradient(theme::NARC_SPOTLIGHT),
+                NarcSpotlight,
+            ));
+
+            parent.spawn((
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: Val::Px(6.0),
+                    top: Val::Px(50.0),
+                    width: Val::Px(240.0),
+                    height: Val::Px(240.0),
+                    ..default()
+                },
+                ImageNode::default(),
+                NarcPortrait,
+            ));
+
+            // Name plate (count chip removed - it added little over the intent bubble)
+            parent.spawn(Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(14.0),
+                top: Val::Px(274.0),
+                ..default()
+            })
+            .with_children(|parent| {
+                parent.spawn((
+                    Text::new("NARC"),
+                    TextFont::from_font_size(14.0),
+                    TextColor(theme::NARC_NAME),
+                ));
+            });
+
+            // Intent bubble (hidden until the narc telegraphs)
+            parent.spawn((
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: Val::Px(150.0),
+                    top: Val::Px(2.0),
+                    width: Val::Px(250.0),
+                    flex_direction: FlexDirection::Column,
+                    row_gap: Val::Px(4.0),
+                    padding: UiRect::axes(Val::Px(14.0), Val::Px(10.0)),
+                    border: UiRect::all(Val::Px(1.0)),
+                    border_radius: BorderRadius::all(Val::Px(12.0)),
+                    display: Display::None,
+                    ..default()
+                },
+                BackgroundColor(theme::NARC_BUBBLE_BG),
+                BorderColor::all(theme::NARC_BUBBLE_BORDER),
+                BoxShadow::new(Color::srgba(0.784, 0.196, 0.196, 0.3), Val::Px(0.0), Val::Px(0.0), Val::Px(0.0), Val::Px(22.0)),
+                NarcIntentBubble,
+            ))
+            .with_children(|parent| {
+                parent.spawn((
+                    Text::new("INTENT"),
+                    TextFont::from_font_size(11.0),
+                    TextColor(theme::NARC_BUBBLE_TITLE),
+                    NarcIntentTitleText,
+                ));
+                parent.spawn((
+                    Node {
+                        flex_direction: FlexDirection::Row,
+                        column_gap: Val::Px(14.0),
+                        ..default()
+                    },
+                    NarcIntentStatsRow,
+                ));
+                // Speech tail
+                parent.spawn((
+                    Node {
+                        position_type: PositionType::Absolute,
+                        left: Val::Px(44.0),
+                        bottom: Val::Px(-8.0),
+                        width: Val::Px(16.0),
+                        height: Val::Px(16.0),
+                        ..default()
+                    },
+                    BackgroundColor(theme::NARC_BUBBLE_BG),
+                    UiTransform::from_rotation(Rot2::degrees(45.0)),
+                ));
+            });
+        });
+
+        // ====================================================================
+        // Buyer character cluster (top-right)
+        // ====================================================================
+        parent.spawn(Node {
+            position_type: PositionType::Absolute,
+            right: Val::Px(150.0),
+            top: Val::Px(120.0),
+            width: Val::Px(360.0),
+            height: Val::Px(300.0),
+            ..default()
+        })
+        .with_children(|parent| {
+            parent.spawn((
+                Node {
+                    position_type: PositionType::Absolute,
+                    right: Val::Px(0.0),
+                    top: Val::Px(70.0),
+                    width: Val::Px(230.0),
+                    height: Val::Px(230.0),
+                    ..default()
+                },
+                spotlight_gradient(theme::BUYER_SPOTLIGHT),
+                BuyerSpotlight,
+            ));
+
+            parent.spawn((
+                Node {
+                    position_type: PositionType::Absolute,
+                    right: Val::Px(6.0),
+                    top: Val::Px(50.0),
+                    width: Val::Px(240.0),
+                    height: Val::Px(240.0),
+                    ..default()
+                },
+                ImageNode::default(),
+                BuyerPortrait,
+            ));
+
+            // Name plate
+            parent.spawn(Node {
+                position_type: PositionType::Absolute,
+                right: Val::Px(14.0),
+                top: Val::Px(274.0),
+                ..default()
+            })
+            .with_children(|parent| {
+                parent.spawn((
+                    Text::new("BUYER"),
+                    TextFont::from_font_size(14.0),
+                    TextColor(theme::BUYER_NAME),
+                    BuyerNameText,
+                ));
+            });
+
+            // Speech bubble: "PLAYED · <card>" - the buyer's ACTIONS, symmetric
+            // with the narc's intent bubble (hidden until the buyer reacts)
+            parent.spawn((
+                Node {
+                    position_type: PositionType::Absolute,
+                    right: Val::Px(150.0),
+                    top: Val::Px(2.0),
+                    width: Val::Px(250.0),
+                    flex_direction: FlexDirection::Column,
+                    align_items: AlignItems::FlexEnd,
+                    row_gap: Val::Px(4.0),
+                    padding: UiRect::axes(Val::Px(14.0), Val::Px(10.0)),
+                    border: UiRect::all(Val::Px(1.0)),
+                    border_radius: BorderRadius::all(Val::Px(12.0)),
+                    display: Display::None,
+                    ..default()
+                },
+                BackgroundColor(theme::BUYER_BUBBLE_BG),
+                BorderColor::all(theme::BUYER_BUBBLE_BORDER),
+                BoxShadow::new(Color::srgba(0.824, 0.745, 0.196, 0.28), Val::Px(0.0), Val::Px(0.0), Val::Px(0.0), Val::Px(22.0)),
+                BuyerPlayedBubble,
+            ))
+            .with_children(|parent| {
+                parent.spawn((
+                    Text::new("PLAYED"),
+                    TextFont::from_font_size(11.0),
+                    TextColor(theme::BUYER_BUBBLE_TITLE),
+                    BuyerPlayedTitleText,
+                ));
+                parent.spawn((
+                    Node {
+                        flex_direction: FlexDirection::Row,
+                        column_gap: Val::Px(14.0),
+                        ..default()
+                    },
+                    BuyerPlayedStatsRow,
+                ));
+                // Speech tail
+                parent.spawn((
+                    Node {
+                        position_type: PositionType::Absolute,
+                        right: Val::Px(44.0),
+                        bottom: Val::Px(-8.0),
+                        width: Val::Px(16.0),
+                        height: Val::Px(16.0),
+                        ..default()
+                    },
+                    BackgroundColor(theme::BUYER_BUBBLE_BG),
+                    UiTransform::from_rotation(Rot2::degrees(45.0)),
+                ));
+            });
+
+            // Scenario placard: standing WANTS info under the name plate
+            // (hover for detail; confidence face replaces the heat-cap chip)
+            parent.spawn((
+                Node {
+                    position_type: PositionType::Absolute,
+                    right: Val::Px(14.0),
+                    top: Val::Px(306.0),
+                    width: Val::Px(258.0),
+                    flex_direction: FlexDirection::Column,
+                    padding: UiRect::axes(Val::Px(15.0), Val::Px(11.0)),
+                    border: UiRect::all(Val::Px(1.0)),
+                    border_radius: BorderRadius::all(Val::Px(12.0)),
+                    ..default()
+                },
+                BackgroundColor(theme::BUYER_BUBBLE_BG),
+                BorderColor::all(theme::BUYER_BUBBLE_BORDER),
+                BoxShadow::new(Color::srgba(0.824, 0.745, 0.196, 0.28), Val::Px(0.0), Val::Px(0.0), Val::Px(0.0), Val::Px(22.0)),
+                Interaction::None,
+                BuyerBubble,
+            ))
+            .with_children(|parent| {
+                parent.spawn((
+                    Text::new("WANTS"),
+                    TextFont::from_font_size(11.0),
+                    TextColor(theme::BUYER_BUBBLE_TITLE),
+                    TextLayout::new_with_justify(bevy::text::Justify::Right),
+                    Node {
+                        align_self: AlignSelf::FlexEnd,
+                        margin: UiRect::bottom(Val::Px(7.0)),
+                        ..default()
+                    },
+                    BuyerScenarioNameText,
+                ));
+                parent.spawn(Node {
+                    flex_direction: FlexDirection::Row,
+                    justify_content: JustifyContent::FlexEnd,
+                    column_gap: Val::Px(5.0),
+                    margin: UiRect::bottom(Val::Px(5.0)),
+                    ..default()
+                })
+                .with_children(|parent| {
+                    parent.spawn((
+                        Text::new("DEMAND"),
+                        TextFont::from_font_size(13.0),
+                        TextColor(theme::BUYER_BUBBLE_LABEL),
+                    ));
+                    parent.spawn((
+                        Text::new("—"),
+                        TextFont::from_font_size(13.0),
+                        TextColor(theme::BUYER_BUBBLE_DEMAND),
+                        BuyerDemandText,
+                    ));
+                });
+                parent.spawn(Node {
+                    flex_direction: FlexDirection::Row,
+                    justify_content: JustifyContent::FlexEnd,
+                    column_gap: Val::Px(5.0),
+                    ..default()
+                })
+                .with_children(|parent| {
+                    parent.spawn((
+                        Text::new("PAYOUT"),
+                        TextFont::from_font_size(13.0),
+                        TextColor(theme::BUYER_BUBBLE_LABEL),
+                    ));
+                    parent.spawn((
+                        Text::new("×1.0"),
+                        TextFont::from_font_size(13.0),
+                        TextColor(theme::BUYER_BUBBLE_PAYOUT),
+                        BuyerPayoutText,
+                    ));
+                });
+                // Confidence row: how close the buyer is to bailing
+                parent.spawn(Node {
+                    flex_direction: FlexDirection::Row,
+                    justify_content: JustifyContent::FlexEnd,
+                    align_items: AlignItems::Center,
+                    column_gap: Val::Px(6.0),
+                    margin: UiRect::top(Val::Px(5.0)),
+                    ..default()
+                })
+                .with_children(|parent| {
+                    parent.spawn((
+                        Text::new("🙂"),
+                        TextFont {
+                            font: emoji_font.0.clone(),
+                            font_size: 14.0,
+                            ..default()
+                        },
+                        TextColor(theme::SAFE_CHIP_TEXT),
+                        BuyerConfidenceEmoji,
+                    ));
+                    parent.spawn((
+                        Text::new("CONFIDENT"),
+                        TextFont::from_font_size(12.0),
+                        TextColor(theme::SAFE_CHIP_TEXT),
+                        BuyerConfidenceText,
+                    ));
+                });
+                parent.spawn((
+                    Text::new("▾ HOVER FOR DETAIL"),
+                    TextFont::from_font_size(9.0),
+                    TextColor(theme::BUYER_BUBBLE_HINT),
+                    TextLayout::new_with_justify(bevy::text::Justify::Right),
+                    Node {
+                        align_self: AlignSelf::FlexEnd,
+                        margin: UiRect::top(Val::Px(8.0)),
+                        padding: UiRect::top(Val::Px(7.0)),
+                        border: UiRect::top(Val::Px(1.0)),
+                        width: Val::Percent(100.0),
+                        ..default()
+                    },
+                    BorderColor::all(theme::BUYER_BUBBLE_DIVIDER),
+                ));
+                // Hover detail (scenario description, preferred locations)
+                parent.spawn((
+                    Node {
+                        flex_direction: FlexDirection::Column,
+                        margin: UiRect::top(Val::Px(8.0)),
+                        display: Display::None,
+                        ..default()
+                    },
+                    BuyerDetailPanel,
+                ))
+                .with_children(|parent| {
+                    parent.spawn((
+                        Text::new(""),
+                        TextFont::from_font_size(12.0),
+                        TextColor(theme::TEXT_SECONDARY),
+                        TextLayout::new_with_justify(bevy::text::Justify::Right),
+                        BuyerDetailText,
+                    ));
+                });
+                // (no speech tail - the placard is standing info, not speech)
+            });
+        });
+
+        // ====================================================================
+        // THE DEAL ON THE TABLE (center: active slots + ghost insurance)
+        // ====================================================================
+        parent.spawn(Node {
+            position_type: PositionType::Absolute,
+            left: Val::Px(0.0),
+            top: Val::Px(398.0),
+            width: Val::Percent(100.0),
+            flex_direction: FlexDirection::Column,
+            align_items: AlignItems::Center,
+            row_gap: Val::Px(16.0),
+            ..default()
+        })
+        .with_children(|parent| {
+            parent.spawn((
+                Node {
+                    padding: UiRect::axes(Val::Px(12.0), Val::Px(4.0)),
+                    border_radius: BorderRadius::MAX,
+                    ..default()
+                },
+                BackgroundColor(theme::V2_SCRIM_BG),
+            ))
+            .with_children(|parent| {
+                parent.spawn((
+                    Text::new("THE DEAL ON THE TABLE"),
+                    TextFont::from_font_size(11.0),
+                    TextColor(theme::V2_LABEL),
+                ));
+            });
+            parent.spawn((
+                Node {
+                    flex_direction: FlexDirection::Row,
+                    column_gap: Val::Px(16.0),
+                    align_items: AlignItems::FlexEnd,
+                    ..default()
+                },
+                ActiveSlotsContainer,
+            ))
+            .with_children(|parent| {
+                for slot_type in [SlotType::Location, SlotType::Product, SlotType::Conviction, SlotType::Insurance] {
                     parent.spawn((
                         Node {
                             flex_direction: FlexDirection::Column,
                             justify_content: JustifyContent::Center,
                             align_items: AlignItems::Center,
-                            row_gap: Val::Px(10.0),
-                            display: Display::Flex,
                             ..default()
                         },
-                        BettingActionsContainer,
-                    ))
-                    .with_children(|parent| {
-                        // Deck counter above buttons
-                        parent.spawn((
-                            Text::new("Deck: 20"),
-                            TextFont::from_font_size(16.0),
-                            TextColor(theme::TEXT_SECONDARY),
-                            DeckCounter,
-                        ));
+                        ActiveSlot { slot_type },
+                    ));
+                }
+            });
+        });
 
-                        // Pass button - fixed pixels
+        // ====================================================================
+        // EVIDENCE vs COVER balance bar
+        // ====================================================================
+        parent.spawn(Node {
+            position_type: PositionType::Absolute,
+            left: Val::Px(0.0),
+            top: Val::Px(684.0),
+            width: Val::Percent(100.0),
+            flex_direction: FlexDirection::Column,
+            align_items: AlignItems::Center,
+            ..default()
+        })
+        .with_children(|parent| {
+            parent.spawn((
+                Node {
+                    width: Val::Px(664.0),
+                    flex_direction: FlexDirection::Column,
+                    row_gap: Val::Px(8.0),
+                    padding: UiRect::axes(Val::Px(12.0), Val::Px(8.0)),
+                    border_radius: BorderRadius::all(Val::Px(10.0)),
+                    ..default()
+                },
+                BackgroundColor(theme::V2_SCRIM_BG),
+            ))
+            .with_children(|parent| {
+                // Header: evidence | chips | cover
+                parent.spawn(Node {
+                    width: Val::Percent(100.0),
+                    flex_direction: FlexDirection::Row,
+                    justify_content: JustifyContent::SpaceBetween,
+                    align_items: AlignItems::Center,
+                    ..default()
+                })
+                .with_children(|parent| {
+                    parent.spawn(Node {
+                        flex_direction: FlexDirection::Row,
+                        align_items: AlignItems::Center,
+                        column_gap: Val::Px(6.0),
+                        ..default()
+                    })
+                    .with_children(|parent| {
+                        spawn_emoji(parent, "🔍", 14.0, theme::BALANCE_EVIDENCE_TEXT, emoji_font);
                         parent.spawn((
-                            Button,
+                            Text::new("EVIDENCE 0"),
+                            TextFont::from_font_size(14.0),
+                            TextColor(theme::BALANCE_EVIDENCE_TEXT),
+                            BalanceEvidenceText,
+                        ));
+                    });
+                    parent.spawn(Node {
+                        flex_direction: FlexDirection::Row,
+                        align_items: AlignItems::Center,
+                        column_gap: Val::Px(8.0),
+                        ..default()
+                    })
+                    .with_children(|parent| {
+                        parent.spawn((
                             Node {
-                                width: Val::Px(120.0),
-                                height: Val::Px(50.0),
-                                justify_content: JustifyContent::Center,
-                                align_items: AlignItems::Center,
+                                padding: UiRect::axes(Val::Px(10.0), Val::Px(2.0)),
+                                border: UiRect::all(Val::Px(1.0)),
+                                border_radius: BorderRadius::MAX,
                                 ..default()
                             },
-                            BackgroundColor(theme::BUTTON_ENABLED_BG),
-                            CheckButton,
+                            BackgroundColor(theme::SAFE_CHIP_BG),
+                            BorderColor::all(theme::SAFE_CHIP_BORDER),
+                            BalanceStatusChip,
                         ))
                         .with_children(|parent| {
                             parent.spawn((
-                                Text::new("Pass"),
-                                TextFont::from_font_size(16.0),
-                                TextColor(Color::WHITE),
+                                Text::new("SAFE"),
+                                TextFont::from_font_size(12.0),
+                                TextColor(theme::SAFE_CHIP_TEXT),
+                                BalanceStatusChipText,
                             ));
                         });
-
-                        // Bail Out button - fixed pixels
                         parent.spawn((
-                            Button,
                             Node {
-                                width: Val::Px(120.0),
-                                height: Val::Px(50.0),
-                                justify_content: JustifyContent::Center,
-                                align_items: AlignItems::Center,
+                                padding: UiRect::axes(Val::Px(10.0), Val::Px(2.0)),
+                                border: UiRect::all(Val::Px(1.0)),
+                                border_radius: BorderRadius::MAX,
                                 ..default()
                             },
-                            BackgroundColor(theme::BUTTON_NEUTRAL_BG),
-                            FoldButton,
+                            BackgroundColor(theme::PAYOUT_CHIP_BG),
+                            BorderColor::all(theme::PAYOUT_CHIP_BORDER),
                         ))
                         .with_children(|parent| {
                             parent.spawn((
-                                Text::new("Bail Out"),
-                                TextFont::from_font_size(16.0),
-                                TextColor(Color::WHITE),
+                                Text::new("PAYOUT ×1.0"),
+                                TextFont::from_font_size(12.0),
+                                TextColor(theme::PAYOUT_CHIP_TEXT),
+                                BalancePayoutChipText,
                             ));
                         });
                     });
+                    parent.spawn(Node {
+                        flex_direction: FlexDirection::Row,
+                        align_items: AlignItems::Center,
+                        column_gap: Val::Px(6.0),
+                        ..default()
+                    })
+                    .with_children(|parent| {
+                        parent.spawn((
+                            Text::new("COVER 0"),
+                            TextFont::from_font_size(14.0),
+                            TextColor(theme::BALANCE_COVER_TEXT),
+                            BalanceCoverText,
+                        ));
+                        spawn_emoji(parent, "🛡", 14.0, theme::BALANCE_COVER_TEXT, emoji_font);
+                    });
                 });
 
-                // Right: Buyer portrait - 50% larger than 70% (255 * 1.5 = 383)
+                // Track
                 parent.spawn((
                     Node {
-                        width: Val::Px(383.0),
-                        height: Val::Px(383.0),
+                        position_type: PositionType::Relative,
+                        width: Val::Percent(100.0),
+                        height: Val::Px(12.0),
+                        border: UiRect::all(Val::Px(1.0)),
+                        border_radius: BorderRadius::all(Val::Px(6.0)),
+                        overflow: Overflow::clip(),
+                        ..default()
+                    },
+                    BackgroundColor(theme::BALANCE_TRACK_BG),
+                    BorderColor::all(theme::BALANCE_TRACK_BORDER),
+                ))
+                .with_children(|parent| {
+                    parent.spawn((
+                        Node {
+                            position_type: PositionType::Absolute,
+                            left: Val::Px(0.0),
+                            top: Val::Px(0.0),
+                            bottom: Val::Px(0.0),
+                            width: Val::Percent(50.0),
+                            ..default()
+                        },
+                        BackgroundGradient(vec![Gradient::Linear(LinearGradient::new(
+                            LinearGradient::TO_RIGHT,
+                            vec![
+                                ColorStop::new(theme::BALANCE_EVIDENCE_FILL_LOW, Val::Percent(0.0)),
+                                ColorStop::new(theme::BALANCE_EVIDENCE_FILL_HIGH, Val::Percent(100.0)),
+                            ],
+                        ))]),
+                        BalanceEvidenceFill,
+                    ));
+                    parent.spawn((
+                        Node {
+                            position_type: PositionType::Absolute,
+                            right: Val::Px(0.0),
+                            top: Val::Px(0.0),
+                            bottom: Val::Px(0.0),
+                            width: Val::Percent(50.0),
+                            ..default()
+                        },
+                        BackgroundGradient(vec![Gradient::Linear(LinearGradient::new(
+                            LinearGradient::TO_RIGHT,
+                            vec![
+                                ColorStop::new(theme::BALANCE_COVER_FILL_LOW, Val::Percent(0.0)),
+                                ColorStop::new(theme::BALANCE_COVER_FILL_HIGH, Val::Percent(100.0)),
+                            ],
+                        ))]),
+                        BalanceCoverFill,
+                    ));
+                    parent.spawn((
+                        Node {
+                            position_type: PositionType::Absolute,
+                            left: Val::Percent(50.0),
+                            top: Val::Px(0.0),
+                            bottom: Val::Px(0.0),
+                            width: Val::Px(2.0),
+                            ..default()
+                        },
+                        BackgroundColor(Color::WHITE),
+                        BoxShadow::new(Color::srgba(1.0, 1.0, 1.0, 0.8), Val::Px(0.0), Val::Px(0.0), Val::Px(0.0), Val::Px(8.0)),
+                        BalanceDivider,
+                    ));
+                });
+            });
+        });
+
+        // ====================================================================
+        // Deck stack (bottom-left)
+        // ====================================================================
+        parent.spawn(Node {
+            position_type: PositionType::Absolute,
+            left: Val::Px(70.0),
+            bottom: Val::Px(70.0),
+            width: Val::Px(150.0),
+            height: Val::Px(210.0),
+            ..default()
+        })
+        .with_children(|parent| {
+            for (offset, bg, border) in [
+                (8.0, theme::STACK_PLATE_DEEP, theme::STACK_PLATE_BORDER_DEEP),
+                (4.0, theme::STACK_PLATE_MID, theme::STACK_PLATE_BORDER_MID),
+            ] {
+                parent.spawn((
+                    Node {
+                        position_type: PositionType::Absolute,
+                        left: Val::Px(offset),
+                        top: Val::Px(offset),
+                        width: Val::Px(134.0),
+                        height: Val::Px(194.0),
+                        border: UiRect::all(Val::Px(1.0)),
+                        border_radius: BorderRadius::all(Val::Px(12.0)),
+                        ..default()
+                    },
+                    BackgroundColor(bg),
+                    BorderColor::all(border),
+                ));
+            }
+            parent.spawn((
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: Val::Px(0.0),
+                    top: Val::Px(0.0),
+                    width: Val::Px(134.0),
+                    height: Val::Px(194.0),
+                    border: UiRect::all(Val::Px(1.0)),
+                    border_radius: BorderRadius::all(Val::Px(12.0)),
+                    overflow: Overflow::clip(),
+                    ..default()
+                },
+                BorderColor::all(theme::STACK_TOP_BORDER),
+                BoxShadow::new(Color::srgba(0.0, 0.0, 0.0, 0.5), Val::Px(0.0), Val::Px(6.0), Val::Px(0.0), Val::Px(18.0)),
+            ))
+            .with_children(|parent| {
+                parent.spawn((
+                    Node {
+                        width: Val::Percent(100.0),
+                        height: Val::Percent(100.0),
                         ..default()
                     },
                     ImageNode::default(),
-                    BuyerPortrait,
+                    DeckStackImage,
+                ));
+            });
+            parent.spawn(Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(0.0),
+                bottom: Val::Px(-26.0),
+                width: Val::Px(134.0),
+                justify_content: JustifyContent::Center,
+                ..default()
+            })
+            .with_children(|parent| {
+                parent.spawn((
+                    Text::new("DECK · 0"),
+                    TextFont::from_font_size(12.0),
+                    TextColor(theme::STACK_LABEL),
+                    DeckCounter,
                 ));
             });
         });
 
         // ====================================================================
-        // RIGHT COLUMN: Buyer Hand (full height)
+        // Discard stack (bottom-right) - face-up resolved past
         // ====================================================================
-        parent.spawn((
-            Node {
-                height: Val::Percent(100.0),
-                flex_direction: FlexDirection::Column,
-                row_gap: Val::Px(8.0),
-                justify_content: JustifyContent::FlexEnd,
-                ..default()
-            },
-            BuyerDeckPanel,
-        ))
+        parent.spawn(Node {
+            position_type: PositionType::Absolute,
+            right: Val::Px(70.0),
+            bottom: Val::Px(70.0),
+            width: Val::Px(150.0),
+            height: Val::Px(210.0),
+            ..default()
+        })
         .with_children(|parent| {
-            // Buyer's visible hand section
+            for (offset, bg, border) in [
+                (10.0, theme::STACK_PLATE_DEEP, theme::STACK_PLATE_BORDER_DEEP),
+                (5.0, theme::STACK_PLATE_MID, theme::STACK_PLATE_BORDER_MID),
+            ] {
+                parent.spawn((
+                    Node {
+                        position_type: PositionType::Absolute,
+                        right: Val::Px(offset),
+                        top: Val::Px(offset),
+                        width: Val::Px(134.0),
+                        height: Val::Px(194.0),
+                        border: UiRect::all(Val::Px(1.0)),
+                        border_radius: BorderRadius::all(Val::Px(12.0)),
+                        ..default()
+                    },
+                    BackgroundColor(bg),
+                    BorderColor::all(border),
+                ));
+            }
+            // Face-up top card (spawned by update_deck_discard_system)
             parent.spawn((
                 Node {
-                    flex_direction: FlexDirection::Column,
-                    row_gap: Val::Px(5.0),
+                    position_type: PositionType::Absolute,
+                    right: Val::Px(0.0),
+                    top: Val::Px(0.0),
                     ..default()
                 },
-                BuyerVisibleHand,
+                DiscardTopCardSlot,
             ));
+            parent.spawn(Node {
+                position_type: PositionType::Absolute,
+                right: Val::Px(0.0),
+                bottom: Val::Px(-26.0),
+                width: Val::Px(134.0),
+                justify_content: JustifyContent::Center,
+                ..default()
+            })
+            .with_children(|parent| {
+                parent.spawn((
+                    Text::new("DISCARD · 0"),
+                    TextFont::from_font_size(12.0),
+                    TextColor(theme::STACK_LABEL),
+                    DiscardCountText,
+                ));
+            });
         });
 
         // ====================================================================
-        // SOW-011-B: HAND RESOLUTION OVERLAY (initially hidden)
+        // Player hand fan (bottom center, children rebuilt at runtime)
+        // ====================================================================
+        parent.spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(0.0),
+                right: Val::Px(0.0),
+                bottom: Val::Px(0.0),
+                height: Val::Px(360.0),
+                ..default()
+            },
+            PlayerHandDisplay,
+        ));
+
+        // ====================================================================
+        // Action buttons (bottom-right of hand)
+        // ====================================================================
+        parent.spawn(Node {
+            position_type: PositionType::Absolute,
+            right: Val::Px(280.0),
+            bottom: Val::Px(60.0),
+            flex_direction: FlexDirection::Column,
+            align_items: AlignItems::Center,
+            row_gap: Val::Px(12.0),
+            ..default()
+        })
+        .with_children(|parent| {
+            parent.spawn((
+                Button,
+                Node {
+                    width: Val::Px(150.0),
+                    height: Val::Px(52.0),
+                    justify_content: JustifyContent::Center,
+                    align_items: AlignItems::Center,
+                    border_radius: BorderRadius::all(Val::Px(10.0)),
+                    ..default()
+                },
+                pass_button_gradient(true),
+                BoxShadow::new(theme::PASS_BUTTON_GLOW, Val::Px(0.0), Val::Px(0.0), Val::Px(0.0), Val::Px(20.0)),
+                CheckButton,
+            ))
+            .with_children(|parent| {
+                parent.spawn((
+                    Text::new("PASS"),
+                    TextFont::from_font_size(17.0),
+                    TextColor(theme::PASS_BUTTON_TEXT),
+                ));
+            });
+
+            parent.spawn((
+                Button,
+                Node {
+                    width: Val::Px(150.0),
+                    height: Val::Px(52.0),
+                    justify_content: JustifyContent::Center,
+                    align_items: AlignItems::Center,
+                    border: UiRect::all(Val::Px(1.0)),
+                    border_radius: BorderRadius::all(Val::Px(10.0)),
+                    ..default()
+                },
+                BackgroundColor(theme::BAIL_BUTTON_BG),
+                BorderColor::all(theme::BAIL_BUTTON_BORDER),
+                FoldButton,
+            ))
+            .with_children(|parent| {
+                parent.spawn((
+                    Text::new("BAIL OUT"),
+                    TextFont::from_font_size(15.0),
+                    TextColor(theme::BAIL_BUTTON_TEXT),
+                ));
+            });
+        });
+
+        // ====================================================================
+        // SOW-011-B: HAND RESOLUTION OVERLAY (initially hidden, unchanged)
         // ====================================================================
         parent.spawn((
             Node {

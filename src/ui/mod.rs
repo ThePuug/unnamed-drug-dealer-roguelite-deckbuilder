@@ -10,6 +10,7 @@ pub mod helpers;
 pub mod systems;
 pub mod setup;
 pub mod foil_material;
+pub mod view; // SOW-022: pure view-model logic for the gameplay screen
 
 // Re-exports for convenience
 pub use helpers::*;

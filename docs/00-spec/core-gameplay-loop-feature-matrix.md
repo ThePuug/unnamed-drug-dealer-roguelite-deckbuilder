@@ -1,7 +1,7 @@
 # Core Gameplay Loop - Feature Matrix
 
 **Spec:** [core-gameplay-loop.md](core-gameplay-loop.md)
-**Last Updated:** 2026-07-11
+**Last Updated:** 2026-07-12
 **Overall Status:** 48/48 features complete (100%)
 
 ---
@@ -85,16 +85,16 @@
 
 | Feature | Status | Notes |
 |---------|:------:|-------|
-| Turn indicator | ✅ | Round N/3 + actor state in counters row (SOW-021; earlier ✅ claim was inaccurate — only button-color feedback existed) |
-| Card count per player | ✅ | Visible hand displays |
-| Running totals display | ✅ | Evidence/Cover/Multiplier |
-| Color-coded safety | ✅ | Heat bar green/yellow/red |
-| Evidence gap display | ✅ | In resolution overlay |
-| Heat accumulation | ✅ | Heat bar with threshold |
-| Active Product highlight | ✅ | Active slot system |
-| Active Location highlight | ✅ | Active slot system |
-| Bust warning | ✅ | Real-time totals comparison |
-| Danger indicator | ✅ | Narc tier badge (RFC-018) |
+| Turn indicator | ✅ | SOW-022: top-center round header + per-actor pill (NARC'S MOVE / YOUR MOVE / BUYER REACTING) with portrait spotlights |
+| Card count per player | ✅ | SOW-022: narc/buyer count chips (buyer hand now intentionally hidden — see Implementation Deviations) |
+| Running totals display | ✅ | SOW-022: EVIDENCE vs COVER balance bar + PAYOUT chip (replaces counters row) |
+| Color-coded safety | ✅ | SOW-022: SAFE / AT RISK chip on the balance bar; heat gradient track in YOUR STANDING panel |
+| Evidence gap display | ✅ | Balance bar split + resolution overlay |
+| Heat accumulation | ✅ | SOW-022: YOUR STANDING heat track (0–100) with conviction-threshold tick marks; buyer cap on BAILS AT HEAT chip |
+| Active Product highlight | ✅ | Active slot system ("THE DEAL ON THE TABLE") |
+| Active Location highlight | ✅ | Active slot system ("THE DEAL ON THE TABLE") |
+| Bust warning | ✅ | Real-time balance bar + AT RISK chip |
+| Danger indicator | ✅ | Narc tier badge (RFC-018); narc intent bubble telegraph (SOW-022) |
 
 ---
 
@@ -107,6 +107,16 @@
 | Deck exhaustion warning | ✅ | "Deck Exhausted" message |
 | Fold preserves cards | ✅ | Unplayed cards kept |
 | Fold loses profit | ✅ | "No profit, no risk" |
+
+---
+
+## Implementation Deviations
+
+| Deviation | Rationale |
+|-----------|-----------|
+| Buyer's face-up hand no longer displayed (SOW-022) | Game Play v2 design hides buyer cards behind a count chip — intentional hidden-information change supporting the July 2026 fun-assessment finding that nothing is uncertain at commitment |
+| Narc telegraphs its pending card via intent bubble (SOW-022) | Game Play v2 design adds a roguelite-style intent preview while the narc is the pending actor; after acting it shows the card actually played |
+| Played Evidence/Cover/Modifier cards render as aggregate (balance bar) + discard stack top card, not as an individual card pool (SOW-022) | v2 design removes the wrapping played pool; the last resolved card is visible face-up on the discard stack |
 
 ---
 

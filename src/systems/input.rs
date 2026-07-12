@@ -74,8 +74,10 @@ pub fn betting_button_system(
 // ============================================================================
 pub fn update_betting_button_states(
     hand_state_query: Query<&HandState>,
-    mut check_button_query: Query<&mut BackgroundColor, (With<CheckButton>, Without<FoldButton>)>,
-    mut fold_button_query: Query<&mut BackgroundColor, (With<FoldButton>, Without<CheckButton>)>,
+    mut check_button_query: Query<(&mut BackgroundGradient, &mut BoxShadow, &Children), (With<CheckButton>, Without<FoldButton>)>,
+    mut fold_button_query: Query<(&mut BorderColor, &Children), (With<FoldButton>, Without<CheckButton>)>,
+    mut text_colors: Query<&mut TextColor>,
+    mut last_enabled: Local<Option<bool>>,
 ) {
     let Ok(hand_state) = hand_state_query.single() else {
         return;
@@ -85,23 +87,45 @@ pub fn update_betting_button_states(
     let is_player_turn = hand_state.current_state == HandPhase::PlayerPhase &&
                          hand_state.current_player() == Owner::Player;
 
-    // Update Pass button (Check) - enabled when player's turn, disabled otherwise
-    let mut bg = check_button_query.single_mut()
-        .expect("Expected exactly one CheckButton");
-    *bg = if is_player_turn {
-        theme::BUTTON_ENABLED_BG.into()
-    } else {
-        theme::BUTTON_DISABLED_BG.into()
-    };
+    // SOW-022: restyle only on change (gradient/glow/border/text swap)
+    if *last_enabled == Some(is_player_turn) {
+        return;
+    }
+    *last_enabled = Some(is_player_turn);
 
-    // Update Bail Out button (Fold) - enabled when player's turn, disabled otherwise
-    let mut bg = fold_button_query.single_mut()
-        .expect("Expected exactly one FoldButton");
-    *bg = if is_player_turn {
-        theme::BUTTON_NEUTRAL_BG.into()
-    } else {
-        theme::BUTTON_DISABLED_BG.into()
-    };
+    // PASS button: green gradient face + glow when enabled, inert gray when not
+    if let Ok((mut gradient, mut shadow, children)) = check_button_query.single_mut() {
+        *gradient = crate::ui::setup::pass_button_gradient(is_player_turn);
+        let glow = if is_player_turn { theme::PASS_BUTTON_GLOW } else { Color::NONE };
+        *shadow = BoxShadow::new(glow, Val::Px(0.0), Val::Px(0.0), Val::Px(0.0), Val::Px(20.0));
+        for child in children.iter() {
+            if let Ok(mut color) = text_colors.get_mut(child) {
+                color.0 = if is_player_turn {
+                    theme::PASS_BUTTON_TEXT
+                } else {
+                    theme::PASS_BUTTON_TEXT_DISABLED
+                };
+            }
+        }
+    }
+
+    // BAIL OUT button: red border dims when disabled
+    if let Ok((mut border, children)) = fold_button_query.single_mut() {
+        *border = BorderColor::all(if is_player_turn {
+            theme::BAIL_BUTTON_BORDER
+        } else {
+            theme::BAIL_BUTTON_BORDER_DISABLED
+        });
+        for child in children.iter() {
+            if let Ok(mut color) = text_colors.get_mut(child) {
+                color.0 = if is_player_turn {
+                    theme::BAIL_BUTTON_TEXT
+                } else {
+                    theme::BAIL_BUTTON_TEXT_DISABLED
+                };
+            }
+        }
+    }
 }
 
 // ============================================================================
@@ -251,7 +275,8 @@ pub fn go_home_button_system(
         if let (Some(mut save_data), Some(save_manager)) = (save_data, save_manager) {
             if let Some(ref mut character) = save_data.character {
                 let deck_heat = hand_state.current_heat;
-                character.heat = character.heat.saturating_add(deck_heat);
+                // Signed transfer: a cooling session reduces career heat (floor 0)
+                character.apply_session_heat(deck_heat);
                 character.last_played = crate::save::current_timestamp();
 
                 // Add session stories to character history
@@ -410,9 +435,15 @@ pub fn card_click_system(
             if hand_state.current_state == HandPhase::PlayerPhase {
                 // Only if it's Player's turn
                 if hand_state.current_player() == Owner::Player {
-                    // Verify valid card index
-                    let player_hand: Vec<_> = hand_state.cards(Owner::Player).into();
-                    if card_button.card_index < player_hand.len() {
+                    // SOW-022: validate against the SLOT array, not the
+                    // None-filtered hand - with an empty deck, a card in slot 2
+                    // behind empty slots was silently unclickable
+                    let slot_has_card = hand_state
+                        .cards(Owner::Player)
+                        .hand
+                        .get(card_button.card_index)
+                        .is_some_and(|slot| slot.is_some());
+                    if slot_has_card {
                         println!("Player playing card {}", card_button.card_index);
 
                         // Play the card face-up immediately
