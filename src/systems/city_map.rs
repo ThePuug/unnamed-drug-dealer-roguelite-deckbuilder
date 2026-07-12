@@ -39,6 +39,11 @@ pub fn spawn_map_overlay(parent: &mut ChildSpawnerCommands) {
             // Opaque canvas - the hub bleeding through read as clutter in
             // the e2e screenshots
             BackgroundColor(Color::srgb(0.02, 0.03, 0.06)),
+            // Nodes default to FocusPolicy::Pass, which would let clicks on
+            // the canvas fall through to the still-spawned hub buttons
+            // beneath (deck cards, roster spends, START RUN). CLOSE is the
+            // only way out - the hidden CITY MAP tab no longer toggles.
+            bevy::ui::FocusPolicy::Block,
             GlobalZIndex(90),
             MapOverlay,
         ))

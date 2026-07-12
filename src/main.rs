@@ -55,6 +55,10 @@ fn main() {
         .init_resource::<DecayInfo>()
         .init_resource::<shop::ShopState>() // SOW-020: Shop state for deck builder
         .init_resource::<UpgradeChoiceDeferred>() // SOW-021: DECIDE LATER flag
+        // SOW-029: map systems run whenever DeckBuilding is active, including
+        // the pending-upgrades frame where setup_deck_builder early-returns
+        // before its insert_resource - a bare ResMut panics without this
+        .init_resource::<systems::city_map::MapUiState>()
         .add_systems(Startup, setup)
         // Character persistence systems
         .add_systems(OnEnter(GameState::DeckBuilding), (

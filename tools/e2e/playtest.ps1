@@ -19,7 +19,10 @@
 #   SOW-029 city map: CITY MAP tab (415, 40), CLOSE (1843, 79),
 #     node i in shop_locations.ron order: center x = 450|960|1470,
 #     node action button (UNLOCK / SEND HERE): (450|960|1470, 887),
-#     first dealer chip on a node: (450|960|1470, 533)
+#     first dealer chip on a node: x = 450|960|1470, y = 533 + 28 per
+#     clientele line beyond the first (chip row sits below the CLIENTELE
+#     list, so nodes with 2 personas - e.g. the Block - are at y ~561;
+#     verify against a fresh screenshot before scripting chip clicks)
 #   (zone unlocks moved to the map - the shop selector row lists unlocked
 #   areas only)
 
