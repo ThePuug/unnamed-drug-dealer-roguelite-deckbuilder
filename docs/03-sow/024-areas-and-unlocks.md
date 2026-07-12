@@ -2,7 +2,7 @@
 
 ## Status
 
-**Planned** - 2026-07-12
+**Review** - 2026-07-12 (all 4 phases complete on branch; e2e-verified)
 
 ## References
 
@@ -113,6 +113,29 @@ was hard-coded. It is now the loaded, validated source of truth for areas
 (ids, names, prices, starting unlock). The Block prices at $2,000: RFC-020
 only recorded an "achievement unlock (future RFC)" placeholder, superseded
 by RFC-024's cash purchase.
+
+### Implementation Note: harness coordinates after SOW-023 (Phase 4)
+
+The SOW-023 roster strip sits between the tabs and the card pool, which
+invalidated the harness's old tab coordinates - the first mogul e2e clicked
+"HIRE" instead of "SHOP" and cheerfully hired Slim for $500. Corrected tab
+row targets: SHOP (260, 40), YOUR CARDS (95, 40), Block unlock button
+(605, 40). The Busted-overlay dismissal is now two-position with log
+polling (END RUN at y=694; kingpin GAME OVER's fallen-empires board pushes
+NEW EMPIRE to y=732), closing the SOW-023 papercut.
+
+### Implementation Note: e2e evidence (Phase 4)
+
+`mogul` scenario, isolated save: SHOP tab -> "THE BLOCK — $2,000" ->
+purchase logged, selector rebuilt with The Block selected, "New turf: The
+Block" feedback, Block stock browsable (the formerly dead ~$49k of
+content), cash $3,000 -> $1,000. Relaunch on the same save: unlock
+persisted; five fold-and-restart samples drew "the_block - Wall Street
+Wolf" 3x and Corner clientele 2x. Fresh-empire never-Wolf is pinned by the
+shipped-content unit test plus the filter tests.
+
+Roadmap Iteration 3 entry intentionally left to the coordinator (parallel
+edits on main).
 
 ---
 

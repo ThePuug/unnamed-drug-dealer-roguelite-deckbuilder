@@ -47,6 +47,11 @@ pub fn scenario(name: &str) -> Option<SaveData> {
             save.account.cash_on_hand = 500;
             save.dealers[0].character.heat = 90;
         }
+        // SOW-024: enough cash to buy The Block ($2,000), which starts locked
+        "mogul" => {
+            save.account.cash_on_hand = 3000;
+            save.dealers[0].character.heat = 20;
+        }
         _ => return None,
     }
     Some(save)
@@ -55,12 +60,12 @@ pub fn scenario(name: &str) -> Option<SaveData> {
 /// CLI entry: parse `<scenario> [--dir <path>]`, write the signed save
 pub fn run_cli(args: &[String]) {
     let Some(name) = args.first() else {
-        eprintln!("usage: forge <fresh|funded|roster|hot> [--dir <path>]");
+        eprintln!("usage: forge <fresh|funded|roster|hot|mogul> [--dir <path>]");
         std::process::exit(2);
     };
 
     let Some(save) = scenario(name) else {
-        eprintln!("unknown scenario '{name}' (fresh|funded|roster|hot)");
+        eprintln!("unknown scenario '{name}' (fresh|funded|roster|hot|mogul)");
         std::process::exit(2);
     };
     save.validate().expect("forged scenario must pass save validation");
@@ -87,7 +92,7 @@ mod tests {
     #[test]
     fn every_scenario_validates_and_roundtrips() {
         let dir = tempdir().unwrap();
-        for name in ["fresh", "funded", "roster", "hot"] {
+        for name in ["fresh", "funded", "roster", "hot", "mogul"] {
             let save = scenario(name).expect(name);
             save.validate().unwrap_or_else(|e| panic!("{name} invalid: {e:?}"));
 
