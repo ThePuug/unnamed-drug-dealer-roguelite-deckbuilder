@@ -2,7 +2,7 @@
 
 ## Status
 
-**Review** - 2026-07-12 (all 4 phases implemented on `sow-028-the-strip`; 175 tests, zero warnings)
+**Accepted** - 2026-07-12 (all 4 phases implemented on `sow-028-the-strip`; 175 tests, zero warnings)
 
 ## References
 
@@ -10,7 +10,7 @@
   zone matrix; Reed granted creative freedom incl. adjusting zones 1-2)
 - **Umbrella:** RFC-024/025/027 (territories, cred gating, compositions) -
   content + one new persona under existing mechanics; no new RFC
-- **Branch:** (proposed) sow-028-the-strip
+- **Branch:** sow-028-the-strip
 - **Implementation Time:** 1-2 days (content-heavy)
 
 ---
@@ -179,4 +179,50 @@ Housewife").
 
 ## Acceptance Review
 
-*Populated after implementation.*
+**Reviewer:** ARCHITECT role (coordinator) — 2026-07-12
+**Verdict: ACCEPT**
+
+### Verification performed
+
+- **Build/test:** `cargo build` clean, `cargo test` 175 passed / 0 failed /
+  0 warnings on `sow-028-the-strip` (7d183d6). Delta from the 172 baseline
+  is exactly the three deliberate additions: `nightowl_scenario_shape`,
+  `test_shipped_three_zone_coherence`,
+  `test_shipped_block_first_rung_pays_without_coke`. The one ignored test
+  is the pre-existing explicit-only story generator.
+- **Content:** `the_strip` present and consistent across all six content
+  files (shop_locations, buyers, products, locations, modifiers,
+  narc_deck); assets commits (0b61ac4, fff76f0) are scoped to authored
+  files only — Reed's local working-tree edits untouched.
+- **Acceptance criteria:** all three met. Functional: three purchasable
+  zones, validations green (load-time coherence now also pinned by test).
+  Pacing: measured pre/post-tune tables in Discussion; Block first rung
+  verified by pin test AND live draw. Code quality: zero warnings, content
+  pins updated deliberately with the tuning rationale recorded.
+
+### Assessment
+
+- The **measured tuning discipline** held: one iteration, root-caused from
+  session logs (Corner overage attributed ~90% to buyer reaction cards
+  before touching anything), re-measured after. The fresh floor moving
+  from a Scorching-135 regression to Cold-0 restores the SOW-027
+  acceptance bar with margin.
+- The **tips-compound-at-high-tiers** finding (tips→heat→tiers→tips) is a
+  genuine systems insight worth remembering for future narc authoring:
+  self-referential heat sources must be rationed per tier.
+- Creative deviations (Locker Room stays Corner; Housewife
+  Codeine/Fentanyl; phases 1-3 merged) are all well-reasoned and recorded;
+  none contradict Reed's directives.
+- **Process note:** the implementation was accidentally committed to local
+  `main` before being moved to the branch; corrected by resetting `main`
+  back to dbd3a6b (no pushes had occurred, no history lost).
+
+### Carried forward
+
+- **Reed judgment call:** Strip session-3 heat (+85 at Blazing) — soften
+  only if the burn/cool rotation feels punitive in a human playtest.
+- **Art asks:** club back-alley background (Back of the Club reuses
+  `dead_drop.png`), VIP lounge background (VIP Room reuses
+  `frat_house.png`).
+- Standing tuning ledger unchanged (sentence constant, move/hire/bail
+  feel, cred thresholds, cooler pricing guardrail).
