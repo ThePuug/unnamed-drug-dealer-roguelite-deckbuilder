@@ -318,6 +318,26 @@ pub fn go_home_button_system(
                 bevy::log::info!("Back in action: {}", now_available.join(", "));
             }
 
+            // SOW-031: fronts tick at the same choke - the runner's own
+            // run INCLUDED (an unproductive run still spends a tick;
+            // that's the run-quality pressure the mechanic exists for)
+            for event in save_data.tick_fronts() {
+                match event {
+                    crate::save::FrontEvent::CutOff { area_id } => {
+                        bevy::log::info!("Front overdue in {area_id}: supplier cut you off - one more window");
+                    }
+                    crate::save::FrontEvent::MuscleSeized { area_id, amount } => {
+                        bevy::log::info!("Muscle visited over the {area_id} front: seized ${amount}");
+                    }
+                    crate::save::FrontEvent::MuscleBenched { area_id, dealer } => {
+                        bevy::log::info!("Muscle visited over the {area_id} front: {dealer} took a beating (benched 1 run)");
+                    }
+                    crate::save::FrontEvent::Soured { area_id, card_id } => {
+                        bevy::log::info!("Supplier in {area_id} soured: {card_id} repossessed, no more fronts there");
+                    }
+                }
+            }
+
             if let Err(e) = save_manager.save(&save_data) {
                 bevy::log::warn!("Failed to save on go home: {:?}", e);
             }

@@ -196,8 +196,29 @@ pub fn populate_shop_cards_system(
             .map(|(idx, cred)| (data.dealers[idx].name.clone(), cred))
     });
 
+    // SOW-031: the zone's supplier relationship shapes the whole tab -
+    // header up top, FRONT offers on the cards, stock locked while CutOff
+    let area_def = game_assets
+        .shop_locations
+        .iter()
+        .find(|a| a.id == shop_state.selected_location)
+        .cloned();
+    let front_ctx = save_data.as_ref().map(|data| FrontContext {
+        standing: data.standing_with(&shop_state.selected_location),
+        has_front: data.front_in(&shop_state.selected_location).is_some(),
+        cash: data.account.cash_on_hand,
+    });
+
     // Spawn shop card displays
     commands.entity(container).with_children(|parent| {
+        // SOW-031: supplier header first (full-width; ShopCardDisplay so
+        // the rebuild clears it with the cards)
+        if let (Some(area), Some(data)) = (area_def.as_ref(), save_data.as_ref()) {
+            if let Some(header) = crate::ui::front_view::supplier_header(area, data) {
+                spawn_supplier_header(parent, &area.id, &header);
+            }
+        }
+
         for card in location_cards {
             let is_unlocked = unlocked_cards.contains(&card.id);
             let price = card.shop_price.unwrap_or(0);
@@ -207,9 +228,98 @@ pub fn populate_shop_cards_system(
                 unlocked_by: area_best_cred.as_ref().map(|(n, _)| n.clone()),
             });
 
-            spawn_shop_card(parent, card, price, is_unlocked, cred_gate);
+            spawn_shop_card(
+                parent,
+                card,
+                price,
+                is_unlocked,
+                cred_gate,
+                &shop_state.selected_location,
+                front_ctx.as_ref(),
+            );
         }
     });
+}
+
+/// SOW-031: what the supplier relationship means for this shop tab
+struct FrontContext {
+    standing: crate::save::SupplierStanding,
+    has_front: bool,
+    cash: u64,
+}
+
+/// SOW-031: the supplier header - name, voice, status, PAY when owed
+fn spawn_supplier_header(
+    parent: &mut ChildSpawnerCommands,
+    area_id: &str,
+    header: &crate::ui::front_view::SupplierHeader,
+) {
+    parent
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                flex_direction: FlexDirection::Row,
+                justify_content: JustifyContent::SpaceBetween,
+                align_items: AlignItems::Center,
+                padding: UiRect::axes(Val::Px(12.0), Val::Px(8.0)),
+                margin: UiRect::all(Val::Px(5.0)),
+                border: UiRect::all(Val::Px(1.0)),
+                ..default()
+            },
+            BackgroundColor(Color::srgba(0.12, 0.1, 0.06, 0.9)),
+            BorderColor::all(theme::LEDGER_BOARD_CURRENT),
+            ShopCardDisplay,
+        ))
+        .with_children(|row| {
+            row.spawn(Node {
+                flex_direction: FlexDirection::Column,
+                row_gap: Val::Px(2.0),
+                ..default()
+            })
+            .with_children(|left| {
+                left.spawn((
+                    Text::new(header.name_line.as_str()),
+                    TextFont::from_font_size(15.0),
+                    TextColor(theme::LEDGER_BOARD_CURRENT),
+                ));
+                left.spawn((
+                    Text::new(header.voice_line.as_str()),
+                    TextFont::from_font_size(12.0),
+                    TextColor(Color::srgb(0.75, 0.72, 0.65)),
+                ));
+                if let Some(status) = &header.status_line {
+                    left.spawn((
+                        Text::new(status.as_str()),
+                        TextFont::from_font_size(13.0),
+                        TextColor(if header.urgent {
+                            theme::ROSTER_STATUS_JAILED
+                        } else {
+                            Color::WHITE
+                        }),
+                    ));
+                }
+            });
+            if let Some(owed) = header.payable {
+                row.spawn((
+                    Button,
+                    Node {
+                        padding: UiRect::axes(Val::Px(16.0), Val::Px(8.0)),
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
+                        ..default()
+                    },
+                    BackgroundColor(theme::CONTINUE_BUTTON_BG),
+                    FrontPayButton { area_id: area_id.to_string() },
+                ))
+                .with_children(|btn| {
+                    btn.spawn((
+                        Text::new(format!("PAY ${owed}")),
+                        TextFont::from_font_size(14.0),
+                        TextColor(Color::WHITE),
+                    ));
+                });
+            }
+        });
 }
 
 /// SOW-025: find a shop card by id across all shop-stocked collections
@@ -245,6 +355,8 @@ fn spawn_shop_card(
     price: u32,
     is_unlocked: bool,
     cred_gate: Option<CredGate>,
+    area_id: &str,
+    front_ctx: Option<&FrontContext>,
 ) {
     let card_color = match card.card_type {
         CardType::Product { .. } => theme::PRODUCT_CARD_COLOR,
@@ -322,6 +434,17 @@ fn spawn_shop_card(
                 TextColor(theme::SHOP_CRED_LOCK_TEXT),
                 TextLayout::new_with_justify(bevy::text::Justify::Center),
             ));
+        } else if front_ctx
+            .is_some_and(|ctx| ctx.standing == crate::save::SupplierStanding::CutOff)
+        {
+            // SOW-031: a blown due date locks this supplier's whole stock
+            // until the debt is settled - no purchase, no front
+            card_parent.spawn((
+                Text::new("CUT OFF\nsettle your debt"),
+                TextFont::from_font_size(12.0),
+                TextColor(theme::ROSTER_STATUS_JAILED),
+                TextLayout::new_with_justify(bevy::text::Justify::Center),
+            ));
         } else {
             // SOW-025: a met cred requirement names the dealer whose rep
             // opened the door (Reed: make the unlocking dealer visible)
@@ -358,6 +481,44 @@ fn spawn_shop_card(
                     TextColor(Color::WHITE),
                 ));
             });
+
+            // SOW-031: FRONT offer - products only, only when cash falls
+            // short, only while the supplier still deals on trust (Good +
+            // no front already running with them). Full cost + window on
+            // the face BEFORE commit.
+            let is_product = matches!(card.card_type, CardType::Product { .. });
+            if is_product
+                && front_ctx.is_some_and(|ctx| {
+                    ctx.standing == crate::save::SupplierStanding::Good
+                        && !ctx.has_front
+                        && ctx.cash < price as u64
+                })
+            {
+                card_parent.spawn((
+                    Button,
+                    Node {
+                        width: Val::Percent(100.0),
+                        height: Val::Px(30.0),
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
+                        margin: UiRect::top(Val::Px(4.0)),
+                        ..default()
+                    },
+                    BackgroundColor(Color::srgb(0.55, 0.42, 0.12)),
+                    FrontTakeButton {
+                        card_id: card.id.clone(),
+                        area_id: area_id.to_string(),
+                        price,
+                    },
+                ))
+                .with_children(|btn| {
+                    btn.spawn((
+                        Text::new(crate::ui::front_view::front_button_label(price)),
+                        TextFont::from_font_size(11.0),
+                        TextColor(Color::WHITE),
+                    ));
+                });
+            }
         }
     });
 }
@@ -401,6 +562,14 @@ pub fn shop_purchase_system(
                     continue;
                 }
             }
+            // SOW-031: a CutOff supplier's stock is locked until settled
+            // (same spawn-vs-click defense as the cred guard)
+            if let Some(area) = card.shop_location.as_deref() {
+                if data.standing_with(area) == crate::save::SupplierStanding::CutOff {
+                    info!("Cannot buy {}: supplier in {} cut you off - settle the front", button.card_id, area);
+                    continue;
+                }
+            }
         }
 
         // Deduct cash and unlock card
@@ -425,6 +594,83 @@ pub fn shop_purchase_system(
             selected_location: current,
         });
     }
+}
+
+/// SOW-031: take a card on the supplier's credit. The model owns every
+/// guard (standing, one-per-supplier, ownership); this system just routes
+/// the click and refreshes the tab.
+pub fn front_take_system(
+    mut commands: Commands,
+    interaction_query: Query<(&Interaction, &FrontTakeButton), Changed<Interaction>>,
+    mut save_data: Option<ResMut<SaveData>>,
+    save_manager: Option<Res<SaveManager>>,
+    shop_state: Res<ShopState>,
+) {
+    for (interaction, button) in interaction_query.iter() {
+        if *interaction != Interaction::Pressed {
+            continue;
+        }
+        let Some(ref mut data) = save_data else {
+            continue;
+        };
+        match data.take_front(&button.card_id, &button.area_id, button.price) {
+            Ok(()) => {
+                let front = data.front_in(&button.area_id).expect("just taken");
+                info!(
+                    "Fronted {} in {}: ${} due in {} runs",
+                    button.card_id, button.area_id, front.owed, front.runs_remaining
+                );
+                if let Some(ref manager) = save_manager {
+                    if let Err(e) = manager.save(data) {
+                        warn!("Failed to save after front: {:?}", e);
+                    }
+                }
+                refresh_shop_tab(&mut commands, &shop_state);
+            }
+            Err(reason) => info!("No front on {}: {}", button.card_id, reason),
+        }
+    }
+}
+
+/// SOW-031: settle a front in cash - the card becomes owned forever
+pub fn front_pay_system(
+    mut commands: Commands,
+    interaction_query: Query<(&Interaction, &FrontPayButton), Changed<Interaction>>,
+    mut save_data: Option<ResMut<SaveData>>,
+    save_manager: Option<Res<SaveManager>>,
+    shop_state: Res<ShopState>,
+) {
+    for (interaction, button) in interaction_query.iter() {
+        if *interaction != Interaction::Pressed {
+            continue;
+        }
+        let Some(ref mut data) = save_data else {
+            continue;
+        };
+        if data.pay_front(&button.area_id) {
+            info!(
+                "Front settled in {} (cash: ${})",
+                button.area_id, data.account.cash_on_hand
+            );
+            if let Some(ref manager) = save_manager {
+                if let Err(e) = manager.save(data) {
+                    warn!("Failed to save after payoff: {:?}", e);
+                }
+            }
+            refresh_shop_tab(&mut commands, &shop_state);
+        } else {
+            info!("Cannot settle front in {} - short on cash", button.area_id);
+        }
+    }
+}
+
+/// SOW-031: the shop tab rebuild trick shared by purchase/front/pay
+/// (reinsert ShopState so populate_shop_cards_system sees a change)
+fn refresh_shop_tab(commands: &mut Commands, shop_state: &ShopState) {
+    commands.insert_resource(ShopState {
+        viewing_shop: shop_state.viewing_shop,
+        selected_location: shop_state.selected_location.clone(),
+    });
 }
 
 /// SOW-024: Buying a locked area - deduct global cash, unlock, rebuild the

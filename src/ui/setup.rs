@@ -364,6 +364,16 @@ pub fn setup_deck_builder(
                 ..default()
             })
             .with_children(|parent| {
+                // SOW-031: the front clock - visible pressure next to the
+                // button that spends a tick (empty text while books are
+                // clean; update_front_pressure_system owns the content)
+                parent.spawn((
+                    Text::new(""),
+                    TextFont::from_font_size(15.0),
+                    TextColor(theme::LEDGER_BOARD_CURRENT),
+                    FrontPressureText,
+                ));
+
                 // Story History button
                 parent.spawn((
                     Button,

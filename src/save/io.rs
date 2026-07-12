@@ -107,8 +107,11 @@ pub fn load_save(path: &Path) -> Result<SaveData, SaveError> {
     }
 
     // Deserialize payload
-    let data: SaveData = bincode::deserialize(&save_file.data)
+    let mut data: SaveData = bincode::deserialize(&save_file.data)
         .map_err(|_| SaveError::TamperedOrCorrupted)?;
+
+    // SOW-031: normalize content-decision drift (kingpin silhouette)
+    data.normalize();
 
     // Validate data sanity
     data.validate()?;

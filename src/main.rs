@@ -153,6 +153,12 @@ fn main() {
             ledger_toggle_system,
             ledger_story_click_system,
             populate_ledger_system,
+            // SOW-031: fronts ride the same group - self-contained too
+            // (SaveData mutations + the ShopState reinsert refresh trick,
+            // which lands next frame regardless of cross-group order)
+            front_take_system,
+            front_pay_system,
+            update_front_pressure_system,
         ).chain().run_if(in_state(GameState::DeckBuilding)))
         .run();
 }
