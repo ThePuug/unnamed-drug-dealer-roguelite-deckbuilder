@@ -693,6 +693,11 @@ fn load_background_images(asset_server: &AssetServer, game_assets: &mut GameAsse
         ("At the Park", "at_the_park.png"),
         ("In a Limo", "in_a_limo.png"),
         ("Parking Lot", "parking_lot.png"),
+        // SOW-028 Strip locations - reusing authored art that reads right
+        // (neon back alley; PARTY ZONE lounge). Dedicated club-alley and
+        // VIP-lounge backgrounds are a listed art ask for Reed.
+        ("Back of the Club", "dead_drop.png"),
+        ("VIP Room", "frat_house.png"),
     ]);
 
     let count = background_files.len();
@@ -841,6 +846,76 @@ mod tests {
         // And the reframe's headline: the Wolf is Block clientele
         let wolf = buyers.iter().find(|b| b.display_name == "Wall Street Wolf").unwrap();
         assert_eq!(wolf.area, "the_block");
+    }
+
+    #[test]
+    fn test_shipped_three_zone_coherence() {
+        // SOW-028: the city is Corner -> Strip -> Block, each with clientele
+        let areas = load_shop_locations("assets/data/shop_locations.ron").expect("areas load");
+        let ids: Vec<&str> = areas.iter().map(|a| a.id.as_str()).collect();
+        assert_eq!(ids, vec!["the_corner", "the_strip", "the_block"]);
+        let strip = areas.iter().find(|a| a.id == "the_strip").unwrap();
+        assert_eq!(strip.price, 1200); // between free Corner and $2,000 Block
+
+        let buyers = load_and_validate_buyers("assets/buyers.ron").expect("buyers load");
+        let pimp = buyers.iter().find(|b| b.display_name == "Pimp").unwrap();
+        assert_eq!(pimp.area, "the_strip");
+        // Zone coherence: the Housewife is now the Block's first rung
+        let housewife = buyers
+            .iter()
+            .find(|b| b.display_name == "Desperate Housewife")
+            .unwrap();
+        assert_eq!(housewife.area, "the_block");
+        assert_eq!(housewife.base_multiplier, 1.5);
+
+        // Party economy lives on the Strip now
+        let products =
+            load_and_validate_cards("assets/cards/products.ron", "Product").expect("products");
+        for name in ["Ecstasy", "Ice"] {
+            let card = products.iter().find(|c| c.name == name).unwrap();
+            assert_eq!(
+                card.shop_location.as_deref(),
+                Some("the_strip"),
+                "{name} should be Strip stock"
+            );
+        }
+    }
+
+    #[test]
+    fn test_shipped_block_first_rung_pays_without_coke() {
+        // SOW-027 flagged that the Block's x2.8 headline was unreachable
+        // before a $5,000 Coke. SOW-028's answer: the Housewife (Block, x1.5)
+        // is satisfiable with STARTING-collection Weed once she brings her
+        // own location - Block expansion pays before any Block product buy.
+        let buyers = load_and_validate_buyers("assets/buyers.ron").expect("buyers load");
+        let mut housewife = buyers
+            .iter()
+            .find(|b| b.display_name == "Desperate Housewife")
+            .unwrap()
+            .clone();
+        let in_denial = housewife
+            .scenarios
+            .iter()
+            .position(|s| s.display_name == "In Denial")
+            .expect("In Denial scenario shipped");
+        housewife.active_scenario_index = Some(in_denial);
+
+        let mut hand_state = crate::models::hand_state::HandState::default();
+        hand_state.buyer_persona = Some(housewife);
+        hand_state
+            .cards_played
+            .push(crate::models::test_helpers::create_product("Weed", 30, 5));
+        hand_state
+            .cards_played
+            .push(crate::models::test_helpers::create_buyer_location(
+                "By the Pool",
+                5,
+                25,
+                -10,
+            ));
+
+        assert!(hand_state.is_demand_satisfied());
+        assert_eq!(hand_state.get_profit_multiplier(), 1.5);
     }
 
     fn load_all_shipped_player_cards() -> Vec<Card> {

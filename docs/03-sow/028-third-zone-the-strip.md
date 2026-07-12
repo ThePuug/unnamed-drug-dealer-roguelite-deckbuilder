@@ -2,7 +2,7 @@
 
 ## Status
 
-**Planned** - 2026-07-12
+**Accepted** - 2026-07-12 (all 4 phases implemented on `sow-028-the-strip`; 175 tests, zero warnings)
 
 ## References
 
@@ -10,7 +10,7 @@
   zone matrix; Reed granted creative freedom incl. adjusting zones 1-2)
 - **Umbrella:** RFC-024/025/027 (territories, cred gating, compositions) -
   content + one new persona under existing mechanics; no new RFC
-- **Branch:** (proposed) sow-028-the-strip
+- **Branch:** sow-028-the-strip
 - **Implementation Time:** 1-2 days (content-heavy)
 
 ---
@@ -79,10 +79,150 @@ deliberately.
 
 ## Discussion
 
-*Populated during implementation.*
+### The shipped zone matrix
+
+| | The Corner (free) | The Strip ($1,200) | The Block ($2,000) |
+|---|---|---|---|
+| **Identity** | street craft — where everyone starts | crowd craft — clubs, cash, noise | money craft — private, premium, paranoid |
+| **Clientele** | Frat Bro (×2.5) | Pimp (×2.0) | Desperate Housewife (×1.5, first rung), Wall Street Wolf (×2.8) |
+| **Products** | Weed (start), Shrooms $100·c1, Codeine $250·c2, Acid $400·c3 | Ecstasy $1,600·c1, Ice $3,000·c3 (both re-zoned from the Block) | Coke $5,000·c4, Heroin $8,000·c5, Fentanyl $12,000·c6 |
+| **Shop locations** | At the Park $250·c1, Storage Unit $1,500·c3 | Back of the Club $800·c1 | Safe House $2,500·c2, Abandoned Warehouse $3,500·c3 |
+| **Shop modifiers** | (street tier) | Velvet Rope $1,200·c2 | (money tier) |
+| **Buyer-only cards** | Locker Room, Frat House | VIP Room, Comp'd Bottles, Lost in the Crowd, Making a Scene | By the Pool, In a Limo |
+| **Narc texture** | baseline ladder (the default IS the Corner) | vice sweep: heat-noisy, conviction-light — tips at Hot+ only, one per tier; zero busts in 6 blind sessions | conviction-heavy: warrants early, Blazing busts and jails |
+
+### Measured pacing (blind harness, 2 hands/session, shared save)
+
+| Zone (scenario) | Pre-tune heat/session → career | Post-tune heat/session → career |
+|---|---|---|
+| Corner (fresh, heat 0) | +25/+55/+55 → **135 Scorching** (breaks SOW-027 ≤ Hot bar) | +15/+0/−15 → **0 Cold** (bar passed with margin) |
+| Strip (nightowl, heat 20) | +25/+85/+105 → 235 Inferno, 0 busts | +45/+50/+85 → 200, 0 busts |
+| Block (hustler Ray, heat 30) | +30/+35 → 95 Blazing (Housewife draws) | +85 (Wolf draw), then Busted at Blazing → jailed 5 runs |
+
+Banking under blind play: Corner $130 lifetime over 3 fresh sessions; Strip
++$69 over 2 sessions (Pimp pays reduced ×1 when blind play ignores demand).
+
+**The one tuning iteration** (root causes measured from session logs — the
+Corner's overage was ~90% buyer reaction cards, not narc or player cards):
+1. Noise Complaint heat 20 → 10 (in BOTH Frat Bro and Pimp decks; the buyer
+   plays it regardless of skill, and it drew twice per session).
+2. Frat House heat 10 → 5 (the Frat Bro is now the Corner's only clientele,
+   so his whole deck IS the fresh floor's buyer texture).
+3. Strip ladder: anonymous tips only at Hot+ and exactly ONE per tier
+   (draft had them at every tier, two at Hot+ — tips feed heat, heat feeds
+   tiers, tiers feed tips: a +85/+105 compounding spiral).
+
+**Post-tune reading.** The Corner floor is now heat-neutral under worst-case
+play — blind sessions hover Cold. Real heat comes from products sold, which
+is the right shape for a starting zone. The Strip stays the hottest zone
+per session (+45-85) *by design* — it is a heat tax, not handcuffs (six
+blind sessions, zero busts), and the counter-play is exactly the rotation
+loop Reed described: burn on the Strip, cool on the Corner. The Block
+completes the contrast: fewer heat points but Blazing-tier busts with
+5-run sentences. One acceptance judgment call for Reed: whether Strip
+session 3 (+85 at Blazing) should soften further — deliberately left after
+the single allowed iteration.
+
+**Variance note:** one discarded post-tune Corner session busted on hand 1
+at Cold — Prior Conviction (+20 evidence, pre-existing Frat Bro card) plus
+blind junk-play beat the fresh deck's cover. Pre-existing exposure, not a
+tune effect; blind play folds no hands, so this is the floor's worst case.
+
+### First-rung verification (the SOW-027 Wolf ×2.8 flag)
+
+Shipped-content test `test_shipped_block_first_rung_pays_without_coke`
+pins it: the Housewife (Block, ×1.5) is demand-satisfiable with
+STARTING-collection Weed on her "In Denial" scenario once she plays her
+own By the Pool — Block expansion pays before any Block product buy, and
+her Codeine demand ($250 Corner rung) is the deliberate step up. Verified
+live: Block runs draw her ("Run area: the_block - buyer: Desperate
+Housewife").
+
+### e2e verification (nightowl scenario)
+
+- Shop shows three area tabs; Strip stock: Ecstasy $1,600 purchasable with
+  "unlocked by The Kingpin" credit line, Ice locked "NEEDS CRED 3 (best:
+  2)", Back of the Club $800, Velvet Rope $1,200.
+- Live purchase: Ecstasy $1,600 → cash $2,500 → $900, card flips to OWNED.
+- Persona draws per zone in run logs: Frat Bro (Corner ×6), Pimp (Strip
+  ×6), Housewife + Wolf (Block).
+- Strip cred accrues: forged 2 → CRED 4 after two Safe-deal sessions.
+
+### Creative deviations from the design sketch (recorded rationale)
+
+1. **Locker Room stays with the Frat Bro** (sketch suggested re-flavoring
+   it into the Strip pool). Moving it would have broken the Frat Bro's
+   shipped scenario location lists and his "Get Laid" demand; the Strip
+   got purpose-built VIP Room + Back of the Club instead.
+2. **Housewife demands are Codeine/Fentanyl, not Codeine/Ice** (sketch
+   said "Codeine/Ice — relief, not glamour"). Ice moved to the Strip as
+   party stock; giving her Ice would cross-zone her demand for no gain.
+   Her shipped scenarios already carry Codeine (mid-tier) and Fentanyl
+   (Block top-shelf) — relief-coded both.
+3. **Strip narc texture tuned mid-SOW** (tips Hot+ only, one per tier) —
+   the draft's "tips everywhere" reading of vice-sweep compounded; the
+   shipped rule keeps the fiction ("nobody talks about a nobody") with
+   measured pacing.
+4. **Phases 1-3 in one commit**: the "every area has clientele" validation
+   makes the Strip unshippable without the Pimp — content phases were
+   inseparable (SOW-023/026 precedent).
+
+### Art asks for Reed
+
+- Dedicated **club back-alley** background (Back of the Club currently
+  reuses `dead_drop.png` — the neon alley reads right, but it's shared).
+- Dedicated **VIP lounge** background (VIP Room reuses `frat_house.png`,
+  the PARTY ZONE lounge).
+- The Pimp uses the previously unused portrait as planned.
 
 ---
 
 ## Acceptance Review
 
-*Populated after implementation.*
+**Reviewer:** ARCHITECT role (coordinator) — 2026-07-12
+**Verdict: ACCEPT**
+
+### Verification performed
+
+- **Build/test:** `cargo build` clean, `cargo test` 175 passed / 0 failed /
+  0 warnings on `sow-028-the-strip` (7d183d6). Delta from the 172 baseline
+  is exactly the three deliberate additions: `nightowl_scenario_shape`,
+  `test_shipped_three_zone_coherence`,
+  `test_shipped_block_first_rung_pays_without_coke`. The one ignored test
+  is the pre-existing explicit-only story generator.
+- **Content:** `the_strip` present and consistent across all six content
+  files (shop_locations, buyers, products, locations, modifiers,
+  narc_deck); assets commits (0b61ac4, fff76f0) are scoped to authored
+  files only — Reed's local working-tree edits untouched.
+- **Acceptance criteria:** all three met. Functional: three purchasable
+  zones, validations green (load-time coherence now also pinned by test).
+  Pacing: measured pre/post-tune tables in Discussion; Block first rung
+  verified by pin test AND live draw. Code quality: zero warnings, content
+  pins updated deliberately with the tuning rationale recorded.
+
+### Assessment
+
+- The **measured tuning discipline** held: one iteration, root-caused from
+  session logs (Corner overage attributed ~90% to buyer reaction cards
+  before touching anything), re-measured after. The fresh floor moving
+  from a Scorching-135 regression to Cold-0 restores the SOW-027
+  acceptance bar with margin.
+- The **tips-compound-at-high-tiers** finding (tips→heat→tiers→tips) is a
+  genuine systems insight worth remembering for future narc authoring:
+  self-referential heat sources must be rationed per tier.
+- Creative deviations (Locker Room stays Corner; Housewife
+  Codeine/Fentanyl; phases 1-3 merged) are all well-reasoned and recorded;
+  none contradict Reed's directives.
+- **Process note:** the implementation was accidentally committed to local
+  `main` before being moved to the branch; corrected by resetting `main`
+  back to dbd3a6b (no pushes had occurred, no history lost).
+
+### Carried forward
+
+- **Reed judgment call:** Strip session-3 heat (+85 at Blazing) — soften
+  only if the burn/cool rotation feels punitive in a human playtest.
+- **Art asks:** club back-alley background (Back of the Club reuses
+  `dead_drop.png`), VIP lounge background (VIP Room reuses
+  `frat_house.png`).
+- Standing tuning ledger unchanged (sentence constant, move/hire/bail
+  feel, cred thresholds, cooler pricing guardrail).

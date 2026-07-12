@@ -38,7 +38,7 @@
 |---------|:------:|-------|
 | Starting location (The Corner) | ✅ | SOW-020 |
 | Location as card shops | ✅ | SOW-020 |
-| Area (territory) purchase unlocks | ✅ | SOW-024: cash purchase supersedes the achievement placeholder (RFC-024); The Block $2,000, buyers area-gated, two-stage run selection |
+| Area (territory) purchase unlocks | ✅ | SOW-024: cash purchase supersedes the achievement placeholder (RFC-024); buyers area-gated, two-stage run selection. SOW-028: three-zone city — The Strip $1,200 spliced between the free Corner and the $2,000 Block |
 | Location permanence | ✅ | SOW-020 |
 | Multi-location shopping | ✅ | SOW-020 |
 | Location UI (shop interface) | ✅ | SOW-020 |
