@@ -225,6 +225,44 @@ pub fn update_deck_discard_system(
     }
 }
 
+/// SOW-022: spawn (emoji, value) stat rows for an intent/reaction bubble
+fn spawn_bubble_stat_rows(
+    parent: &mut ChildSpawnerCommands,
+    rows: &[view::IntentRow],
+    emoji_font: &crate::EmojiFont,
+) {
+    for (emoji, value) in rows {
+        let color = match *emoji {
+            "🔥" => theme::NARC_STAT_HEAT,
+            "🛡" => theme::BALANCE_COVER_TEXT,
+            "💰" => theme::BUYER_BUBBLE_PAYOUT,
+            _ => theme::NARC_STAT_EVIDENCE, // 🔍 / ⚠
+        };
+        parent.spawn(Node {
+            flex_direction: FlexDirection::Row,
+            align_items: AlignItems::Center,
+            column_gap: Val::Px(5.0),
+            ..default()
+        })
+        .with_children(|parent| {
+            parent.spawn((
+                Text::new(*emoji),
+                TextFont {
+                    font: emoji_font.0.clone(),
+                    font_size: 15.0,
+                    ..default()
+                },
+                TextColor(color),
+            ));
+            parent.spawn((
+                Text::new(value),
+                TextFont::from_font_size(15.0),
+                TextColor(color),
+            ));
+        });
+    }
+}
+
 /// SOW-022: Narc count chip + intent bubble (telegraph / last played)
 pub fn update_narc_intent_system(
     hand_state_query: Query<&HandState, Changed<HandState>>,
@@ -279,35 +317,56 @@ pub fn update_narc_intent_system(
             }
         }
         commands.entity(row_entity).with_children(|parent| {
-            for (emoji, value) in &intent.rows {
-                let color = if *emoji == "🔥" {
-                    theme::NARC_STAT_HEAT
-                } else {
-                    theme::NARC_STAT_EVIDENCE
-                };
-                parent.spawn(Node {
-                    flex_direction: FlexDirection::Row,
-                    align_items: AlignItems::Center,
-                    column_gap: Val::Px(5.0),
-                    ..default()
-                })
-                .with_children(|parent| {
-                    parent.spawn((
-                        Text::new(*emoji),
-                        TextFont {
-                            font: emoji_font.0.clone(),
-                            font_size: 15.0,
-                            ..default()
-                        },
-                        TextColor(color),
-                    ));
-                    parent.spawn((
-                        Text::new(value),
-                        TextFont::from_font_size(15.0),
-                        TextColor(color),
-                    ));
-                });
+            spawn_bubble_stat_rows(parent, &intent.rows, &emoji_font);
+        });
+    }
+}
+
+/// SOW-022 follow-up: on-screen callout for buyer reactions - the buyer's
+/// plays were previously announced only on stdout, making their heat swings
+/// look like bugs. Mirrors the narc intent bubble.
+pub fn update_buyer_played_bubble_system(
+    hand_state_query: Query<&HandState, Changed<HandState>>,
+    mut texts: Query<&mut Text>,
+    title_query: Query<Entity, With<BuyerPlayedTitleText>>,
+    mut bubble_query: Query<&mut Node, With<BuyerPlayedBubble>>,
+    stats_row_query: Query<Entity, With<BuyerPlayedStatsRow>>,
+    children_query: Query<&Children>,
+    mut commands: Commands,
+    emoji_font: Res<crate::EmojiFont>,
+) {
+    let Ok(hand_state) = hand_state_query.single() else {
+        return;
+    };
+
+    let Ok(mut bubble_node) = bubble_query.single_mut() else {
+        return;
+    };
+
+    let Some(played) = view::buyer_played(hand_state) else {
+        bubble_node.display = Display::None;
+        return;
+    };
+
+    bubble_node.display = Display::Flex;
+
+    if let Ok(entity) = title_query.single() {
+        if let Ok(mut text) = texts.get_mut(entity) {
+            let label = format!("{} · {}", played.verb, played.card_name);
+            if **text != label {
+                **text = label;
             }
+        }
+    }
+
+    if let Ok(row_entity) = stats_row_query.single() {
+        if let Ok(children) = children_query.get(row_entity) {
+            for child in children.iter() {
+                commands.entity(child).despawn();
+            }
+        }
+        commands.entity(row_entity).with_children(|parent| {
+            spawn_bubble_stat_rows(parent, &played.rows, &emoji_font);
         });
     }
 }

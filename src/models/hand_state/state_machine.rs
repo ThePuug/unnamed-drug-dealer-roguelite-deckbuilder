@@ -177,12 +177,10 @@ impl HandState {
         };
 
         // Phase 2: Now we can access self again - add heat and track in cards_played
+        // Signed sum per the heat-system spec: no clamping, so heat reduction
+        // is never destroyed and results are play-order independent
         let card_heat = self.get_card_heat(&card, owner);
-        if card_heat >= 0 {
-            self.current_heat = self.current_heat.saturating_add(card_heat as u32);
-        } else {
-            self.current_heat = self.current_heat.saturating_sub((-card_heat) as u32);
-        }
+        self.current_heat += card_heat;
         self.cards_played.push(card);
 
         // Advance to next player's turn (increments index)
@@ -262,7 +260,7 @@ impl HandState {
 
             // Check cumulative deck heat (already accumulated as cards were played)
             if let Some(threshold) = heat_threshold {
-                if self.current_heat > threshold {
+                if self.current_heat > threshold as i32 {
                     return true;
                 }
             }
@@ -349,13 +347,9 @@ impl HandState {
         buyer_cards.played.push(card.clone());
         self.cards_played.push(card.clone());
 
-        // Add card's heat to cumulative deck heat immediately
+        // Add card's heat to cumulative deck heat immediately (signed sum)
         let card_heat = self.get_card_heat(&card, Owner::Buyer);
-        if card_heat >= 0 {
-            self.current_heat = self.current_heat.saturating_add(card_heat as u32);
-        } else {
-            self.current_heat = self.current_heat.saturating_sub((-card_heat) as u32);
-        }
+        self.current_heat += card_heat;
 
         Some(card)
     }
@@ -580,6 +574,43 @@ mod tests {
         // Verify cards_played is cleared
         assert_eq!(hand_state.cards_played.len(), 0);
         assert_eq!(hand_state.cards_played_this_round.len(), 0);
+    }
+
+    #[test]
+    fn test_heat_is_signed_and_can_go_negative() {
+        // SOW-022 follow-up: heat-system spec says "sum all heat modifiers" -
+        // the old u32 clamp destroyed reduction overshoot at 0
+        let mut hand_state = HandState::default();
+        hand_state.current_state = HandPhase::PlayerPhase;
+        hand_state.current_player_index = 1; // Turn order [Narc, Player] -> Player's turn
+        hand_state.current_heat = 5;
+
+        hand_state.cards_mut(Owner::Player).hand[0] = Some(create_cover("Alibi", 30, -10));
+        hand_state.play_card(Owner::Player, 0).expect("play should succeed");
+
+        assert_eq!(hand_state.current_heat, -5); // not clamped to 0
+    }
+
+    #[test]
+    fn test_heat_sum_is_play_order_independent() {
+        // With the clamp gone, (+20 then -10) and (-10 then +20) both land on +10
+        let run = |first: crate::Card, second: crate::Card| {
+            let mut hand_state = HandState::default();
+            hand_state.current_state = HandPhase::PlayerPhase;
+            hand_state.current_player_index = 1;
+            hand_state.cards_mut(Owner::Player).hand = [Some(first), Some(second), None];
+            hand_state.play_card(Owner::Player, 0).expect("first play");
+            // play_card transitioned the round - force back to the player's turn
+            hand_state.current_state = HandPhase::PlayerPhase;
+            hand_state.current_player_index = 1;
+            hand_state.play_card(Owner::Player, 1).expect("second play");
+            hand_state.current_heat
+        };
+
+        let hot = create_product("Hot", 30, 20);
+        let cool = create_cover("Chill", 10, -10);
+        assert_eq!(run(hot.clone(), cool.clone()), 10);
+        assert_eq!(run(cool, hot), 10);
     }
 
     #[test]

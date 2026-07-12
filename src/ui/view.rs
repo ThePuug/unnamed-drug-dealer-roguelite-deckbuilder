@@ -170,6 +170,57 @@ pub fn narc_intent(hand_state: &HandState) -> Option<IntentView> {
 }
 
 // ============================================================================
+// Buyer reaction bubble
+// ============================================================================
+
+/// Stat rows for a buyer reaction card (printed values - buyer cards carry no
+/// tier scaling; `get_card_heat` applies them verbatim)
+fn buyer_card_rows(card: &Card) -> Vec<IntentRow> {
+    match card.card_type {
+        CardType::Location { evidence, cover, heat } => vec![
+            ("🔍", format!("{:+}", evidence as i32)),
+            ("🛡", format!("{:+}", cover as i32)),
+            ("🔥", format!("{heat:+}")),
+        ],
+        CardType::Cover { cover, heat } => vec![
+            ("🛡", format!("{:+}", cover as i32)),
+            ("🔥", format!("{heat:+}")),
+        ],
+        CardType::DealModifier { price_multiplier, evidence, cover, heat } => {
+            let mut rows = Vec::new();
+            if price_multiplier != 1.0 {
+                rows.push(("💰", format!("{:+}%", ((price_multiplier - 1.0) * 100.0).round() as i32)));
+            }
+            if evidence != 0 {
+                rows.push(("🔍", format!("{evidence:+}")));
+            }
+            if cover != 0 {
+                rows.push(("🛡", format!("{cover:+}")));
+            }
+            rows.push(("🔥", format!("{heat:+}")));
+            rows
+        }
+        _ => Vec::new(),
+    }
+}
+
+/// What the buyer reaction bubble shows: the buyer's most recent reaction this
+/// hand, visible from the moment it's played until the hand resolves. Buyer
+/// plays previously had no on-screen callout at all (stdout only), which made
+/// buyer heat swings look like bugs during playtesting.
+pub fn buyer_played(hand_state: &HandState) -> Option<IntentView> {
+    if hand_state.current_state == HandPhase::Bust {
+        return None;
+    }
+    let card = hand_state.cards(Owner::Buyer).played.last()?;
+    Some(IntentView {
+        verb: "PLAYED",
+        card_name: card.name.to_uppercase(),
+        rows: buyer_card_rows(card),
+    })
+}
+
+// ============================================================================
 // Turn pill
 // ============================================================================
 
@@ -431,6 +482,46 @@ mod tests {
         hs.narc_upgrade_tier = crate::save::UpgradeTier::Tier2;
         let intent = narc_intent(&hs).unwrap();
         assert_eq!(intent.rows[0], ("⚠", "busts at 30".to_string()));
+    }
+
+    // ---- buyer_played ----
+
+    #[test]
+    fn buyer_bubble_shows_last_reaction() {
+        let mut hs = HandState::default();
+        hs.current_state = HandPhase::DealerReveal;
+        hs.cards_mut(Owner::Buyer).played.push(create_buyer_location("By the Pool", 5, 25, -10));
+        let view = buyer_played(&hs).expect("bubble should show after buyer reacts");
+        assert_eq!(view.card_name, "BY THE POOL");
+        assert_eq!(
+            view.rows,
+            vec![
+                ("🔍", "+5".to_string()),
+                ("🛡", "+25".to_string()),
+                ("🔥", "-10".to_string())
+            ]
+        );
+    }
+
+    #[test]
+    fn buyer_bubble_hidden_before_first_reaction_and_after_hand() {
+        let mut hs = HandState::default();
+        hs.current_state = HandPhase::PlayerPhase;
+        assert!(buyer_played(&hs).is_none());
+        hs.cards_mut(Owner::Buyer).played.push(create_buyer_modifier("Secrecy", 1.0, 0, 20, -10));
+        assert!(buyer_played(&hs).is_some());
+        hs.current_state = HandPhase::Bust;
+        assert!(buyer_played(&hs).is_none());
+    }
+
+    #[test]
+    fn buyer_modifier_rows_skip_zero_stats() {
+        let mut hs = HandState::default();
+        hs.current_state = HandPhase::DealerReveal;
+        // mult 1.0 and evidence 0 are omitted; cover and heat always shown
+        hs.cards_mut(Owner::Buyer).played.push(create_buyer_modifier("Secrecy", 1.0, 0, 20, -10));
+        let view = buyer_played(&hs).unwrap();
+        assert_eq!(view.rows, vec![("🛡", "+20".to_string()), ("🔥", "-10".to_string())]);
     }
 
     // ---- turn_pill / round_header ----

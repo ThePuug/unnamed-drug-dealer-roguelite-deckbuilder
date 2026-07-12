@@ -90,6 +90,7 @@ fn main() {
             update_deck_discard_system,       // SOW-022: deck/discard stacks
             update_narc_intent_system,        // SOW-022: intent telegraph
             update_buyer_panel_system,        // SOW-022: wants bubble + chips
+            update_buyer_played_bubble_system, // SOW-022: buyer reaction callout
             buyer_bubble_hover_system,        // SOW-022: hover detail
             update_spotlights_system,         // SOW-022: actor spotlights
             ui::update_active_slots_system,

@@ -78,17 +78,17 @@ impl HandState {
         let mut price_multiplier: f32 = 1.0;
 
         // Get base Evidence/Cover from active Location (player or dealer)
+        // (heat is NOT tallied here - HandState.current_heat is the only heat
+        // ledger, accumulated at play time; SOW-022 follow-up removed Totals.heat)
         if let Some(location) = self.active_location(include_current_round) {
             match location.card_type {
-                CardType::Location { evidence, cover, heat } => {
+                CardType::Location { evidence, cover, .. } => {
                     // RFC-019: Apply per-stat upgrade multipliers
                     let evidence_mult = 2.0 - self.get_stat_multiplier(&location.name, UpgradeableStat::Evidence); // Decrease
                     let cover_mult = self.get_stat_multiplier(&location.name, UpgradeableStat::Cover);
-                    let heat_mult = 2.0 - self.get_stat_multiplier(&location.name, UpgradeableStat::Heat); // Decrease
 
                     totals.evidence = (evidence as f32 * evidence_mult).max(0.0) as u32;
                     totals.cover = (cover as f32 * cover_mult) as u32;
-                    totals.heat += (heat as f32 * heat_mult) as i32;
                 }
                 _ => {} // Shouldn't happen
             }
@@ -96,36 +96,30 @@ impl HandState {
 
         for card in self.get_cards_for_calculation(include_current_round) {
             match card.card_type {
-                CardType::Evidence { evidence, heat } => {
+                CardType::Evidence { evidence, .. } => {
                     // RFC-018: Apply Narc upgrade tier to Evidence cards based on Heat
                     // (Evidence cards are Narc cards, not player-upgradeable)
                     let narc_mult = self.narc_upgrade_tier.multiplier();
                     let upgraded_evidence = (evidence as f32 * narc_mult) as u32;
-                    let upgraded_heat = (heat as f32 * narc_mult) as i32;
                     totals.evidence += upgraded_evidence;
-                    totals.heat += upgraded_heat;
                 }
-                CardType::Cover { cover, heat } => {
+                CardType::Cover { cover, .. } => {
                     // RFC-019: Apply per-stat upgrade multipliers
                     let cover_mult = self.get_stat_multiplier(&card.name, UpgradeableStat::Cover);
-                    let heat_mult = 2.0 - self.get_stat_multiplier(&card.name, UpgradeableStat::Heat); // Decrease
 
                     let upgraded_cover = (cover as f32 * cover_mult) as u32;
                     totals.cover += upgraded_cover;
-                    totals.heat += (heat as f32 * heat_mult) as i32;
                 }
-                CardType::DealModifier { price_multiplier: multiplier, evidence, cover, heat } => {
+                CardType::DealModifier { price_multiplier: multiplier, evidence, cover, .. } => {
                     // RFC-019: Apply per-stat upgrade multipliers
                     let price_mult = self.get_stat_multiplier(&card.name, UpgradeableStat::PriceMultiplier);
                     let evidence_mult = 2.0 - self.get_stat_multiplier(&card.name, UpgradeableStat::Evidence); // Decrease
                     let cover_mult = self.get_stat_multiplier(&card.name, UpgradeableStat::Cover);
-                    let heat_mult = 2.0 - self.get_stat_multiplier(&card.name, UpgradeableStat::Heat); // Decrease
 
                     let upgraded_multiplier = multiplier * price_mult;
                     price_multiplier *= upgraded_multiplier;
                     totals.evidence = totals.evidence.saturating_add_signed((evidence as f32 * evidence_mult) as i32);
                     totals.cover = totals.cover.saturating_add_signed((cover as f32 * cover_mult) as i32);
-                    totals.heat += (heat as f32 * heat_mult) as i32;
                 }
                 CardType::Insurance { cover, .. } => {
                     // RFC-019: Apply per-stat upgrade multipliers
@@ -141,16 +135,14 @@ impl HandState {
 
         // Get profit from active Product (apply multipliers)
         if let Some(product) = self.active_product(include_current_round) {
-            if let CardType::Product { price, heat } = product.card_type {
+            if let CardType::Product { price, .. } = product.card_type {
                 // RFC-019: Apply per-stat upgrade multipliers
                 let price_mult = self.get_stat_multiplier(&product.name, UpgradeableStat::Price);
-                let heat_mult = 2.0 - self.get_stat_multiplier(&product.name, UpgradeableStat::Heat); // Decrease
 
                 let upgraded_price = (price as f32 * price_mult) as u32;
 
                 let buyer_multiplier = self.get_profit_multiplier();
                 totals.profit = (upgraded_price as f32 * price_multiplier * buyer_multiplier) as u32;
-                totals.heat += (heat as f32 * heat_mult) as i32;
             }
         }
 
@@ -239,19 +231,6 @@ mod tests {
     }
 
     #[test]
-    fn test_heat_accumulation() {
-        let mut hand_state = HandState::default();
-
-        hand_state.cards_played.push(create_product("Meth", 100, 30));
-        hand_state.cards_played.push(create_location("School Zone", 40, 5, 20));
-        hand_state.cards_played.push(create_evidence("Surveillance", 20, 5));
-
-        // Heat should accumulate: 30 + 20 + 5 = 55
-        let totals = hand_state.calculate_totals(true);
-        assert_eq!(totals.heat, 55);
-    }
-
-    #[test]
     fn test_no_product_played() {
         let mut hand_state = HandState::default();
 
@@ -283,15 +262,10 @@ mod tests {
             + if let CardType::Evidence { evidence: ev, .. } = evidence.card_type { ev } else { 0 };
         let expected_cover = if let CardType::Location { cover: loc_cov, .. } = location.card_type { loc_cov } else { 0 }
             + if let CardType::Cover { cover: cov, .. } = cover.card_type { cov } else { 0 };
-        let expected_heat = if let CardType::Location { heat: h1, .. } = location.card_type { h1 } else { 0 }
-            + if let CardType::Product { heat: h2, .. } = product.card_type { h2 } else { 0 }
-            + if let CardType::Cover { heat: h3, .. } = cover.card_type { h3 } else { 0 }
-            + if let CardType::Evidence { heat: h4, .. } = evidence.card_type { h4 } else { 0 };
         let expected_profit = if let CardType::Product { price, .. } = product.card_type { price } else { 0 };
 
         assert_eq!(totals.evidence, expected_evidence);
         assert_eq!(totals.cover, expected_cover);
-        assert_eq!(totals.heat, expected_heat);
         assert_eq!(totals.profit, expected_profit);
     }
 
@@ -306,7 +280,6 @@ mod tests {
         let totals = hand_state.calculate_totals(true);
         assert_eq!(totals.evidence, 20);
         assert_eq!(totals.cover, 35); // Insurance adds to cover
-        assert_eq!(totals.heat, 0); // Insurance heat penalty only applies on activation, not in totals
     }
 
     #[test]
@@ -320,7 +293,6 @@ mod tests {
         let totals = hand_state.calculate_totals(true);
         assert_eq!(totals.evidence, 20);
         assert_eq!(totals.cover, 20);
-        assert_eq!(totals.heat, 0);
     }
 
     // ========================================================================
@@ -427,28 +399,12 @@ mod tests {
         assert_eq!(totals.profit, 150);
     }
 
-    #[test]
-    fn test_upgrade_heat_reduction() {
-        use crate::save::{CardUpgrades, UpgradeableStat};
-        let mut hand_state = HandState::default();
-
-        // Product with base price 100 and heat 20
-        hand_state.cards_played.push(create_product("Test Product", 100, 20));
-        hand_state.cards_played.push(create_location("Location", 10, 10, 0));
-
-        // Without upgrades, heat = 20
-        let totals_base = hand_state.calculate_totals(true);
-        assert_eq!(totals_base.heat, 20);
-
-        // RFC-019: Add one Heat upgrade (-10%)
-        let mut upgrades = CardUpgrades::new();
-        upgrades.add_upgrade(UpgradeableStat::Heat);
-        hand_state.card_upgrades.insert("Test Product".to_string(), upgrades);
-
-        // With 1 Heat upgrade, heat = 18 (20 * 0.9)
-        let totals_upgraded = hand_state.calculate_totals(true);
-        assert_eq!(totals_upgraded.heat, 18);
-    }
+    // SOW-022 follow-up: test_upgrade_heat_reduction removed with Totals.heat.
+    // NOTE: the RFC-019 "Heat" upgrade stat only ever affected Totals.heat,
+    // which no gameplay/UI code consumed - the upgrade choice has been a
+    // silent no-op since RFC-019 shipped. Wiring it into get_card_heat (the
+    // live ledger) is a design decision: naive multiplication would make
+    // negative-heat cards WORSE when upgraded. Flagged for a future SOW.
 
     #[test]
     fn test_upgrade_no_effect_on_narc_cards() {
@@ -486,7 +442,6 @@ mod tests {
         // Evidence: 10 (location) + 20 (narc * 1.0) = 30
         // Heat: 0 (location) + 5 (narc * 1.0) = 5
         assert_eq!(totals.evidence, 30);
-        assert_eq!(totals.heat, 5);
     }
 
     #[test]
@@ -501,7 +456,6 @@ mod tests {
         // Evidence: 10 (location) + 22 (20 * 1.1) = 32
         // Heat: 0 (location) + 11 (10 * 1.1) = 11
         assert_eq!(totals.evidence, 32);
-        assert_eq!(totals.heat, 11);
     }
 
     #[test]
@@ -516,7 +470,6 @@ mod tests {
         // Evidence: 10 (location) + 24 (20 * 1.2) = 34
         // Heat: 0 (location) + 12 (10 * 1.2) = 12
         assert_eq!(totals.evidence, 34);
-        assert_eq!(totals.heat, 12);
     }
 
     #[test]
@@ -531,7 +484,6 @@ mod tests {
         // Evidence: 10 (location) + 28 (20 * 1.4) = 38
         // Heat: 0 (location) + 14 (10 * 1.4) = 14
         assert_eq!(totals.evidence, 38);
-        assert_eq!(totals.heat, 14);
     }
 
     #[test]
@@ -547,6 +499,5 @@ mod tests {
         // Evidence: 10 (location) + 12 (10 * 1.2) + 24 (20 * 1.2) = 46
         // Heat: 0 (location) + 2 (2 * 1.2 = 2.4 -> 2) + 6 (5 * 1.2) = 8
         assert_eq!(totals.evidence, 46);
-        assert_eq!(totals.heat, 8);
     }
 }

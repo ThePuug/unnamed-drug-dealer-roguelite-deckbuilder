@@ -1090,6 +1090,43 @@ pub fn create_ui(commands: &mut Commands, emoji_font: &EmojiFont) {
                 ));
             });
 
+            // Buyer reaction bubble: "PLAYED · <card>" (hidden until the buyer reacts)
+            parent.spawn((
+                Node {
+                    position_type: PositionType::Absolute,
+                    right: Val::Px(14.0),
+                    top: Val::Px(344.0),
+                    flex_direction: FlexDirection::Column,
+                    align_items: AlignItems::FlexEnd,
+                    row_gap: Val::Px(4.0),
+                    padding: UiRect::axes(Val::Px(14.0), Val::Px(10.0)),
+                    border: UiRect::all(Val::Px(1.0)),
+                    border_radius: BorderRadius::all(Val::Px(12.0)),
+                    display: Display::None,
+                    ..default()
+                },
+                BackgroundColor(theme::BUYER_BUBBLE_BG),
+                BorderColor::all(theme::BUYER_BUBBLE_BORDER),
+                BoxShadow::new(Color::srgba(0.824, 0.745, 0.196, 0.28), Val::Px(0.0), Val::Px(0.0), Val::Px(0.0), Val::Px(22.0)),
+                BuyerPlayedBubble,
+            ))
+            .with_children(|parent| {
+                parent.spawn((
+                    Text::new("PLAYED"),
+                    TextFont::from_font_size(11.0),
+                    TextColor(theme::BUYER_BUBBLE_TITLE),
+                    BuyerPlayedTitleText,
+                ));
+                parent.spawn((
+                    Node {
+                        flex_direction: FlexDirection::Row,
+                        column_gap: Val::Px(14.0),
+                        ..default()
+                    },
+                    BuyerPlayedStatsRow,
+                ));
+            });
+
             // Wants bubble (hover for detail)
             parent.spawn((
                 Node {

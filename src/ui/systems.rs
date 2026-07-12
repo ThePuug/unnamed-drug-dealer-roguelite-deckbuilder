@@ -173,8 +173,9 @@ pub fn update_standing_panel_system(
     set_text(cash_query.single().ok(), view::format_cash(hand_state.cash));
     set_text(heat_value_query.single().ok(), hand_state.current_heat.to_string());
 
-    // Heat tier chip (name + color from the shared HeatTier scale)
-    let tier = crate::save::HeatTier::from_heat(hand_state.current_heat);
+    // Heat tier chip (name + color from the shared HeatTier scale; session
+    // heat is signed - negative reads as Cold)
+    let tier = crate::save::HeatTier::from_heat(hand_state.current_heat.max(0) as u32);
     let (r, g, b) = tier.color();
     let tier_color = Color::srgb(r, g, b);
     set_text(tier_text_query.single().ok(), tier.name().to_uppercase());
@@ -187,9 +188,9 @@ pub fn update_standing_panel_system(
         *border = BorderColor::all(tier_color.with_alpha(0.5));
     }
 
-    // Track fill on the fixed 0..100 scale
+    // Track fill on the fixed 0..100 scale (negative heat shows an empty bar)
     if let Ok(mut node) = fill_query.single_mut() {
-        let pct = hand_state.current_heat.min(view::HEAT_BAR_MAX) as f32
+        let pct = hand_state.current_heat.clamp(0, view::HEAT_BAR_MAX as i32) as f32
             / view::HEAT_BAR_MAX as f32
             * 100.0;
         node.width = Val::Percent(pct);
@@ -439,8 +440,8 @@ pub fn update_resolution_overlay_system(
             }
         }
 
-        // Session totals (always show)
-        results.push_str(&format!("\n\n─────────────────\nSession: ${} banked • +{} Heat",
+        // Session totals (always show; heat is signed - a cooling session shows negative)
+        results.push_str(&format!("\n\n─────────────────\nSession: ${} banked • {:+} Heat",
             hand_state.cash, cumulative_heat));
 
         **results_text = results;
@@ -509,20 +510,24 @@ pub fn scale_ui_to_fit_system(
     }
 }
 
-/// POC: Update background image based on active location
-/// Uses "cover" scaling: maintains aspect ratio, scales to fill screen
+/// Update background image based on active location.
+/// Uses "cover" scaling: maintains aspect ratio, scales to fill screen.
+///
+/// SOW-022 follow-up: runs every frame WITHOUT `Changed<HandState>`. Images
+/// stream in asynchronously, and the old change-gated version consumed the
+/// trigger even when the asset wasn't loaded yet - a location played while its
+/// art was still loading left a stale background until the next state change
+/// (or until NEW DEAL if it was the hand's final play). All writes below are
+/// guarded by comparisons, so nothing is dirtied once the display is correct;
+/// this also picks up window resizes, which the old version ignored.
 pub fn update_background_system(
-    hand_state_query: Query<&HandState, Changed<HandState>>,
+    hand_state_query: Query<&HandState>,
     mut background_image_query: Query<(&mut ImageNode, &mut Node), With<BackgroundImageNode>>,
     game_assets: Res<crate::assets::GameAssets>,
     images: Res<Assets<Image>>,
     windows: Query<&Window>,
     ui_scale: Res<UiScale>,
 ) {
-    let Ok(hand_state) = hand_state_query.single() else {
-        return;
-    };
-
     let Ok((mut image_node, mut node)) = background_image_query.single_mut() else {
         return;
     };
@@ -531,46 +536,59 @@ pub fn update_background_system(
         return;
     };
 
-    // Get the active location
-    if let Some(location_card) = hand_state.active_location(true) {
-        // Try to find the background image for this location
-        if let Some(image_handle) = game_assets.background_images.get(&location_card.name) {
-            // Check if image is loaded
-            if let Some(image_asset) = images.get(image_handle) {
-                image_node.image = image_handle.clone();
+    let active_location = hand_state_query
+        .single()
+        .ok()
+        .and_then(|hand_state| hand_state.active_location(true).cloned());
 
-                // Account for UiScale when calculating dimensions
-                let window_width = window.width() / ui_scale.0;
-                let window_height = window.height() / ui_scale.0;
-                let window_aspect = window_width / window_height;
-
-                let image_width = image_asset.width() as f32;
-                let image_height = image_asset.height() as f32;
-                let image_aspect = image_width / image_height;
-
-                // Scale to cover window (fills entire area, crops overflow)
-                let (scaled_width, scaled_height) = if window_aspect > image_aspect {
-                    // Window is wider - fit to width, crop height
-                    (window_width, window_width / image_aspect)
-                } else {
-                    // Window is taller - fit to height, crop width
-                    (window_height * image_aspect, window_height)
-                };
-
-                node.width = Val::Px(scaled_width);
-                node.height = Val::Px(scaled_height);
-
-                info!("Background: {}", location_card.name);
-            }
-        }
-    } else {
-        // No active location - clear the background image
+    let Some(location_card) = active_location else {
+        // No active hand/location - clear the background image
         if image_node.image != Handle::default() {
             image_node.image = Handle::default();
             node.width = Val::Px(0.0);
             node.height = Val::Px(0.0);
             info!("Background cleared");
         }
+        return;
+    };
+
+    let Some(image_handle) = game_assets.background_images.get(&location_card.name) else {
+        return; // no art authored for this location - keep whatever is showing
+    };
+
+    // Not loaded yet: leave the current background and retry next frame
+    let Some(image_asset) = images.get(image_handle) else {
+        return;
+    };
+
+    if image_node.image != *image_handle {
+        image_node.image = image_handle.clone();
+        info!("Background: {}", location_card.name);
+    }
+
+    // Account for UiScale when calculating dimensions
+    let window_width = window.width() / ui_scale.0;
+    let window_height = window.height() / ui_scale.0;
+    let window_aspect = window_width / window_height;
+
+    let image_width = image_asset.width() as f32;
+    let image_height = image_asset.height() as f32;
+    let image_aspect = image_width / image_height;
+
+    // Scale to cover window (fills entire area, crops overflow)
+    let (scaled_width, scaled_height) = if window_aspect > image_aspect {
+        // Window is wider - fit to width, crop height
+        (window_width, window_width / image_aspect)
+    } else {
+        // Window is taller - fit to height, crop width
+        (window_height * image_aspect, window_height)
+    };
+
+    if node.width != Val::Px(scaled_width) {
+        node.width = Val::Px(scaled_width);
+    }
+    if node.height != Val::Px(scaled_height) {
+        node.height = Val::Px(scaled_height);
     }
 }
 

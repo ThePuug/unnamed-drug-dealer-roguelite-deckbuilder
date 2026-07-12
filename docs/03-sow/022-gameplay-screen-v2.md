@@ -182,6 +182,36 @@ gated by a `Local<Option<bool>>` so it writes only on state change.
 
 ---
 
+### Implementation Note: playtest follow-ups (user-directed, 2026-07-12)
+
+Playtesting surfaced four items, investigated (heat trace + all 10 background
+arts reviewed) and fixed on this branch:
+
+1. **Signed session heat.** `current_heat` was a `u32` clamped at 0 on every
+   play — lossy, play-order dependent, and contrary to heat-system.md's "sum
+   all heat modifiers." Now `i32`: reduction overshoot is preserved, and the
+   GO HOME transfer (`CharacterState::apply_session_heat`) lets a cooling run
+   reduce career heat, floored at 0. The observed 20→5→0 run was NOT an
+   arithmetic bug (two −10 buyer reactions + one saturation event), but the
+   saturation design wart was real.
+2. **`Totals.heat` removed.** It silently diverged from `current_heat`
+   (active-slot-only, truncation vs rounding) and was consumed nowhere.
+   Removal exposed that the RFC-019 "Heat" upgrade stat only ever wrote to
+   this dead field — **the Heat upgrade choice has been a no-op since it
+   shipped**. Wiring it into `get_card_heat` needs a design decision (naive
+   multiplication makes negative-heat cards worse) — deferred to a future SOW.
+3. **Background loading race fixed.** `update_background_system` no longer
+   gates on `Changed<HandState>`: it retries until the image asset is loaded
+   (all writes comparison-guarded), so a location played while its art was
+   still streaming no longer strands a stale background; window resizes now
+   re-fit too. Background art itself audited: all 10 map exactly by name;
+   only flag is parking_lot.png (garage interior vs the card's "out in the
+   open" flavor) — cosmetic, left as-is.
+4. **Buyer reaction callout.** Buyer plays were stdout-only — heat swings
+   looked like bugs. Added a "PLAYED · <card>" bubble in the buyer cluster
+   (mirrors the narc intent bubble; `view::buyer_played` + shared
+   `spawn_bubble_stat_rows`).
+
 ### Implementation Note: e2e verification driver
 
 Visual verification was done by driving the real game window:

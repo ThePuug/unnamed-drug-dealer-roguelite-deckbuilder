@@ -217,6 +217,17 @@ pub struct BuyerHeatCapChip;
 #[derive(Component)]
 pub struct BuyerHeatCapText;
 
+/// "PLAYED · <card>" callout for buyer reactions (SOW-022 follow-up:
+/// buyer plays previously had no on-screen feedback)
+#[derive(Component)]
+pub struct BuyerPlayedBubble;
+
+#[derive(Component)]
+pub struct BuyerPlayedTitleText;
+
+#[derive(Component)]
+pub struct BuyerPlayedStatsRow;
+
 // -- Evidence vs Cover balance bar --
 
 #[derive(Component)]

@@ -275,7 +275,8 @@ pub fn go_home_button_system(
         if let (Some(mut save_data), Some(save_manager)) = (save_data, save_manager) {
             if let Some(ref mut character) = save_data.character {
                 let deck_heat = hand_state.current_heat;
-                character.heat = character.heat.saturating_add(deck_heat);
+                // Signed transfer: a cooling session reduces career heat (floor 0)
+                character.apply_session_heat(deck_heat);
                 character.last_played = crate::save::current_timestamp();
 
                 // Add session stories to character history
