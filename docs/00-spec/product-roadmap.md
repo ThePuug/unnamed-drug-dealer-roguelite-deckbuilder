@@ -36,8 +36,9 @@ period when busted. **Cash is global.** The product needs:
    rung (Wolf ×2.8 gap closed), Corner fresh floor re-tuned to Cold.
 7. ✅ **SOW-029 City Map Screen** — merged; map overlay with three live
    node cards, unlock + relocation from the map, two-click rotation.
-8. **SOW-030 Kingpin Ledger** (P5) — empire/dealer history + full
-   fallen-empires arcade board.
+8. ✅ **SOW-030 Kingpin Ledger** (P5) — merged; empire strip, dossiers
+   with story feeds, browsable board with IN PROGRESS row, map zone
+   history line, zero schema changes.
 9. **SOW-031 Suppliers & Fronts** (Reed-confirmed v2) — named supplier NPC
    per zone; fronts: take product cards now, owe from proceeds, due in N
    runs on the run-ticker; escalation ladder on default (cut off → muscle →
@@ -56,6 +57,27 @@ dealer. Original debt list fully absorbed: jail-as-wager shipped (023),
 RFC-019 resolved (027), harness isolation/outcome-awareness shipped (023/024).
 
 ## Iteration Log
+
+### Iteration 9 — 2026-07-12
+
+- SOW-030 merged (225 tests, zero warnings, save byte-identical —
+  derive-not-record held): LEDGER overlay with the empire strip (the six
+  numbers the epitaph freezes), roster dossiers + story feeds, fallen-
+  empires board browsable in play with the living empire slotted IN
+  PROGRESS at its would-be rank (ties go to the dead), map zone history
+  line, E1 portrait-pool fix.
+- Adversarial review: 4 LOW findings, fixed same-day — panel caps with
+  the IN PROGRESS row pinned (was clipping off a full board), epitaph
+  feeds now honest archive-order (flat archives carry no global
+  chronology — a real timeline needs the future event-log SOW), cap/tail
+  logic moved into the tested view layer, harness -Hire learned 2-dealer
+  scenarios. Trend: SOW-029 review caught 2 HIGH, this one only LOWs —
+  the recorded lessons held by instruction.
+- Open for Reed: arcade score formula (lifetime revenue for now);
+  epitaph naming at game over (schema addition — awaiting nod).
+- Next: SOW-031 Suppliers & Fronts (design confirmed: fronts against
+  cards, 1 supplier/zone, due-dates on the run ticker, cut off → muscle
+  → soured; zone strings move to RON per the SOW-029 carry).
 
 ### Iteration 8 — 2026-07-12
 
