@@ -180,6 +180,43 @@ fn load_game_assets(mut commands: Commands, asset_server: Res<AssetServer>, mut 
         }
     }
 
+    // SOW-024: Load areas (shop locations) - loaded before buyers so persona
+    // area references can be validated against real area ids
+    match load_shop_locations("assets/data/shop_locations.ron") {
+        Ok(areas) => {
+            crate::models::shop_location::validate_shop_locations(&areas)
+                .expect("Area validation failed");
+
+            // Every card's shop_location must be a real area id (same
+            // fail-loud-in-debug treatment as SOW-021 demand strings)
+            let area_ids: Vec<&str> = areas.iter().map(|a| a.id.as_str()).collect();
+            for card in game_assets
+                .products
+                .values()
+                .chain(game_assets.locations.values())
+                .chain(game_assets.cover.iter())
+                .chain(game_assets.insurance.iter())
+                .chain(game_assets.modifiers.iter())
+            {
+                if let Some(loc) = &card.shop_location {
+                    if !area_ids.contains(&loc.as_str()) {
+                        #[cfg(debug_assertions)]
+                        panic!("Card '{}' references unknown area '{}'", card.name, loc);
+                        #[cfg(not(debug_assertions))]
+                        error!("Card '{}' references unknown area '{}' (unpurchasable)", card.name, loc);
+                    }
+                }
+            }
+
+            info!("Loaded {} areas", areas.len());
+            game_assets.shop_locations = areas;
+        }
+        Err(e) => {
+            error!("Failed to load shop_locations.ron: {}", e);
+            panic!("Critical asset loading failure - fix shop_locations.ron");
+        }
+    }
+
     // Load buyers and resolve their reaction deck IDs
     match load_and_validate_buyers("assets/buyers.ron") {
         Ok(mut buyers) => {
@@ -277,6 +314,21 @@ fn load_and_validate_cards(path: &str, card_type_name: &str) -> Result<Vec<Card>
 
     info!("Parsed {} {} cards from {}", cards.len(), card_type_name, path);
     Ok(cards)
+}
+
+/// SOW-024: Load areas (shop locations) from RON file
+fn load_shop_locations(path: &str) -> Result<Vec<crate::models::shop_location::ShopLocationDef>, String> {
+    let content = fs::read_to_string(path)
+        .map_err(|e| format!("Failed to read {}: {}", path, e))?;
+
+    let areas: Vec<crate::models::shop_location::ShopLocationDef> = ron::from_str(&content)
+        .map_err(|e| format!("Failed to parse {} - Check RON syntax:\n{}", path, e))?;
+
+    if areas.is_empty() {
+        return Err(format!("{} is empty - must have at least one area", path));
+    }
+
+    Ok(areas)
 }
 
 /// Load and validate buyer personas from RON file
