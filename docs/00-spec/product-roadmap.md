@@ -40,9 +40,17 @@ period when busted. **Cash is global.** The product needs:
    real nodes to show.
 8. **SOW-030 Kingpin Ledger** (P5) — empire/dealer history + full
    fallen-empires arcade board.
-9. **SOW-031 Starter/Tutorial Arc — "Road to Your First Dealer"** —
+9. **SOW-031 Suppliers & Fronts** (Reed-confirmed v2) — named supplier NPC
+   per zone; fronts: take product cards now, owe from proceeds, due in N
+   runs on the run-ticker; escalation ladder on default (cut off → muscle →
+   soured). Rationale: due-dates make unproductive runs cost something —
+   run-quality pressure countering fold-early safety. Defaults: fronts
+   against cards (own after payoff), 1 supplier/zone. Design: studio repo
+   `2026-07-12-supplier-mechanic.md`.
+10. **SOW-032 Starter/Tutorial Arc — "Road to Your First Dealer"** —
    OPTIONAL at empire start; skipping confers NO benefit (the arc earns
-   exactly what ordinary play would); graduation = the first $500 hire.
+   exactly what ordinary play would); beats: first front → first payback →
+   graduation at the first $500 hire.
 
 **Closed threads (Reed, 2026-07-12):** dev save wipes are a non-concern for
 the leaderboard; Lay Low stays committed (no cancel); heat stays global per
