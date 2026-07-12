@@ -73,6 +73,18 @@ pub fn scenario(name: &str) -> Option<SaveData> {
             }
             save.dealers.push(ray);
         }
+        // SOW-028: Strip pacing/e2e - kingpin stationed on the Strip with
+        // entry cred, both expansion zones unlocked, mid-game wallet
+        "nightowl" => {
+            save.account.cash_on_hand = 2500;
+            save.account.unlocked_locations.insert("the_strip".to_string());
+            save.account.unlocked_locations.insert("the_block".to_string());
+            save.dealers[0].station = "the_strip".to_string();
+            save.dealers[0].character.heat = 20;
+            for _ in 0..2 {
+                save.dealers[0].add_cred("the_strip");
+            }
+        }
         _ => return None,
     }
     Some(save)
@@ -81,12 +93,12 @@ pub fn scenario(name: &str) -> Option<SaveData> {
 /// CLI entry: parse `<scenario> [--dir <path>]`, write the signed save
 pub fn run_cli(args: &[String]) {
     let Some(name) = args.first() else {
-        eprintln!("usage: forge <fresh|funded|roster|hot|mogul|hustler> [--dir <path>]");
+        eprintln!("usage: forge <fresh|funded|roster|hot|mogul|hustler|nightowl> [--dir <path>]");
         std::process::exit(2);
     };
 
     let Some(save) = scenario(name) else {
-        eprintln!("unknown scenario '{name}' (fresh|funded|roster|hot|mogul|hustler)");
+        eprintln!("unknown scenario '{name}' (fresh|funded|roster|hot|mogul|hustler|nightowl)");
         std::process::exit(2);
     };
     save.validate().expect("forged scenario must pass save validation");
@@ -113,7 +125,7 @@ mod tests {
     #[test]
     fn every_scenario_validates_and_roundtrips() {
         let dir = tempdir().unwrap();
-        for name in ["fresh", "funded", "roster", "hot", "mogul", "hustler"] {
+        for name in ["fresh", "funded", "roster", "hot", "mogul", "hustler", "nightowl"] {
             let save = scenario(name).expect(name);
             save.validate().unwrap_or_else(|e| panic!("{name} invalid: {e:?}"));
 
@@ -143,6 +155,15 @@ mod tests {
         assert_eq!(save.dealers[0].cred_in(DEFAULT_STATION), 4); // clears Storage Unit's 3
         assert_eq!(save.dealers[1].station, "the_block");
         assert_eq!(save.dealers[1].cred_in("the_block"), 2); // Heroin's 5 stays locked
+        assert!(save.account.unlocked_locations.contains("the_block"));
+    }
+
+    #[test]
+    fn nightowl_scenario_shape() {
+        let save = scenario("nightowl").unwrap();
+        assert_eq!(save.dealers[0].station, "the_strip");
+        assert_eq!(save.dealers[0].cred_in("the_strip"), 2);
+        assert!(save.account.unlocked_locations.contains("the_strip"));
         assert!(save.account.unlocked_locations.contains("the_block"));
     }
 
