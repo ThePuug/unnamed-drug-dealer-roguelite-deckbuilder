@@ -23,7 +23,10 @@ param(
   [int]$SelectDealer = -1,
   [switch]$Hire,
   [string]$BuyArea = "",   # SOW-024: buy this area in the shop before the run (e.g. the_block)
-  [string]$OutDir = "$env:TEMP\ddd-playtest"
+  [string]$OutDir = "$env:TEMP\ddd-playtest",
+  # SOW-026 pacing runs: share one save across multiple sessions
+  [string]$SaveDir = "",   # override the save location (default: OutDir\save)
+  [switch]$NoForge         # continue on the existing save instead of forging
 )
 
 $ErrorActionPreference = "Stop"
@@ -31,17 +34,20 @@ $repo = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 $drv = Join-Path $PSScriptRoot "game-drive.ps1"
 New-Item -ItemType Directory -Force $OutDir | Out-Null
 $log = Join-Path $OutDir "game.log"
-$saveDir = Join-Path $OutDir "save"
+$saveDir = if ($SaveDir -ne "") { $SaveDir } else { Join-Path $OutDir "save" }
 $env:DDD_SAVE_DIR = $saveDir
 
 Set-Location $repo
 
-# 1. Forge the scenario into the isolated save dir
+# 1. Forge the scenario into the isolated save dir (skipped with -NoForge -
+# SOW-026 pacing sessions continue on the previous session's save)
 # (via cmd so cargo's stderr warnings can't become PS 5.1 NativeCommandErrors)
-& $drv -Action reset | Out-Null
-$forgeLog = Join-Path $OutDir "forge.log"
-cmd /c "cargo run --quiet -- forge $Scenario --dir `"$saveDir`" > `"$forgeLog`" 2>&1"
-if ($LASTEXITCODE -ne 0) { Get-Content $forgeLog -Tail 5; throw "save-forge failed for scenario '$Scenario'" }
+if (-not $NoForge) {
+  & $drv -Action reset | Out-Null
+  $forgeLog = Join-Path $OutDir "forge.log"
+  cmd /c "cargo run --quiet -- forge $Scenario --dir `"$saveDir`" > `"$forgeLog`" 2>&1"
+  if ($LASTEXITCODE -ne 0) { Get-Content $forgeLog -Tail 5; throw "save-forge failed for scenario '$Scenario'" }
+}
 
 # 2. Launch (stdout -> log; DDD_SAVE_DIR inherited by the child)
 if (Test-Path $log) { Remove-Item $log -Force -Confirm:$false }
