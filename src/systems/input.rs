@@ -312,9 +312,10 @@ pub fn go_home_button_system(
             // RFC-023: a completed run anywhere in the empire serves a unit
             // of every OTHER jailed dealer's sentence (turn-based jail)
             let runner = save_data.active_dealer;
-            let released = save_data.complete_run_tick(runner);
-            if !released.is_empty() {
-                bevy::log::info!("Released from jail: {}", released.join(", "));
+            // SOW-025: the tick now serves jail sentences AND relocations
+            let now_available = save_data.complete_run_tick(runner);
+            if !now_available.is_empty() {
+                bevy::log::info!("Back in action: {}", now_available.join(", "));
             }
 
             if let Err(e) = save_manager.save(&save_data) {
@@ -409,20 +410,30 @@ pub fn start_run_button_system(
                 commands.entity(entity).despawn();
             }
 
-            // SOW-024 (two-stage, per Reed): pick the run's AREA first, then
-            // draw the persona from that area's clientele only - customers
-            // don't relocate when you expand. INTERIM: random among unlocked
-            // areas until dealer stationing lands (stationing design update).
+            // SOW-025 (stationing, per Reed): the run happens WHERE the active
+            // dealer is stationed - dealers are placed assets. The persona is
+            // then drawn from that area's clientele only (SOW-024 two-stage).
+            // Defensive: if the station somehow isn't an unlocked area (stale
+            // save content), fall back to the first unlocked area.
             let unlocked = save_data
                 .as_ref()
                 .map(|save| save.account.unlocked_locations.clone())
-                .unwrap_or_else(|| std::collections::HashSet::from(["the_corner".to_string()]));
-            let run_areas =
-                crate::models::shop_location::unlocked_area_ids(&game_assets.shop_locations, &unlocked);
-            let run_area = run_areas
-                .choose(&mut rand::rng())
-                .copied()
-                .unwrap_or("the_corner");
+                .unwrap_or_else(|| std::collections::HashSet::from([crate::save::DEFAULT_STATION.to_string()]));
+            let station = save_data
+                .as_ref()
+                .map(|save| save.active_dealer_state().station.clone())
+                .unwrap_or_else(|| crate::save::DEFAULT_STATION.to_string());
+            let run_area = if unlocked.contains(&station) {
+                station
+            } else {
+                bevy::log::warn!("station '{station}' is not an unlocked area - falling back");
+                crate::models::shop_location::unlocked_area_ids(&game_assets.shop_locations, &unlocked)
+                    .first()
+                    .copied()
+                    .unwrap_or(crate::save::DEFAULT_STATION)
+                    .to_string()
+            };
+            let run_area = run_area.as_str();
 
             let buyer_personas = create_buyer_personas(&game_assets);
             let area_personas = crate::data::personas_in_area(&buyer_personas, run_area);
@@ -464,6 +475,10 @@ pub fn start_run_button_system(
                 hand_state.card_play_counts = character.card_play_counts.clone();
                 hand_state.card_upgrades = character.card_upgrades.clone();
             }
+
+            // SOW-025: record where this run happens - Safe hands here earn
+            // the runner street cred in this area at resolution
+            hand_state.run_area = run_area.to_string();
 
             hand_state.draw_cards(); // This will also initialize buyer hand
             commands.spawn(hand_state);
@@ -521,6 +536,7 @@ pub fn roster_button_system(
     dealer_query: Query<(&Interaction, &RosterDealerButton), Changed<Interaction>>,
     bail_query: Query<(&Interaction, &RosterBailButton), Changed<Interaction>>,
     hire_query: Query<&Interaction, (Changed<Interaction>, With<RosterHireButton>)>,
+    move_query: Query<(&Interaction, &RosterMoveButton), Changed<Interaction>>,
     save_data: Option<ResMut<crate::save::SaveData>>,
     save_manager: Option<Res<crate::save::SaveManager>>,
 ) {
@@ -556,6 +572,22 @@ pub fn roster_button_system(
         }
     }
 
+    // SOW-025: relocate a dealer (move_dealer no-ops when unavailable,
+    // already there, or the fee is unaffordable)
+    for (interaction, button) in move_query.iter() {
+        if *interaction == Interaction::Pressed {
+            let moved = save_data.move_dealer(button.dealer_index, &button.to_area);
+            if moved {
+                bevy::log::info!(
+                    "{} is relocating to {}",
+                    save_data.dealers[button.dealer_index].name,
+                    button.to_area
+                );
+            }
+            dirty |= moved;
+        }
+    }
+
     if dirty {
         if let Err(e) = save_manager.save(&save_data) {
             bevy::log::warn!("Failed to save roster change: {:?}", e);
@@ -577,9 +609,12 @@ pub fn update_start_run_button_system(
         return;
     };
 
-    let available = save_data.active_dealer_state().is_available();
-    let (color, label) = if available {
+    // SOW-025: the label says WHY the active dealer can't be sent out
+    let dealer = save_data.active_dealer_state();
+    let (color, label) = if dealer.is_available() {
         (theme::CONTINUE_BUTTON_BG, "START RUN")
+    } else if dealer.relocating_remaining().is_some() {
+        (theme::BUTTON_DISABLED_BG, "MOVING")
     } else {
         (theme::BUTTON_DISABLED_BG, "JAILED")
     };

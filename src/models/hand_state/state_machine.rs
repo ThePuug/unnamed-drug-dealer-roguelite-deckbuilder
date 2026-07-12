@@ -37,6 +37,7 @@ impl HandState {
             card_play_counts: std::collections::HashMap::new(), // RFC-017: Initialize empty, set from SaveData
             card_upgrades: std::collections::HashMap::new(), // RFC-019: Initialize empty, set from SaveData
             narc_upgrade_tier: heat_tier.narc_upgrade_tier(), // RFC-018: Set from heat tier
+            run_area: crate::save::DEFAULT_STATION.to_string(), // SOW-025: overwritten at run start
         }
     }
 
@@ -88,8 +89,9 @@ impl HandState {
         let preserved_play_counts = self.card_play_counts.clone(); // RFC-017: Preserve play counts
         let preserved_upgrades = self.card_upgrades.clone(); // RFC-019: Preserve card upgrades
         let preserved_narc_tier = self.narc_upgrade_tier; // RFC-018: Preserve Narc tier for entire deck
+        let preserved_run_area = self.run_area.clone(); // SOW-025: the whole session happens in one area
 
-        // Reset state but preserve cash/heat/cards/buyer/play_counts/upgrades/narc_tier
+        // Reset state but preserve cash/heat/cards/buyer/play_counts/upgrades/narc_tier/run_area
         *self = Self::default();
         self.cash = preserved_cash;
         self.current_heat = preserved_heat;
@@ -98,6 +100,7 @@ impl HandState {
         self.card_play_counts = preserved_play_counts; // RFC-017: Restore play counts
         self.card_upgrades = preserved_upgrades; // RFC-019: Restore card upgrades
         self.narc_upgrade_tier = preserved_narc_tier; // RFC-018: Restore Narc tier
+        self.run_area = preserved_run_area; // SOW-025: Restore run area
 
         bevy::log::info!(
             "start_next_hand: after restore heat={}, cash={}",
@@ -508,6 +511,22 @@ mod tests {
         assert_eq!(hand_state.current_round, 1);
         assert_eq!(hand_state.cards_played.len(), 0);
         assert!(hand_state.outcome.is_none());
+    }
+
+    #[test]
+    fn test_start_next_hand_preserves_run_area() {
+        // SOW-025: the whole session happens in one area - hands within a
+        // run must keep crediting street cred to the same territory
+        use crate::models::test_helpers::*;
+        let mut hand_state = HandState::default();
+        let player_cards = hand_state.cards_mut(Owner::Player);
+        for i in 0..10 {
+            player_cards.deck.push(create_product(&format!("P{i}"), 50, 5));
+        }
+
+        hand_state.run_area = "the_block".to_string();
+        hand_state.start_next_hand();
+        assert_eq!(hand_state.run_area, "the_block");
     }
 
     #[test]

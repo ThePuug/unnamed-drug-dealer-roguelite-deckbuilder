@@ -46,6 +46,11 @@ pub struct Card {
     // SOW-020: Shop price (None = not for sale, 0 = starting collection)
     #[serde(default)]
     pub shop_price: Option<u32>,
+    // SOW-025: Street cred required (in the shop's area) before this item can
+    // be bought - "to unlock it, you gotta deal there". Satisfied by the
+    // roster's best cred for that area; None = cash only.
+    #[serde(default)]
+    pub shop_cred_required: Option<u32>,
 }
 
 /// Totals calculated from all played cards

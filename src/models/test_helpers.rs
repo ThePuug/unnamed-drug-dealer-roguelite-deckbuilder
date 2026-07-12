@@ -17,6 +17,7 @@ pub fn create_product(name: &str, price: u32, heat: i32) -> Card {
         narrative_fragments: None,
         shop_location: Some("the_corner".to_string()),
         shop_price: Some(0),
+        shop_cred_required: None,
     }
 }
 
@@ -29,6 +30,7 @@ pub fn create_location(name: &str, evidence: u32, cover: u32, heat: i32) -> Card
         narrative_fragments: None,
         shop_location: Some("the_corner".to_string()),
         shop_price: Some(0),
+        shop_cred_required: None,
     }
 }
 
@@ -41,6 +43,7 @@ pub fn create_evidence(name: &str, evidence: u32, heat: i32) -> Card {
         narrative_fragments: None,
         shop_location: None,
         shop_price: None,
+        shop_cred_required: None,
     }
 }
 
@@ -53,6 +56,7 @@ pub fn create_cover(name: &str, cover: u32, heat: i32) -> Card {
         narrative_fragments: None,
         shop_location: Some("the_corner".to_string()),
         shop_price: Some(0),
+        shop_cred_required: None,
     }
 }
 
@@ -65,6 +69,7 @@ pub fn create_deal_modifier(name: &str, price_multiplier: f32, evidence: i32, co
         narrative_fragments: None,
         shop_location: Some("the_corner".to_string()),
         shop_price: Some(0),
+        shop_cred_required: None,
     }
 }
 
@@ -77,6 +82,7 @@ pub fn create_insurance(name: &str, cover: u32, cost: u32, heat_penalty: i32) ->
         narrative_fragments: None,
         shop_location: Some("the_corner".to_string()),
         shop_price: Some(0),
+        shop_cred_required: None,
     }
 }
 
@@ -89,6 +95,7 @@ pub fn create_conviction(name: &str, heat_threshold: u32) -> Card {
         narrative_fragments: None,
         shop_location: None,
         shop_price: None,
+        shop_cred_required: None,
     }
 }
 
@@ -101,6 +108,7 @@ pub fn create_buyer_location(name: &str, evidence: u32, cover: u32, heat: i32) -
         narrative_fragments: None,
         shop_location: None,
         shop_price: None,
+        shop_cred_required: None,
     }
 }
 
@@ -113,6 +121,7 @@ pub fn create_buyer_modifier(name: &str, price_multiplier: f32, evidence: i32, c
         narrative_fragments: None,
         shop_location: None,
         shop_price: None,
+        shop_cred_required: None,
     }
 }
 

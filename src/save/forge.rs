@@ -52,6 +52,27 @@ pub fn scenario(name: &str) -> Option<SaveData> {
             save.account.cash_on_hand = 3000;
             save.dealers[0].character.heat = 20;
         }
+        // SOW-025: stationing/cred demo - kingpin repped-up on the Corner
+        // (4 cred: clears Storage Unit's 3), a hired dealer stationed in the
+        // already-unlocked Block with 2 cred (Heroin's 5 stays locked),
+        // and $1,500 to afford the Storage Unit purchase or a move+change
+        "hustler" => {
+            save.account.cash_on_hand = 1500;
+            save.account.unlocked_locations.insert("the_block".to_string());
+            save.dealers[0].character.heat = 10;
+            for _ in 0..4 {
+                save.dealers[0].add_cred(DEFAULT_STATION);
+            }
+
+            let mut ray = DealerState::recruit(&save.dealers);
+            ray.name = "Ray".to_string();
+            ray.station = "the_block".to_string();
+            ray.character.heat = 30;
+            for _ in 0..2 {
+                ray.add_cred("the_block");
+            }
+            save.dealers.push(ray);
+        }
         _ => return None,
     }
     Some(save)
@@ -60,12 +81,12 @@ pub fn scenario(name: &str) -> Option<SaveData> {
 /// CLI entry: parse `<scenario> [--dir <path>]`, write the signed save
 pub fn run_cli(args: &[String]) {
     let Some(name) = args.first() else {
-        eprintln!("usage: forge <fresh|funded|roster|hot|mogul> [--dir <path>]");
+        eprintln!("usage: forge <fresh|funded|roster|hot|mogul|hustler> [--dir <path>]");
         std::process::exit(2);
     };
 
     let Some(save) = scenario(name) else {
-        eprintln!("unknown scenario '{name}' (fresh|funded|roster|hot|mogul)");
+        eprintln!("unknown scenario '{name}' (fresh|funded|roster|hot|mogul|hustler)");
         std::process::exit(2);
     };
     save.validate().expect("forged scenario must pass save validation");
@@ -92,7 +113,7 @@ mod tests {
     #[test]
     fn every_scenario_validates_and_roundtrips() {
         let dir = tempdir().unwrap();
-        for name in ["fresh", "funded", "roster", "hot", "mogul"] {
+        for name in ["fresh", "funded", "roster", "hot", "mogul", "hustler"] {
             let save = scenario(name).expect(name);
             save.validate().unwrap_or_else(|e| panic!("{name} invalid: {e:?}"));
 
@@ -113,6 +134,16 @@ mod tests {
         assert!(save.dealers[1].is_available());
         assert_eq!(save.dealers[2].jail_remaining(), Some(2));
         assert_eq!(save.account.cash_on_hand, 1200);
+    }
+
+    #[test]
+    fn hustler_scenario_shape() {
+        let save = scenario("hustler").unwrap();
+        assert_eq!(save.dealers.len(), 2);
+        assert_eq!(save.dealers[0].cred_in(DEFAULT_STATION), 4); // clears Storage Unit's 3
+        assert_eq!(save.dealers[1].station, "the_block");
+        assert_eq!(save.dealers[1].cred_in("the_block"), 2); // Heroin's 5 stays locked
+        assert!(save.account.unlocked_locations.contains("the_block"));
     }
 
     #[test]

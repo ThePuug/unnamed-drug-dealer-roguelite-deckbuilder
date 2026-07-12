@@ -622,26 +622,51 @@ pub fn populate_roster_panel_system(
                             TextColor(Color::srgb(r, g, b)),
                         ));
 
+                        // SOW-025: station + reputation there ("THE BLOCK · CRED 5")
+                        let station_name = game_assets
+                            .shop_locations
+                            .iter()
+                            .find(|a| a.id == dealer.station)
+                            .map(|a| a.name.to_uppercase())
+                            .unwrap_or_else(|| dealer.station.to_uppercase());
+                        parent.spawn((
+                            Text::new(format!(
+                                "{} · CRED {}",
+                                station_name,
+                                dealer.cred_in(&dealer.station)
+                            )),
+                            TextFont::from_font_size(11.0),
+                            TextColor(theme::ROSTER_STATION_TEXT),
+                        ));
+
                         // Status
-                        match jailed {
-                            Some(runs) => {
-                                parent.spawn((
-                                    Text::new(format!(
-                                        "JAILED · {} RUN{}",
-                                        runs,
-                                        if runs == 1 { "" } else { "S" }
-                                    )),
-                                    TextFont::from_font_size(12.0),
-                                    TextColor(theme::ROSTER_STATUS_JAILED),
-                                ));
-                            }
-                            None => {
-                                parent.spawn((
-                                    Text::new("READY"),
-                                    TextFont::from_font_size(12.0),
-                                    TextColor(theme::ROSTER_STATUS_READY),
-                                ));
-                            }
+                        if let Some(runs) = jailed {
+                            parent.spawn((
+                                Text::new(format!(
+                                    "JAILED · {} RUN{}",
+                                    runs,
+                                    if runs == 1 { "" } else { "S" }
+                                )),
+                                TextFont::from_font_size(12.0),
+                                TextColor(theme::ROSTER_STATUS_JAILED),
+                            ));
+                        } else if let Some(runs) = dealer.relocating_remaining() {
+                            // SOW-025: getting established in the new station
+                            parent.spawn((
+                                Text::new(format!(
+                                    "MOVING · {} RUN{}",
+                                    runs,
+                                    if runs == 1 { "" } else { "S" }
+                                )),
+                                TextFont::from_font_size(12.0),
+                                TextColor(theme::ROSTER_STATUS_MOVING),
+                            ));
+                        } else {
+                            parent.spawn((
+                                Text::new("READY"),
+                                TextFont::from_font_size(12.0),
+                                TextColor(theme::ROSTER_STATUS_READY),
+                            ));
                         }
                     });
 
@@ -674,6 +699,54 @@ pub fn populate_roster_panel_system(
                                     TextLayout::new_with_justify(bevy::text::Justify::Center),
                                 ));
                             });
+                    }
+
+                    // SOW-025: MOVE button - relocate an available dealer to
+                    // another unlocked area (cash + one run of downtime).
+                    // First unlocked area that isn't their station; the full
+                    // area picker arrives with the map screen SOW.
+                    if dealer.is_available() {
+                        let move_target = game_assets
+                            .shop_locations
+                            .iter()
+                            .find(|a| {
+                                a.id != dealer.station
+                                    && save_data.account.unlocked_locations.contains(&a.id)
+                            });
+                        if let Some(target) = move_target {
+                            let fee = save_data.move_fee();
+                            let affordable = cash >= fee;
+                            parent
+                                .spawn((
+                                    Button,
+                                    Node {
+                                        padding: UiRect::axes(Val::Px(8.0), Val::Px(6.0)),
+                                        border_radius: BorderRadius::all(Val::Px(6.0)),
+                                        flex_shrink: 0.0,
+                                        ..default()
+                                    },
+                                    BackgroundColor(if affordable {
+                                        theme::ROSTER_MOVE_BG
+                                    } else {
+                                        theme::BUTTON_DISABLED_BG
+                                    }),
+                                    RosterMoveButton {
+                                        dealer_index: index,
+                                        to_area: target.id.clone(),
+                                    },
+                                ))
+                                .with_children(|parent| {
+                                    parent.spawn((
+                                        Text::new(format!(
+                                            "MOVE TO\n{}\n${fee}",
+                                            target.name.to_uppercase()
+                                        )),
+                                        TextFont::from_font_size(10.0),
+                                        TextColor(Color::WHITE),
+                                        TextLayout::new_with_justify(bevy::text::Justify::Center),
+                                    ));
+                                });
+                        }
                     }
                 });
         }

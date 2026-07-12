@@ -114,6 +114,20 @@ pub fn save_after_resolution_system(
             continue;
         };
 
+        // SOW-025: a successful deal earns the runner +1 street cred in the
+        // run's area - reputation is per dealer, per territory, and permanent
+        if *outcome == HandOutcome::Safe {
+            let area = hand_state.run_area.clone();
+            let dealer = save_data.active_dealer_state_mut();
+            dealer.add_cred(&area);
+            info!(
+                "{} earned street cred in {} (now {})",
+                dealer.name,
+                area,
+                dealer.cred_in(&area)
+            );
+        }
+
         // RFC-016: Add profit to account-wide cash on Safe outcome
         if *outcome == HandOutcome::Safe && hand_state.last_profit > 0 {
             save_data.account.add_profit(hand_state.last_profit);

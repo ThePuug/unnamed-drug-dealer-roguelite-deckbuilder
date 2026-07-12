@@ -63,6 +63,9 @@ pub struct HandState {
     pub card_play_counts: HashMap<String, u32>, // RFC-017: Play counts for upgrade tiers
     pub card_upgrades: HashMap<String, crate::save::CardUpgrades>, // RFC-019: Per-card upgrade choices
     pub narc_upgrade_tier: crate::save::UpgradeTier, // RFC-018: Narc difficulty scaling
+    /// SOW-025: the area this run happens in (the active dealer's station).
+    /// Safe hands here earn the runner street cred in this area.
+    pub run_area: String,
 }
 
 impl HandState {
@@ -93,6 +96,7 @@ impl HandState {
             card_play_counts: HashMap::new(), // RFC-017: Initialize empty
             card_upgrades: HashMap::new(), // RFC-019: Initialize empty
             narc_upgrade_tier: heat_tier.narc_upgrade_tier(), // RFC-018: Set from heat tier
+            run_area: crate::save::DEFAULT_STATION.to_string(), // SOW-025: overwritten at run start
         }
     }
 }
@@ -136,6 +140,7 @@ impl Default for HandState {
             card_play_counts: HashMap::new(), // RFC-017: Initialize empty
             card_upgrades: HashMap::new(), // RFC-019: Initialize empty
             narc_upgrade_tier: crate::save::UpgradeTier::Base, // RFC-018: Default to base (tests)
+            run_area: crate::save::DEFAULT_STATION.to_string(), // SOW-025
         }
     }
 }
