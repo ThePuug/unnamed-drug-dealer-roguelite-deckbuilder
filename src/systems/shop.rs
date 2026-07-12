@@ -274,11 +274,7 @@ fn spawn_shop_card(
         },
         BackgroundColor(bg_color),
         BorderColor::all(card_color),
-        ShopCardDisplay {
-            card_id: card.id.clone(),
-            price,
-            is_unlocked,
-        },
+        ShopCardDisplay,
     ))
     .with_children(|card_parent| {
         // Card name

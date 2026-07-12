@@ -5,16 +5,21 @@ use rand::prelude::*;
 
 impl HandState {
     /// Create HandState with a custom player deck
-    /// RFC-018: Now takes heat_tier to set Narc difficulty scaling
+    /// SOW-027: narc difficulty comes from the (run area x heat tier) deck
+    /// COMPOSITION - RFC-018 stat multipliers retired
     pub fn with_custom_deck(
         mut player_deck: Vec<Card>,
         assets: &crate::assets::GameAssets,
         heat_tier: crate::save::HeatTier,
+        run_area: &str,
     ) -> Self {
         player_deck.shuffle(&mut rand::rng());
 
         let mut owner_cards = std::collections::HashMap::new();
-        owner_cards.insert(Owner::Narc, Cards::new(create_narc_deck(assets)));
+        owner_cards.insert(
+            Owner::Narc,
+            Cards::new(create_narc_deck(assets, run_area, heat_tier)),
+        );
         owner_cards.insert(Owner::Player, Cards::new(player_deck));
         owner_cards.insert(Owner::Buyer, Cards::empty());
 
@@ -36,8 +41,7 @@ impl HandState {
             last_profit: 0,
             card_play_counts: std::collections::HashMap::new(), // RFC-017: Initialize empty, set from SaveData
             card_upgrades: std::collections::HashMap::new(), // RFC-019: Initialize empty, set from SaveData
-            narc_upgrade_tier: heat_tier.narc_upgrade_tier(), // RFC-018: Set from heat tier
-            run_area: crate::save::DEFAULT_STATION.to_string(), // SOW-025: overwritten at run start
+            run_area: run_area.to_string(), // SOW-025/027: where this run happens
         }
     }
 
@@ -88,10 +92,10 @@ impl HandState {
         let preserved_buyer_persona = self.buyer_persona.clone();
         let preserved_play_counts = self.card_play_counts.clone(); // RFC-017: Preserve play counts
         let preserved_upgrades = self.card_upgrades.clone(); // RFC-019: Preserve card upgrades
-        let preserved_narc_tier = self.narc_upgrade_tier; // RFC-018: Preserve Narc tier for entire deck
         let preserved_run_area = self.run_area.clone(); // SOW-025: the whole session happens in one area
 
-        // Reset state but preserve cash/heat/cards/buyer/play_counts/upgrades/narc_tier/run_area
+        // Reset state but preserve cash/heat/cards/buyer/play_counts/upgrades/run_area
+        // (SOW-027: the narc deck itself carries difficulty now - it's in owner_cards)
         *self = Self::default();
         self.cash = preserved_cash;
         self.current_heat = preserved_heat;
@@ -99,7 +103,6 @@ impl HandState {
         self.buyer_persona = preserved_buyer_persona;
         self.card_play_counts = preserved_play_counts; // RFC-017: Restore play counts
         self.card_upgrades = preserved_upgrades; // RFC-019: Restore card upgrades
-        self.narc_upgrade_tier = preserved_narc_tier; // RFC-018: Restore Narc tier
         self.run_area = preserved_run_area; // SOW-025: Restore run area
 
         bevy::log::info!(
@@ -228,10 +231,13 @@ impl HandState {
         cards.deck.len() + cards.hand.iter().filter(|s| s.is_some()).count()
     }
 
-    /// Get heat value from a card (applies Narc multiplier for Evidence cards)
+    /// Get heat value from a card. SOW-027: the RFC-019 Heat upgrade cools
+    /// the player's own cards - it reduces POSITIVE heat only (a
+    /// negative-heat card is already a benefit the upgrade must never
+    /// worsen) and never touches narc or buyer cards.
     fn get_card_heat(&self, card: &Card, owner: Owner) -> i32 {
         use crate::CardType;
-        match &card.card_type {
+        let base = match &card.card_type {
             CardType::Product { heat, .. } => *heat,
             CardType::Location { heat, .. } => *heat,
             CardType::Cover { heat, .. } => *heat,
@@ -239,16 +245,17 @@ impl HandState {
             // SOW-021: heat_penalty applies only when insurance activates at resolution
             // (see resolution.rs try_insurance_activation) - playing the card is heat-free
             CardType::Insurance { .. } => 0,
-            CardType::Evidence { heat, .. } => {
-                // Apply Narc upgrade multiplier to Evidence heat
-                if owner == Owner::Narc {
-                    let mult = self.narc_upgrade_tier.multiplier();
-                    (*heat as f32 * mult).round() as i32
-                } else {
-                    *heat
-                }
-            }
+            // SOW-027: authored heat, no narc multipliers - difficulty lives
+            // in the deck composition now
+            CardType::Evidence { heat, .. } => *heat,
             CardType::Conviction { .. } => 0, // Conviction doesn't add heat directly
+        };
+        if owner == Owner::Player && base > 0 {
+            let heat_mult =
+                2.0 - self.get_stat_multiplier(&card.name, crate::save::UpgradeableStat::Heat); // Decrease
+            (base as f32 * heat_mult) as i32
+        } else {
+            base
         }
     }
 
@@ -435,6 +442,54 @@ mod tests {
         assert!(hand_state.cards(Owner::Narc).hand.iter().any(|s| s.is_some()));
         assert!(hand_state.cards(Owner::Player).hand.iter().any(|s| s.is_some()));
         assert!(hand_state.cards(Owner::Buyer).hand.iter().any(|s| s.is_some()));
+    }
+
+    #[test]
+    fn test_heat_upgrade_cools_positive_heat_player_cards() {
+        // SOW-027: RFC-019 Heat upgrade wired into played-card heat
+        use crate::save::{CardUpgrades, UpgradeableStat};
+        let mut hand_state = HandState::default();
+        let hot_product = create_product("Ice", 80, 15);
+
+        assert_eq!(hand_state.get_card_heat(&hot_product, Owner::Player), 15);
+
+        let mut upgrades = CardUpgrades::new();
+        upgrades.add_upgrade(UpgradeableStat::Heat);
+        hand_state.card_upgrades.insert("Ice".to_string(), upgrades);
+
+        // One upgrade: mult 1.1 -> heat x0.9; 15 * 0.9 = 13.5, truncates
+        // like every other engine multiplier
+        assert_eq!(hand_state.get_card_heat(&hot_product, Owner::Player), 13);
+    }
+
+    #[test]
+    fn test_heat_upgrade_never_worsens_negative_heat_cards() {
+        // SOW-027 acceptance criterion: a negative-heat card is already a
+        // benefit - the Heat upgrade must not shrink (or touch) it
+        use crate::save::{CardUpgrades, UpgradeableStat};
+        let mut hand_state = HandState::default();
+        let cooling_location = create_location("Safe House", 10, 30, -5);
+
+        let mut upgrades = CardUpgrades::new();
+        upgrades.add_upgrade(UpgradeableStat::Heat);
+        upgrades.add_upgrade(UpgradeableStat::Heat);
+        hand_state.card_upgrades.insert("Safe House".to_string(), upgrades);
+
+        assert_eq!(hand_state.get_card_heat(&cooling_location, Owner::Player), -5);
+    }
+
+    #[test]
+    fn test_heat_upgrade_ignores_non_player_cards() {
+        // Player upgrades never soften narc evidence heat
+        use crate::save::{CardUpgrades, UpgradeableStat};
+        let mut hand_state = HandState::default();
+        let evidence = create_evidence("Patrol", 5, 5);
+
+        let mut upgrades = CardUpgrades::new();
+        upgrades.add_upgrade(UpgradeableStat::Heat);
+        hand_state.card_upgrades.insert("Patrol".to_string(), upgrades);
+
+        assert_eq!(hand_state.get_card_heat(&evidence, Owner::Narc), 5);
     }
 
     #[test]

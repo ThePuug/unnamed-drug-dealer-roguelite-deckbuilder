@@ -47,13 +47,6 @@ impl CardRequirement {
         }
     }
 
-    pub fn location() -> Self {
-        Self {
-            role: NarrativeRole::Location,
-            card_type_filter: Some(CardTypeFilter::Location),
-        }
-    }
-
     pub fn evidence() -> Self {
         Self {
             role: NarrativeRole::Evidence,
@@ -66,7 +59,6 @@ impl CardRequirement {
 #[derive(Debug, Clone, Copy)]
 pub enum CardTypeFilter {
     Product,
-    Location,
     Evidence,
 }
 
@@ -74,7 +66,6 @@ impl CardTypeFilter {
     pub fn matches(&self, card_type: &CardType) -> bool {
         match (self, card_type) {
             (Self::Product, CardType::Product { .. }) => true,
-            (Self::Location, CardType::Location { .. }) => true,
             (Self::Evidence, CardType::Evidence { .. }) | (Self::Evidence, CardType::Conviction { .. }) => true,
             _ => false,
         }

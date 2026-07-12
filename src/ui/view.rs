@@ -112,16 +112,14 @@ pub struct IntentView {
     pub rows: Vec<IntentRow>,
 }
 
-/// Stat rows for a narc card with the narc upgrade tier applied.
-/// Mirrors the engine exactly: evidence TRUNCATES (`calculate_totals` does
-/// `as u32`), heat ROUNDS (`get_card_heat` does `.round()`), and conviction
-/// thresholds are checked raw at resolution - the telegraph must promise the
-/// numbers that will actually materialize.
-fn narc_card_rows(card: &Card, tier_multiplier: f32) -> Vec<IntentRow> {
+/// Stat rows for a narc card. SOW-027: authored numbers everywhere - narc
+/// difficulty is the deck composition, so the telegraph, the card face, the
+/// totals, and resolution all agree by construction.
+fn narc_card_rows(card: &Card) -> Vec<IntentRow> {
     match card.card_type {
         CardType::Evidence { evidence, heat } => vec![
-            ("🔍", format!("{:+}", (evidence as f32 * tier_multiplier) as i32)),
-            ("🔥", format!("{:+}", (heat as f32 * tier_multiplier).round() as i32)),
+            ("🔍", format!("{:+}", evidence as i32)),
+            ("🔥", format!("{heat:+}")),
         ],
         CardType::Conviction { heat_threshold } => {
             vec![("⚠", format!("busts at {heat_threshold}"))]
@@ -138,8 +136,6 @@ fn narc_card_rows(card: &Card, tier_multiplier: f32) -> Vec<IntentRow> {
 ///   (the narc always acts first each round, so that is this round's play)
 /// - Otherwise (dealing / hand over): nothing
 pub fn narc_intent(hand_state: &HandState) -> Option<IntentView> {
-    let tier_mult = hand_state.narc_upgrade_tier.multiplier();
-
     let narc_pending = hand_state.current_state == HandPhase::PlayerPhase
         && !hand_state.all_players_acted()
         && hand_state.current_player() == Owner::Narc;
@@ -149,7 +145,7 @@ pub fn narc_intent(hand_state: &HandState) -> Option<IntentView> {
         return Some(IntentView {
             verb: "INTENT",
             card_name: next.name.to_uppercase(),
-            rows: narc_card_rows(next, tier_mult),
+            rows: narc_card_rows(next),
         });
     }
 
@@ -162,7 +158,7 @@ pub fn narc_intent(hand_state: &HandState) -> Option<IntentView> {
         return Some(IntentView {
             verb: "PLAYED",
             card_name: played.name.to_uppercase(),
-            rows: narc_card_rows(played, tier_mult),
+            rows: narc_card_rows(played),
         });
     }
 
@@ -519,27 +515,10 @@ mod tests {
         assert_eq!(intent.rows[1], ("🔥", "+5".to_string()));
     }
 
-    #[test]
-    fn intent_applies_narc_tier_multiplier() {
-        let mut hs = hand_state_with_narc_card(create_evidence("Surveillance", 20, 10));
-        hs.narc_upgrade_tier = crate::save::UpgradeTier::Tier1; // +10%
-        let intent = narc_intent(&hs).unwrap();
-        assert_eq!(intent.rows[0], ("🔍", "+22".to_string()));
-        assert_eq!(intent.rows[1], ("🔥", "+11".to_string()));
-    }
-
-    #[test]
-    fn intent_evidence_truncates_like_the_engine() {
-        // calculate_totals does `(evidence * mult) as u32` (truncation), so a
-        // 5-evidence card at Tier1 contributes +5, not the rounded +6 - the
-        // telegraph must not promise evidence that never materializes
-        let mut hs = hand_state_with_narc_card(create_evidence("Patrol", 5, 5));
-        hs.narc_upgrade_tier = crate::save::UpgradeTier::Tier1; // ×1.1 → 5.5
-        let intent = narc_intent(&hs).unwrap();
-        assert_eq!(intent.rows[0], ("🔍", "+5".to_string()));
-        // heat rounds, matching get_card_heat: 5.5 → 6
-        assert_eq!(intent.rows[1], ("🔥", "+6".to_string()));
-    }
+    // SOW-027: tier-multiplier telegraph tests retired with RFC-018 scaling -
+    // authored numbers everywhere means telegraph == card face == totals ==
+    // resolution by construction (intent_telegraphs_narc_hand_card_during_
+    // narc_turn pins the authored display).
 
     #[test]
     fn intent_shows_played_card_after_narc_acts() {
@@ -575,10 +554,9 @@ mod tests {
 
     #[test]
     fn conviction_intent_shows_raw_threshold() {
-        // Resolution checks conviction thresholds unmultiplied - the telegraph
-        // must show the number that will actually be used
-        let mut hs = hand_state_with_narc_card(create_conviction("Warrant", 30));
-        hs.narc_upgrade_tier = crate::save::UpgradeTier::Tier2;
+        // Resolution checks the authored threshold - the telegraph shows
+        // exactly the number that will be used
+        let hs = hand_state_with_narc_card(create_conviction("Warrant", 30));
         let intent = narc_intent(&hs).unwrap();
         assert_eq!(intent.rows[0], ("⚠", "busts at 30".to_string()));
     }

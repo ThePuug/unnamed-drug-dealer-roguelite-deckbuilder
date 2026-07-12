@@ -1,7 +1,7 @@
 # Card System - Feature Matrix
 
 **Spec:** [card-system.md](card-system.md)
-**Last Updated:** 2025-11-27
+**Last Updated:** 2026-07-12 (SOW-027)
 **Overall Status:** 24/24 features complete (100%)
 
 ---
@@ -82,7 +82,7 @@
 |---------|:------:|-------|
 | Play count tracking | ✅ | Per-card, per-character |
 | Tier calculation | ✅ | 6 tiers (Base → Foil) |
-| Stat multipliers | ✅ | +10% per tier to beneficial stats |
+| Stat multipliers | ✅ | +10% per tier to beneficial stats; SOW-027 wired the Heat stat into played-card heat (player cards, positive heat only). PLAYER upgrades only — narc cards always show/resolve authored numbers (RFC-018 scaling + ⚖ badge retired) |
 
 ---
 

@@ -121,28 +121,8 @@ fn load_game_assets(mut commands: Commands, asset_server: Res<AssetServer>, mut 
         }
     }
 
-    // Build Narc deck from composition file
-    match load_deck_composition("assets/narc_deck.ron") {
-        Ok(ids) => {
-            let mut narc_deck = Vec::new();
-            for id in ids {
-                // Try evidence first, then conviction
-                if let Some(card) = evidence_defs.get(&id) {
-                    narc_deck.push(card.clone());
-                } else if let Some(card) = conviction_defs.get(&id) {
-                    narc_deck.push(card.clone());
-                } else {
-                    panic!("Narc deck references unknown card ID: {}", id);
-                }
-            }
-            game_assets.evidence = narc_deck;
-            info!("Built Narc deck with {} cards from composition", game_assets.evidence.len());
-        }
-        Err(e) => {
-            error!("Failed to load narc_deck.ron: {}", e);
-            panic!("Critical asset loading failure - fix narc_deck.ron");
-        }
-    }
+    // SOW-027: narc compositions are built AFTER shop locations load (their
+    // area keys are validated against the loaded areas) - see below
 
     // Load cover
     match load_and_validate_cards("assets/cards/cover.ron", "Cover") {
@@ -214,6 +194,114 @@ fn load_game_assets(mut commands: Commands, asset_server: Res<AssetServer>, mut 
         Err(e) => {
             error!("Failed to load shop_locations.ron: {}", e);
             panic!("Critical asset loading failure - fix shop_locations.ron");
+        }
+    }
+
+    // SOW-027: Build per-area, per-tier narc deck compositions.
+    // Difficulty IS the composition (RFC-018 stat multipliers retired):
+    // the run's narc deck = effective[dealer's station][dealer's heat tier].
+    // The authored format is SPARSE: a `default` ladder plus per-area tier
+    // OVERRIDES - inheritance is resolved here so a new area ships with zero
+    // narc authoring and gets the baseline (Reed's authoring-burden concern).
+    match load_narc_compositions("assets/narc_deck.ron") {
+        Ok(raw) => {
+            const TIER_KEYS: [&str; 6] = ["Cold", "Warm", "Hot", "Blazing", "Scorching", "Inferno"];
+            let area_ids: Vec<&str> = game_assets.shop_locations.iter().map(|a| a.id.as_str()).collect();
+
+            // Resolve card ids -> cards, panicking with an authoring-friendly location
+            let resolve = |ids: &[String], whose: &str| -> Vec<crate::models::card::Card> {
+                ids.iter()
+                    .map(|id| {
+                        evidence_defs
+                            .get(id)
+                            .or_else(|| conviction_defs.get(id))
+                            .unwrap_or_else(|| {
+                                panic!("narc_deck.ron: unknown card id '{}' in {}", id, whose)
+                            })
+                            .clone()
+                    })
+                    .collect()
+            };
+
+            // The default ladder must be complete - it's what new areas inherit
+            for tier in TIER_KEYS {
+                match raw.default.get(tier) {
+                    None => panic!("narc_deck.ron: default ladder is missing tier '{}'", tier),
+                    Some(ids) if ids.is_empty() => {
+                        panic!("narc_deck.ron: default ladder tier '{}' is empty", tier)
+                    }
+                    _ => {}
+                }
+            }
+
+            // Overrides may only name real areas and real tiers
+            for (area, overrides) in &raw.areas {
+                if !area_ids.contains(&area.as_str()) {
+                    panic!("narc_deck.ron: unknown area '{}' (known: {:?})", area, area_ids);
+                }
+                for (tier, ids) in overrides {
+                    if !TIER_KEYS.contains(&tier.as_str()) {
+                        panic!("narc_deck.ron: area '{}' overrides unknown tier '{}'", area, tier);
+                    }
+                    if ids.is_empty() {
+                        panic!("narc_deck.ron: area '{}' tier '{}' override is empty", area, tier);
+                    }
+                }
+            }
+
+            // Effective table: every purchasable area x tier, overrides beating default
+            let mut compositions: HashMap<String, HashMap<String, Vec<crate::models::card::Card>>> =
+                HashMap::new();
+            for area in &area_ids {
+                let overrides = raw.areas.get(*area);
+                let mut tier_map = HashMap::new();
+                for tier in TIER_KEYS {
+                    let (ids, source) = match overrides.and_then(|o| o.get(tier)) {
+                        Some(ids) => (ids, "override"),
+                        None => (raw.default.get(tier).expect("validated above"), "default"),
+                    };
+                    let deck = resolve(ids, &format!("{}/{}", area, tier));
+                    // Authors see what actually shipped (compact count summary)
+                    #[cfg(debug_assertions)]
+                    {
+                        let mut counts: std::collections::BTreeMap<&str, u32> =
+                            std::collections::BTreeMap::new();
+                        for card in &deck {
+                            *counts.entry(card.name.as_str()).or_insert(0) += 1;
+                        }
+                        let summary = counts
+                            .iter()
+                            .map(|(name, n)| format!("{n}x {name}"))
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        debug!("narc effective {}/{} ({source}): {}", area, tier, summary);
+                    }
+                    tier_map.insert(tier.to_string(), deck);
+                }
+                compositions.insert(area.to_string(), tier_map);
+            }
+
+            // Authoring hygiene: a defined narc card that appears nowhere is
+            // probably a mistake (warn, don't fail - it may be staged content)
+            let used: std::collections::HashSet<&String> = raw
+                .default
+                .values()
+                .chain(raw.areas.values().flat_map(|o| o.values()))
+                .flatten()
+                .collect();
+            for id in evidence_defs.keys().chain(conviction_defs.keys()) {
+                if !used.contains(id) {
+                    warn!("narc card '{}' is defined but used in no composition", id);
+                }
+            }
+
+            let deck_count: usize = compositions.values().map(|t| t.len()).sum();
+            info!("Built {} narc area/tier deck compositions", deck_count);
+            game_assets.narc_compositions = compositions;
+        }
+        Err(e) => {
+            error!("Failed to load narc_deck.ron: {}", e);
+            panic!("Critical asset loading failure - fix narc_deck.ron");
         }
     }
 
@@ -316,19 +404,21 @@ fn check_assets_and_transition(
     }
 }
 
-/// Load deck composition (list of card IDs) from RON file
-fn load_deck_composition(path: &str) -> Result<Vec<String>, String> {
+/// SOW-027: sparse narc composition file - a complete `default` per-tier
+/// ladder plus per-area tier overrides (inheritance resolved by the caller)
+#[derive(serde::Deserialize)]
+pub struct NarcCompositionsFile {
+    pub default: HashMap<String, Vec<String>>,
+    #[serde(default)]
+    pub areas: HashMap<String, HashMap<String, Vec<String>>>,
+}
+
+fn load_narc_compositions(path: &str) -> Result<NarcCompositionsFile, String> {
     let content = fs::read_to_string(path)
         .map_err(|e| format!("Failed to read {}: {}", path, e))?;
 
-    let ids: Vec<String> = ron::from_str(&content)
-        .map_err(|e| format!("Failed to parse {} - Check RON syntax:\n{}", path, e))?;
-
-    if ids.is_empty() {
-        return Err(format!("{} is empty - must have at least one card ID", path));
-    }
-
-    Ok(ids)
+    ron::from_str(&content)
+        .map_err(|e| format!("Failed to parse {} - Check RON syntax:\n{}", path, e))
 }
 
 /// Load and validate card list from RON file
@@ -873,5 +963,84 @@ mod tests {
             validate_buyer_demand_strings(buyer, &product_names, &location_names)
                 .unwrap_or_else(|e| panic!("{}", e));
         }
+    }
+
+    #[test]
+    fn test_shipped_narc_compositions_resolve_and_cover_all_tiers() {
+        // SOW-027 acceptance criterion: the sparse composition file parses,
+        // the default ladder covers all six heat tiers, and every card id in
+        // every ladder resolves against shipped evidence/conviction cards.
+        let file = load_narc_compositions("assets/narc_deck.ron")
+            .expect("narc_deck.ron should parse");
+
+        let evidence = load_and_validate_cards("assets/cards/evidence.ron", "Evidence")
+            .expect("evidence.ron should load");
+        let convictions = load_and_validate_cards("assets/cards/convictions.ron", "Conviction")
+            .expect("convictions.ron should load");
+        let known_ids: std::collections::HashSet<&str> = evidence
+            .iter()
+            .chain(convictions.iter())
+            .map(|c| c.id.as_str())
+            .collect();
+
+        let all_tiers = ["Cold", "Warm", "Hot", "Blazing", "Scorching", "Inferno"];
+        for tier in all_tiers {
+            let ladder = file
+                .default
+                .get(tier)
+                .unwrap_or_else(|| panic!("default ladder missing tier {}", tier));
+            assert!(!ladder.is_empty(), "default {} ladder is empty", tier);
+        }
+
+        for (tier, ids) in file
+            .default
+            .iter()
+            .chain(file.areas.values().flatten())
+        {
+            assert!(
+                all_tiers.contains(&tier.as_str()),
+                "unknown heat tier {:?} in narc_deck.ron",
+                tier
+            );
+            for id in ids {
+                assert!(
+                    known_ids.contains(id.as_str()),
+                    "narc_deck.ron references unknown card id {:?} at tier {}",
+                    id,
+                    tier
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_shipped_corner_cold_composition_is_gentle() {
+        // SOW-027: the fresh-run floor fix. A fresh kingpin on the Corner at
+        // Cold must face a mostly-donut deck (avg heat/card well under the
+        // old flat deck) or the 3-blind-session floor regresses to Inferno.
+        let file = load_narc_compositions("assets/narc_deck.ron")
+            .expect("narc_deck.ron should parse");
+        let evidence = load_and_validate_cards("assets/cards/evidence.ron", "Evidence")
+            .expect("evidence.ron should load");
+        let heat_by_id: HashMap<&str, i32> = evidence
+            .iter()
+            .filter_map(|c| match c.card_type {
+                CardType::Evidence { heat, .. } => Some((c.id.as_str(), heat)),
+                _ => None,
+            })
+            .collect();
+
+        // the_corner inherits default entirely, so Cold == default Cold
+        let cold = file.default.get("Cold").expect("default has Cold");
+        let total_heat: i32 = cold
+            .iter()
+            .map(|id| heat_by_id.get(id.as_str()).copied().unwrap_or(0))
+            .sum();
+        let avg = total_heat as f32 / cold.len() as f32;
+        assert!(
+            avg <= 3.0,
+            "Corner/Cold composition too hot: avg {:.1} heat/card (want <= 3.0)",
+            avg
+        );
     }
 }

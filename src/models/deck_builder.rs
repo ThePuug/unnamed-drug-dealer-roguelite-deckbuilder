@@ -15,14 +15,6 @@ pub struct DeckBuilder {
 }
 
 impl DeckBuilder {
-    pub fn new() -> Self {
-        // SOW-013-B: Empty until populated from assets
-        Self {
-            available_cards: Vec::new(),
-            selected_cards: Vec::new(),
-        }
-    }
-
     /// SOW-020: Initialize from loaded assets filtered by unlocked cards
     pub fn from_assets_filtered(assets: &crate::assets::GameAssets, unlocked_cards: &HashSet<String>) -> Self {
         let available = create_player_deck_filtered(assets, unlocked_cards);

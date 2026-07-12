@@ -156,12 +156,20 @@ pub fn create_mock_game_assets() -> GameAssets {
         assets.locations.insert(card.name.clone(), card);
     }
 
-    // Add evidence/conviction cards (Narc deck)
-    assets.evidence = vec![
+    // SOW-027: narc decks are per-area, per-tier compositions; the mock ships
+    // the same small deck for every (area x tier) so tests stay deterministic
+    let mock_narc_deck = vec![
         create_evidence("Donut Break", 0, 0),
         create_evidence("Patrol", 5, 5),
         create_conviction("Warrant", 10),
     ];
+    for area in ["the_corner", "the_block"] {
+        let mut tiers = std::collections::HashMap::new();
+        for tier in ["Cold", "Warm", "Hot", "Blazing", "Scorching", "Inferno"] {
+            tiers.insert(tier.to_string(), mock_narc_deck.clone());
+        }
+        assets.narc_compositions.insert(area.to_string(), tiers);
+    }
 
     // Add 4 cover cards (player deck needs them)
     assets.cover = vec![

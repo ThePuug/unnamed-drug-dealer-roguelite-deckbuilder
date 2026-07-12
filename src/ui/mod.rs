@@ -15,4 +15,4 @@ pub mod view; // SOW-022: pure view-model logic for the gameplay screen
 // Re-exports for convenience
 pub use helpers::*;
 pub use systems::*;
-pub use foil_material::{FoilMaterial, FoilMaterialPlugin, FoilCard};
+pub use foil_material::FoilMaterialPlugin;

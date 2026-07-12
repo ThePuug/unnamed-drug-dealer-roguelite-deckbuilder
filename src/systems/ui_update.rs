@@ -575,11 +575,18 @@ pub fn populate_roster_panel_system(
                         },
                     ));
 
-                    // Identity + status column
+                    // Identity + status column. min_width 0 lets the column
+                    // shrink below its text's intrinsic width (SOW-027: the
+                    // action stack must stay INSIDE the fixed 250px card -
+                    // overflowing slides it under the next card, which then
+                    // steals the buttons' clicks)
                     parent.spawn(Node {
                         flex_direction: FlexDirection::Column,
                         row_gap: Val::Px(2.0),
                         flex_grow: 1.0,
+                        flex_shrink: 1.0,
+                        min_width: Val::Px(0.0),
+                        overflow: Overflow::clip_x(),
                         ..default()
                     })
                     .with_children(|parent| {
@@ -661,6 +668,17 @@ pub fn populate_roster_panel_system(
                                 TextFont::from_font_size(12.0),
                                 TextColor(theme::ROSTER_STATUS_MOVING),
                             ));
+                        } else if let Some(runs) = dealer.laying_low_remaining() {
+                            // SOW-027: gone dark - resurfaces cooler
+                            parent.spawn((
+                                Text::new(format!(
+                                    "LAYING LOW · {} RUN{}",
+                                    runs,
+                                    if runs == 1 { "" } else { "S" }
+                                )),
+                                TextFont::from_font_size(12.0),
+                                TextColor(theme::ROSTER_STATUS_LAYING_LOW),
+                            ));
                         } else {
                             parent.spawn((
                                 Text::new("READY"),
@@ -701,52 +719,150 @@ pub fn populate_roster_panel_system(
                             });
                     }
 
-                    // SOW-025: MOVE button - relocate an available dealer to
-                    // another unlocked area (cash + one run of downtime).
-                    // First unlocked area that isn't their station; the full
-                    // area picker arrives with the map screen SOW.
+                    // SOW-025/SOW-027: action stack for available dealers -
+                    // MOVE (relocate), LAY LOW and LAWYER (heat coolers)
+                    // stacked vertically so the fixed 250px row never
+                    // overflows. Buttons are nested so clicks don't re-select
+                    // the row; ineligible actions render disabled with the
+                    // reason in the label.
                     if dealer.is_available() {
-                        let move_target = game_assets
-                            .shop_locations
-                            .iter()
-                            .find(|a| {
-                                a.id != dealer.station
-                                    && save_data.account.unlocked_locations.contains(&a.id)
+                        parent
+                            .spawn(Node {
+                                flex_direction: FlexDirection::Column,
+                                row_gap: Val::Px(4.0),
+                                flex_shrink: 0.0,
+                                ..default()
+                            })
+                            .with_children(|parent| {
+                                // SOW-025: MOVE - first unlocked area that
+                                // isn't their station; the full area picker
+                                // arrives with the map screen SOW.
+                                let move_target = game_assets
+                                    .shop_locations
+                                    .iter()
+                                    .find(|a| {
+                                        a.id != dealer.station
+                                            && save_data
+                                                .account
+                                                .unlocked_locations
+                                                .contains(&a.id)
+                                    });
+                                if let Some(target) = move_target {
+                                    let fee = save_data.move_fee();
+                                    let affordable = cash >= fee;
+                                    parent
+                                        .spawn((
+                                            Button,
+                                            Node {
+                                                padding: UiRect::axes(Val::Px(8.0), Val::Px(6.0)),
+                                                border_radius: BorderRadius::all(Val::Px(6.0)),
+                                                justify_content: JustifyContent::Center,
+                                                ..default()
+                                            },
+                                            BackgroundColor(if affordable {
+                                                theme::ROSTER_MOVE_BG
+                                            } else {
+                                                theme::BUTTON_DISABLED_BG
+                                            }),
+                                            RosterMoveButton {
+                                                dealer_index: index,
+                                                to_area: target.id.clone(),
+                                            },
+                                        ))
+                                        .with_children(|parent| {
+                                            parent.spawn((
+                                                Text::new(format!(
+                                                    "MOVE TO\n{}\n${fee}",
+                                                    target.name.to_uppercase()
+                                                )),
+                                                TextFont::from_font_size(10.0),
+                                                TextColor(Color::WHITE),
+                                                TextLayout::new_with_justify(
+                                                    bevy::text::Justify::Center,
+                                                ),
+                                            ));
+                                        });
+                                }
+
+                                // SOW-027: the coolers. Both need heat to
+                                // shed; the label carries the disable reason.
+                                let has_heat = dealer.character.heat > 0;
+
+                                let lay_low_cost = save_data.lay_low_cost();
+                                let lay_low_ok = has_heat && cash >= lay_low_cost;
+                                parent
+                                    .spawn((
+                                        Button,
+                                        Node {
+                                            padding: UiRect::axes(Val::Px(8.0), Val::Px(6.0)),
+                                            border_radius: BorderRadius::all(Val::Px(6.0)),
+                                            justify_content: JustifyContent::Center,
+                                            ..default()
+                                        },
+                                        BackgroundColor(if lay_low_ok {
+                                            theme::ROSTER_LAY_LOW_BG
+                                        } else {
+                                            theme::BUTTON_DISABLED_BG
+                                        }),
+                                        RosterLayLowButton { dealer_index: index },
+                                    ))
+                                    .with_children(|parent| {
+                                        let label = if !has_heat {
+                                            "LAY LOW\nNO HEAT".to_string()
+                                        } else {
+                                            format!(
+                                                "LAY LOW\n{} RUNS · -{}\n${lay_low_cost}",
+                                                crate::save::LAY_LOW_RUNS,
+                                                crate::save::LAY_LOW_COOLING,
+                                            )
+                                        };
+                                        parent.spawn((
+                                            Text::new(label),
+                                            TextFont::from_font_size(10.0),
+                                            TextColor(Color::WHITE),
+                                            TextLayout::new_with_justify(
+                                                bevy::text::Justify::Center,
+                                            ),
+                                        ));
+                                    });
+
+                                let lawyer_cost = save_data.lawyer_cost();
+                                let lawyer_ok = has_heat && cash >= lawyer_cost;
+                                parent
+                                    .spawn((
+                                        Button,
+                                        Node {
+                                            padding: UiRect::axes(Val::Px(8.0), Val::Px(6.0)),
+                                            border_radius: BorderRadius::all(Val::Px(6.0)),
+                                            justify_content: JustifyContent::Center,
+                                            ..default()
+                                        },
+                                        BackgroundColor(if lawyer_ok {
+                                            theme::ROSTER_LAWYER_BG
+                                        } else {
+                                            theme::BUTTON_DISABLED_BG
+                                        }),
+                                        RosterLawyerButton { dealer_index: index },
+                                    ))
+                                    .with_children(|parent| {
+                                        let label = if !has_heat {
+                                            "LAWYER\nNO HEAT".to_string()
+                                        } else {
+                                            format!(
+                                                "LAWYER\n-{} NOW\n${lawyer_cost}",
+                                                crate::save::LAWYER_COOLING,
+                                            )
+                                        };
+                                        parent.spawn((
+                                            Text::new(label),
+                                            TextFont::from_font_size(10.0),
+                                            TextColor(Color::WHITE),
+                                            TextLayout::new_with_justify(
+                                                bevy::text::Justify::Center,
+                                            ),
+                                        ));
+                                    });
                             });
-                        if let Some(target) = move_target {
-                            let fee = save_data.move_fee();
-                            let affordable = cash >= fee;
-                            parent
-                                .spawn((
-                                    Button,
-                                    Node {
-                                        padding: UiRect::axes(Val::Px(8.0), Val::Px(6.0)),
-                                        border_radius: BorderRadius::all(Val::Px(6.0)),
-                                        flex_shrink: 0.0,
-                                        ..default()
-                                    },
-                                    BackgroundColor(if affordable {
-                                        theme::ROSTER_MOVE_BG
-                                    } else {
-                                        theme::BUTTON_DISABLED_BG
-                                    }),
-                                    RosterMoveButton {
-                                        dealer_index: index,
-                                        to_area: target.id.clone(),
-                                    },
-                                ))
-                                .with_children(|parent| {
-                                    parent.spawn((
-                                        Text::new(format!(
-                                            "MOVE TO\n{}\n${fee}",
-                                            target.name.to_uppercase()
-                                        )),
-                                        TextFont::from_font_size(10.0),
-                                        TextColor(Color::WHITE),
-                                        TextLayout::new_with_justify(bevy::text::Justify::Center),
-                                    ));
-                                });
-                        }
                     }
                 });
         }

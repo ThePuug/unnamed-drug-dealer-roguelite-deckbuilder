@@ -89,9 +89,9 @@ impl Default for UpgradeInfo {
 // SOW-022: get_card_stats removed (all callers pass an explicit multiplier)
 
 /// SOW-022: Badge/multiplier info for a card wherever it appears on the table
-/// or discard stack. Player-ownable types carry the RFC-017 play-tier star;
-/// narc types (Evidence/Conviction) carry the RFC-018 ⚖ badge when the narc
-/// tier is scaled, so displayed stats always match what totals apply.
+/// or discard stack. Player-ownable types carry the RFC-017 play-tier star.
+/// SOW-027: narc cards carry NO badge - narc difficulty is the deck
+/// composition, and narc card faces always show authored numbers.
 pub fn upgrade_info_for(hand_state: &crate::HandState, card: &crate::Card) -> Option<UpgradeInfo> {
     match card.card_type {
         CardType::Product { .. }
@@ -110,21 +110,7 @@ pub fn upgrade_info_for(hand_state: &crate::HandState, card: &crate::Card) -> Op
                 is_foil: tier.is_foil(),
             })
         }
-        CardType::Evidence { .. } | CardType::Conviction { .. } => {
-            let tier = hand_state.narc_upgrade_tier;
-            if tier != crate::save::UpgradeTier::Base {
-                Some(UpgradeInfo {
-                    tier_name: "⚖".to_string(), // Scales of Justice
-                    plays: 0,
-                    plays_to_next: None, // No progress display for Narc cards
-                    multiplier: tier.multiplier(),
-                    star_color: tier.star_color(),
-                    is_foil: tier.is_foil(),
-                })
-            } else {
-                None // Base tier shows no badge
-            }
-        }
+        CardType::Evidence { .. } | CardType::Conviction { .. } => None,
     }
 }
 

@@ -453,18 +453,21 @@ pub fn start_run_button_system(
                 random_buyer.active_scenario_index = Some(scenario_index);
             }
 
-            // RFC-018/023: Narc difficulty scales with the ACTIVE dealer's heat -
-            // difficulty is a property of WHO you send out
+            // SOW-027: narc difficulty = deck composition for (run area x the
+            // ACTIVE dealer's heat tier) - WHO you send and WHERE both matter
             let heat_tier = save_data
                 .as_ref()
                 .map(|save| save.active_character().heat_tier())
                 .unwrap_or(crate::save::HeatTier::Cold);
 
-            // Create new HandState with selected deck and heat tier
+            // Create new HandState; the constructor records the run area and
+            // builds the narc deck from it (Safe hands here earn the runner
+            // street cred in this area at resolution - SOW-025)
             let mut hand_state = HandState::with_custom_deck(
                 deck_builder.selected_cards.clone(),
                 &game_assets,
                 heat_tier,
+                run_area,
             );
             hand_state.buyer_persona = Some(random_buyer);
 
@@ -475,10 +478,6 @@ pub fn start_run_button_system(
                 hand_state.card_play_counts = character.card_play_counts.clone();
                 hand_state.card_upgrades = character.card_upgrades.clone();
             }
-
-            // SOW-025: record where this run happens - Safe hands here earn
-            // the runner street cred in this area at resolution
-            hand_state.run_area = run_area.to_string();
 
             hand_state.draw_cards(); // This will also initialize buyer hand
             commands.spawn(hand_state);
@@ -537,6 +536,8 @@ pub fn roster_button_system(
     bail_query: Query<(&Interaction, &RosterBailButton), Changed<Interaction>>,
     hire_query: Query<&Interaction, (Changed<Interaction>, With<RosterHireButton>)>,
     move_query: Query<(&Interaction, &RosterMoveButton), Changed<Interaction>>,
+    lay_low_query: Query<(&Interaction, &RosterLayLowButton), Changed<Interaction>>,
+    lawyer_query: Query<(&Interaction, &RosterLawyerButton), Changed<Interaction>>,
     save_data: Option<ResMut<crate::save::SaveData>>,
     save_manager: Option<Res<crate::save::SaveManager>>,
 ) {
@@ -588,6 +589,36 @@ pub fn roster_button_system(
         }
     }
 
+    // SOW-027: lay low (lay_low no-ops when ineligible or unaffordable)
+    for (interaction, button) in lay_low_query.iter() {
+        if *interaction == Interaction::Pressed {
+            let laying = save_data.lay_low(button.dealer_index);
+            if laying {
+                bevy::log::info!(
+                    "{} is laying low",
+                    save_data.dealers[button.dealer_index].name
+                );
+            }
+            dirty |= laying;
+        }
+    }
+
+    // SOW-027: crooked lawyer (hire_lawyer no-ops when ineligible or
+    // unaffordable)
+    for (interaction, button) in lawyer_query.iter() {
+        if *interaction == Interaction::Pressed {
+            let cooled = save_data.hire_lawyer(button.dealer_index);
+            if cooled {
+                bevy::log::info!(
+                    "{} lawyered up - heat now {}",
+                    save_data.dealers[button.dealer_index].name,
+                    save_data.dealers[button.dealer_index].character.heat
+                );
+            }
+            dirty |= cooled;
+        }
+    }
+
     if dirty {
         if let Err(e) = save_manager.save(&save_data) {
             bevy::log::warn!("Failed to save roster change: {:?}", e);
@@ -615,6 +646,9 @@ pub fn update_start_run_button_system(
         (theme::CONTINUE_BUTTON_BG, "START RUN")
     } else if dealer.relocating_remaining().is_some() {
         (theme::BUTTON_DISABLED_BG, "MOVING")
+    } else if dealer.laying_low_remaining().is_some() {
+        // SOW-027: committed to the package - can't run until it ticks out
+        (theme::BUTTON_DISABLED_BG, "LAYING LOW")
     } else {
         (theme::BUTTON_DISABLED_BG, "JAILED")
     };

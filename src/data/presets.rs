@@ -20,13 +20,6 @@ pub fn validate_deck(deck: &[Card]) -> Result<(), String> {
     Ok(())
 }
 
-/// Helper to get card from available pool by name (returns Option for SOW-020 flexibility)
-fn try_get_card(available: &[Card], name: &str) -> Option<Card> {
-    available.iter()
-        .find(|c| c.name == name)
-        .cloned()
-}
-
 /// SOW-020: Create default deck from whatever cards are available
 /// Selects a balanced mix based on what's unlocked, up to 20 cards
 pub fn create_default_deck_from_available(available: &[Card]) -> Vec<Card> {
@@ -68,32 +61,6 @@ pub fn create_default_deck_from_available(available: &[Card]) -> Vec<Card> {
 
     selected
 }
-
-/// Create default preset deck (legacy - uses hardcoded names)
-/// Used when all cards are available
-#[allow(dead_code)]
-pub fn create_default_deck(available: &[Card]) -> Vec<Card> {
-    // Preferred cards if available
-    let preferred = [
-        "Weed", "Codeine", "Ecstasy", "Coke", "Fentanyl",
-        "Safe House", "Abandoned Warehouse", "Storage Unit", "Dead Drop",
-        "Alibi", "Bribe", "Fake Receipts", "Bribed Witness",
-        "Plea Bargain", "Fake ID",
-        "Disguise", "Burner Phone", "Lookout", "Clean Money", "False Trail",
-    ];
-
-    let mut selected: Vec<Card> = preferred.iter()
-        .filter_map(|name| try_get_card(available, name))
-        .collect();
-
-    // If we don't have enough, fall back to dynamic selection
-    if selected.len() < 10 {
-        return create_default_deck_from_available(available);
-    }
-
-    selected
-}
-
 
 #[cfg(test)]
 mod tests {

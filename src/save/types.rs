@@ -212,6 +212,57 @@ impl SaveData {
         MOVE_FEE
     }
 
+    /// SOW-027: send a dealer underground - LAY_LOW_COST up front, benched
+    /// for LAY_LOW_RUNS runs, sheds LAY_LOW_COOLING heat on resurfacing.
+    /// Available-only with heat to shed: a jailed dealer's heat is settled
+    /// by release()/bail (heat_at_bust bookkeeping), and a relocating or
+    /// laying-low dealer is already committed elsewhere.
+    /// Returns false (no mutation) if ineligible or unaffordable.
+    pub fn lay_low(&mut self, dealer_idx: usize) -> bool {
+        let Some(dealer) = self.dealers.get(dealer_idx) else {
+            return false;
+        };
+        if !dealer.is_available() || dealer.character.heat == 0 {
+            return false;
+        }
+        if !self.account.spend(LAY_LOW_COST) {
+            return false;
+        }
+        self.dealers[dealer_idx].status = DealerStatus::LayingLow {
+            runs_remaining: LAY_LOW_RUNS,
+        };
+        true
+    }
+
+    /// SOW-027: the lay-low package price (exposed for UI labels)
+    pub fn lay_low_cost(&self) -> u64 {
+        LAY_LOW_COST
+    }
+
+    /// SOW-027: pay the crooked lawyer - LAWYER_COST for an immediate
+    /// LAWYER_COOLING heat reduction, no downtime. Same eligibility as
+    /// lay_low: available, with heat to shed.
+    /// Returns false (no mutation) if ineligible or unaffordable.
+    pub fn hire_lawyer(&mut self, dealer_idx: usize) -> bool {
+        let Some(dealer) = self.dealers.get(dealer_idx) else {
+            return false;
+        };
+        if !dealer.is_available() || dealer.character.heat == 0 {
+            return false;
+        }
+        if !self.account.spend(LAWYER_COST) {
+            return false;
+        }
+        let heat = &mut self.dealers[dealer_idx].character.heat;
+        *heat = heat.saturating_sub(LAWYER_COOLING);
+        true
+    }
+
+    /// SOW-027: the lawyer's fee (exposed for UI labels)
+    pub fn lawyer_cost(&self) -> u64 {
+        LAWYER_COST
+    }
+
     /// SOW-025: the roster's best street cred for an area - any dealer's
     /// reputation opens doors there. Returns (dealer index, cred); the shop
     /// shows WHO is effectively unlocking ("unlocked by <name>").
@@ -333,30 +384,10 @@ impl HeatTier {
         }
     }
 
-    /// RFC-018: Get Narc upgrade tier for this Heat tier
-    /// Higher Heat = stronger Narc cards
-    pub fn narc_upgrade_tier(&self) -> UpgradeTier {
-        match self {
-            HeatTier::Cold => UpgradeTier::Base,      // No bonus
-            HeatTier::Warm => UpgradeTier::Tier1,     // +10%
-            HeatTier::Hot => UpgradeTier::Tier2,      // +20%
-            HeatTier::Blazing => UpgradeTier::Tier3,  // +30%
-            HeatTier::Scorching => UpgradeTier::Tier4, // +40%
-            HeatTier::Inferno => UpgradeTier::Tier5,  // +50% with foil effect
-        }
-    }
+    // SOW-027: narc_upgrade_tier() removed - narc difficulty is the deck
+    // COMPOSITION per (area x HeatTier), authored in narc_deck.ron. The tier
+    // itself still selects which composition a dealer faces.
 
-    /// RFC-018: Get danger level description for UI
-    pub fn danger_name(&self) -> &'static str {
-        match self {
-            HeatTier::Cold => "Relaxed",
-            HeatTier::Warm => "Alert",
-            HeatTier::Hot => "Dangerous",
-            HeatTier::Blazing => "Severe",
-            HeatTier::Scorching => "Intense",
-            HeatTier::Inferno => "Deadly",
-        }
-    }
 }
 
 /// RFC-017: Card upgrade tier based on play count
@@ -460,23 +491,6 @@ pub enum UpgradeableStat {
 }
 
 impl UpgradeableStat {
-    /// Display name for UI
-    pub fn name(&self) -> &'static str {
-        match self {
-            Self::Price => "Price",
-            Self::Cover => "Cover",
-            Self::Evidence => "Evidence",
-            Self::Heat => "Heat",
-            Self::HeatPenalty => "Heat Penalty",
-            Self::PriceMultiplier => "Price Bonus",
-        }
-    }
-
-    /// Whether this stat improves by increasing (true) or decreasing (false)
-    pub fn improves_by_increase(&self) -> bool {
-        matches!(self, Self::Price | Self::Cover | Self::PriceMultiplier)
-    }
-
     /// Get available upgrade stats for a card type
     /// Returns the stats that can be upgraded for this card type
     pub fn available_for(card_type: &crate::models::card::CardType) -> Vec<Self> {
@@ -543,17 +557,6 @@ impl CardUpgrades {
         1.0 + (self.count_stat(stat) as f32 * 0.1)
     }
 
-    /// Current tier based on number of upgrades
-    pub fn current_tier(&self) -> UpgradeTier {
-        match self.upgrades.len() {
-            0 => UpgradeTier::Base,
-            1 => UpgradeTier::Tier1,
-            2 => UpgradeTier::Tier2,
-            3 => UpgradeTier::Tier3,
-            4 => UpgradeTier::Tier4,
-            _ => UpgradeTier::Tier5,
-        }
-    }
 }
 
 /// RFC-019: A pending upgrade choice waiting for player input
@@ -663,15 +666,6 @@ impl CharacterState {
         self.decks_played += 1;
     }
 
-    /// Add heat from hand resolution
-    pub fn add_heat(&mut self, amount: i32) {
-        if amount >= 0 {
-            self.heat = self.heat.saturating_add(amount as u32);
-        } else {
-            self.heat = self.heat.saturating_sub((-amount) as u32);
-        }
-    }
-
     /// RFC-017: Increment play count for a card
     pub fn increment_play_count(&mut self, card_name: &str) {
         let count = self.card_play_counts.entry(card_name.to_string()).or_insert(0);
@@ -688,25 +682,12 @@ impl CharacterState {
         UpgradeTier::from_play_count(self.get_play_count(card_name))
     }
 
-    /// RFC-019: Get upgrade history for a card
-    pub fn get_card_upgrades(&self, card_name: &str) -> Option<&CardUpgrades> {
-        self.card_upgrades.get(card_name)
-    }
-
     /// RFC-019: Add an upgrade choice for a card
     pub fn add_card_upgrade(&mut self, card_name: &str, stat: UpgradeableStat) {
         let upgrades = self.card_upgrades
             .entry(card_name.to_string())
             .or_insert_with(CardUpgrades::new);
         upgrades.add_upgrade(stat);
-    }
-
-    /// RFC-019: Get the stat multiplier for a specific stat on a card
-    pub fn get_stat_multiplier(&self, card_name: &str, stat: UpgradeableStat) -> f32 {
-        self.card_upgrades
-            .get(card_name)
-            .map(|u| u.stat_multiplier(stat))
-            .unwrap_or(1.0)
     }
 
     /// RFC-019: Check if a card has earned an upgrade that hasn't been applied yet
@@ -832,6 +813,18 @@ const HIRE_BASE_COST: u64 = 500;
 /// SOW-025: flat relocation fee (tuning candidate - see SOW-025 Discussion)
 const MOVE_FEE: u64 = 250;
 
+/// SOW-027 coolers (tuning candidates - see SOW-027 Discussion).
+/// Lay Low is the committed package: the dealer goes dark for
+/// LAY_LOW_RUNS runs and sheds LAY_LOW_COOLING heat on resurfacing.
+const LAY_LOW_COST: u64 = 200;
+pub const LAY_LOW_RUNS: u32 = 2;
+pub const LAY_LOW_COOLING: u32 = 40;
+
+/// SOW-027: the Crooked Lawyer is the instant chunk - cash now, heat
+/// gone now, no downtime. That immediacy is what the premium buys.
+const LAWYER_COST: u64 = 625;
+pub const LAWYER_COOLING: u32 = 25;
+
 /// SOW-025: where every fresh dealer starts (the home turf; matches the
 /// area flagged `unlocked: true` in shop_locations.ron)
 pub const DEFAULT_STATION: &str = "the_corner";
@@ -867,6 +860,11 @@ pub enum DealerStatus {
     /// SOW-025: mid-move - getting established in the new station.
     /// Ticks down like a sentence; no heat effects (moving is cash + time).
     Relocating {
+        runs_remaining: u32,
+    },
+    /// SOW-027: gone dark to shed heat - benched like a relocation, but
+    /// completing the package sheds LAY_LOW_COOLING heat.
+    LayingLow {
         runs_remaining: u32,
     },
 }
@@ -977,6 +975,14 @@ impl DealerState {
         }
     }
 
+    /// SOW-027: remaining lay-low downtime in runs (None if not laying low)
+    pub fn laying_low_remaining(&self) -> Option<u32> {
+        match self.status {
+            DealerStatus::LayingLow { runs_remaining } => Some(runs_remaining),
+            _ => None,
+        }
+    }
+
     /// Sentence this dealer for a bust. Kingpins are never jailed - the
     /// caller handles a kingpin bust as game over.
     pub fn jail(&mut self) {
@@ -1025,6 +1031,16 @@ impl DealerState {
             DealerStatus::Relocating { ref mut runs_remaining } => {
                 *runs_remaining = runs_remaining.saturating_sub(1);
                 if *runs_remaining == 0 {
+                    self.status = DealerStatus::Available;
+                    return true;
+                }
+                false
+            }
+            // SOW-027: resurfacing from laying low sheds the package's heat
+            DealerStatus::LayingLow { ref mut runs_remaining } => {
+                *runs_remaining = runs_remaining.saturating_sub(1);
+                if *runs_remaining == 0 {
+                    self.character.heat = self.character.heat.saturating_sub(LAY_LOW_COOLING);
                     self.status = DealerStatus::Available;
                     return true;
                 }
@@ -1121,16 +1137,6 @@ impl AccountState {
             "burner_phone".to_string(),
             "lookout".to_string(),
         ])
-    }
-
-    /// SOW-020: Check if a card is unlocked
-    pub fn is_card_unlocked(&self, card_id: &str) -> bool {
-        self.unlocked_cards.contains(card_id)
-    }
-
-    /// SOW-020: Unlock a card (called after purchase)
-    pub fn unlock_card(&mut self, card_id: &str) {
-        self.unlocked_cards.insert(card_id.to_string());
     }
 
     /// SOW-020: Check if a shop location is unlocked
@@ -1518,6 +1524,99 @@ mod tests {
     }
 
     #[test]
+    fn test_lay_low_costs_cash_and_downtime_then_cools() {
+        // SOW-027: $200 up front, 2 runs dark, -40 heat on resurfacing
+        let mut save = SaveData::new();
+        save.account.cash_on_hand = 1000;
+        save.dealers[0].character.heat = 100;
+
+        assert!(save.lay_low(0));
+        assert_eq!(save.account.cash_on_hand, 1000 - LAY_LOW_COST);
+        assert_eq!(save.dealers[0].laying_low_remaining(), Some(LAY_LOW_RUNS));
+        assert!(!save.dealers[0].is_available()); // committed - can't run
+        assert_eq!(save.dealers[0].character.heat, 100); // cooling on completion, not up front
+
+        assert!(!save.dealers[0].tick_sentence()); // 1 run left
+        assert_eq!(save.dealers[0].character.heat, 100);
+        assert!(save.dealers[0].tick_sentence()); // resurfaces
+        assert!(save.dealers[0].is_available());
+        assert_eq!(save.dealers[0].character.heat, 100 - LAY_LOW_COOLING);
+    }
+
+    #[test]
+    fn test_lay_low_cooling_floors_at_zero() {
+        let mut save = SaveData::new();
+        save.account.cash_on_hand = 1000;
+        save.dealers[0].character.heat = 15; // less than the -40 package
+
+        assert!(save.lay_low(0));
+        save.dealers[0].tick_sentence();
+        save.dealers[0].tick_sentence();
+        assert_eq!(save.dealers[0].character.heat, 0);
+    }
+
+    #[test]
+    fn test_lay_low_rejections() {
+        let mut save = SaveData::new();
+        save.dealers.push(DealerState::recruit(&save.dealers));
+        save.account.cash_on_hand = 1000;
+
+        assert!(!save.lay_low(0)); // no heat to shed
+        assert!(!save.lay_low(9)); // out of range
+
+        save.dealers[1].character.heat = 50;
+        save.dealers[1].jail();
+        assert!(!save.lay_low(1)); // jailed - heat settles via release/bail
+
+        save.dealers[0].character.heat = 50;
+        save.account.cash_on_hand = LAY_LOW_COST - 1;
+        assert!(!save.lay_low(0)); // can't afford
+        assert_eq!(save.account.cash_on_hand, LAY_LOW_COST - 1); // no partial spend
+
+        save.account.cash_on_hand = 1000;
+        assert!(save.lay_low(0));
+        assert!(!save.lay_low(0)); // already laying low
+        assert_eq!(save.account.cash_on_hand, 1000 - LAY_LOW_COST); // one fee
+    }
+
+    #[test]
+    fn test_lawyer_cools_immediately_with_no_downtime() {
+        // SOW-027: $625 for -25 heat right now - the premium buys immediacy
+        let mut save = SaveData::new();
+        save.account.cash_on_hand = 1000;
+        save.dealers[0].character.heat = 60;
+
+        assert!(save.hire_lawyer(0));
+        assert_eq!(save.account.cash_on_hand, 1000 - LAWYER_COST);
+        assert_eq!(save.dealers[0].character.heat, 60 - LAWYER_COOLING);
+        assert!(save.dealers[0].is_available()); // no bench time
+
+        // Floors at zero (shedding 25 from 10)
+        save.account.cash_on_hand = 1000;
+        save.dealers[0].character.heat = 10;
+        assert!(save.hire_lawyer(0));
+        assert_eq!(save.dealers[0].character.heat, 0);
+    }
+
+    #[test]
+    fn test_lawyer_rejections() {
+        let mut save = SaveData::new();
+        save.account.cash_on_hand = 10_000;
+
+        assert!(!save.hire_lawyer(0)); // no heat to shed
+        assert!(!save.hire_lawyer(9)); // out of range
+
+        save.dealers[0].character.heat = 50;
+        save.account.cash_on_hand = LAWYER_COST - 1;
+        assert!(!save.hire_lawyer(0)); // can't afford
+        assert_eq!(save.dealers[0].character.heat, 50); // no mutation
+
+        save.account.cash_on_hand = 1000;
+        assert!(save.lay_low(0));
+        assert!(!save.hire_lawyer(0)); // laying low = committed, no lawyer
+    }
+
+    #[test]
     fn test_street_cred_accrues_and_never_decays() {
         // SOW-025: +1 per successful deal; nothing (jail, moves) erases it
         let mut dealer = DealerState::recruit(&[]);
@@ -1609,30 +1708,8 @@ mod tests {
         assert!(state.last_played > 0);
     }
 
-    #[test]
-    fn test_add_heat_positive() {
-        let mut state = CharacterState::new();
-        state.add_heat(10);
-        assert_eq!(state.heat, 10);
-        state.add_heat(5);
-        assert_eq!(state.heat, 15);
-    }
-
-    #[test]
-    fn test_add_heat_negative() {
-        let mut state = CharacterState::new();
-        state.heat = 20;
-        state.add_heat(-5);
-        assert_eq!(state.heat, 15);
-    }
-
-    #[test]
-    fn test_add_heat_no_underflow() {
-        let mut state = CharacterState::new();
-        state.heat = 5;
-        state.add_heat(-10);
-        assert_eq!(state.heat, 0);
-    }
+    // SOW-027: add_heat tests retired with the method - apply_session_heat
+    // is the live career-heat path and has its own coverage
 
     #[test]
     fn test_decay_calculation() {
@@ -1981,67 +2058,7 @@ mod tests {
         assert!(state.card_play_counts.is_empty());
     }
 
-    // ========================================================================
-    // RFC-018: Heat Tier → Narc Upgrade Tier Tests
-    // ========================================================================
 
-    #[test]
-    fn test_heat_tier_narc_upgrade_mapping() {
-        // Cold → Base (no bonus)
-        assert_eq!(HeatTier::Cold.narc_upgrade_tier(), UpgradeTier::Base);
-
-        // Warm → Tier1 (+10%)
-        assert_eq!(HeatTier::Warm.narc_upgrade_tier(), UpgradeTier::Tier1);
-
-        // Hot → Tier2 (+20%)
-        assert_eq!(HeatTier::Hot.narc_upgrade_tier(), UpgradeTier::Tier2);
-
-        // Blazing → Tier3 (+30%)
-        assert_eq!(HeatTier::Blazing.narc_upgrade_tier(), UpgradeTier::Tier3);
-
-        // Scorching → Tier4 (+40%)
-        assert_eq!(HeatTier::Scorching.narc_upgrade_tier(), UpgradeTier::Tier4);
-
-        // Inferno → Tier5 (+50% with foil effect)
-        assert_eq!(HeatTier::Inferno.narc_upgrade_tier(), UpgradeTier::Tier5);
-    }
-
-    #[test]
-    fn test_heat_tier_danger_names() {
-        assert_eq!(HeatTier::Cold.danger_name(), "Relaxed");
-        assert_eq!(HeatTier::Warm.danger_name(), "Alert");
-        assert_eq!(HeatTier::Hot.danger_name(), "Dangerous");
-        assert_eq!(HeatTier::Blazing.danger_name(), "Severe");
-        assert_eq!(HeatTier::Scorching.danger_name(), "Intense");
-        assert_eq!(HeatTier::Inferno.danger_name(), "Deadly");
-    }
-
-    #[test]
-    fn test_heat_to_narc_tier_via_character() {
-        let mut character = CharacterState::new();
-
-        // At 0 heat (Cold), Narc should be Base
-        character.heat = 0;
-        assert_eq!(character.heat_tier().narc_upgrade_tier(), UpgradeTier::Base);
-
-        // At 30 heat (Warm), Narc should be Tier1
-        character.heat = 30;
-        assert_eq!(character.heat_tier().narc_upgrade_tier(), UpgradeTier::Tier1);
-
-        // At 60 heat (Hot), Narc should be Tier2
-        character.heat = 60;
-        assert_eq!(character.heat_tier().narc_upgrade_tier(), UpgradeTier::Tier2);
-
-        // At 90 heat (Blazing), Narc should be Tier3
-        character.heat = 90;
-        assert_eq!(character.heat_tier().narc_upgrade_tier(), UpgradeTier::Tier3);
-
-        // At 120 heat (Scorching), Narc should be Tier4
-        character.heat = 120;
-        assert_eq!(character.heat_tier().narc_upgrade_tier(), UpgradeTier::Tier4);
-
-        // At 150 heat (Inferno), Narc should be Tier5 with foil
-        character.heat = 150;
-        assert_eq!(character.heat_tier().narc_upgrade_tier(), UpgradeTier::Tier5);
-    }
+    // SOW-027: danger_name test retired with the method (RFC-018 leftover -
+    // no UI surface ever consumed the danger adjectives)
 }

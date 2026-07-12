@@ -11,7 +11,9 @@ use std::collections::HashMap;
 pub struct GameAssets {
     pub products: HashMap<String, Card>,
     pub locations: HashMap<String, Card>,
-    pub evidence: Vec<Card>,          // Narc deck (Evidence + Conviction)
+    /// SOW-027: per-area, per-tier narc deck compositions
+    /// (area id -> HeatTier name -> assembled deck of Evidence/Conviction cards)
+    pub narc_compositions: HashMap<String, HashMap<String, Vec<Card>>>,
     pub cover: Vec<Card>,              // Player Cover cards
     pub insurance: Vec<Card>,          // Player Insurance cards
     pub modifiers: Vec<Card>,          // Player Deal Modifiers
@@ -24,26 +26,4 @@ pub struct GameAssets {
     pub card_placeholder: Handle<Image>,  // Card placeholder image
     pub card_back: Handle<Image>,  // Card back for facedown cards
     pub assets_loaded: bool,
-}
-
-impl GameAssets {
-    pub fn new() -> Self {
-        Self {
-            products: HashMap::new(),
-            locations: HashMap::new(),
-            evidence: Vec::new(),
-            cover: Vec::new(),
-            insurance: Vec::new(),
-            modifiers: Vec::new(),
-            buyers: Vec::new(),
-            shop_locations: Vec::new(), // SOW-024
-            narrative_defaults: NarrativeFragments::default(),
-            background_images: HashMap::new(),
-            actor_portraits: HashMap::new(),
-            card_template: Handle::default(),
-            card_placeholder: Handle::default(),
-            card_back: Handle::default(),
-            assets_loaded: false,
-        }
-    }
 }
