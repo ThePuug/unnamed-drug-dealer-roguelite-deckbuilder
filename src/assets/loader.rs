@@ -701,10 +701,9 @@ fn load_background_images(asset_server: &AssetServer, game_assets: &mut GameAsse
         ("At the Park", "at_the_park.png"),
         ("In a Limo", "in_a_limo.png"),
         ("Parking Lot", "parking_lot.png"),
-        // SOW-028 Strip locations. VIP Room now has dedicated art (Reed,
-        // 2026-07-13); Back of the Club still reuses the neon alley
-        // (dead_drop) until its own club-alley background lands.
-        ("Back of the Club", "dead_drop.png"),
+        // SOW-028 Strip locations - both now have dedicated art (Reed,
+        // 2026-07-13): a club back-alley and a neon VIP lounge.
+        ("Back of the Club", "back_of_the_club.png"),
         ("VIP Room", "vip_club_lounge.png"),
     ]);
 
