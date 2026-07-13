@@ -170,6 +170,7 @@ mod tests {
             area_id: area_id.to_string(),
             owed,
             runs_remaining: runs,
+            charges: crate::save::BATCH_SIZE,
         });
         save
     }
@@ -287,6 +288,7 @@ mod tests {
             area_id: "red_light_district".to_string(),
             owed: 2000,
             runs_remaining: 1,
+            charges: crate::save::BATCH_SIZE,
         });
         let areas = [
             area("trailer_park", true, Some("Lil Smoke")),

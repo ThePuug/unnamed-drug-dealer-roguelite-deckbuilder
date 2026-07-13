@@ -16,7 +16,11 @@ use std::time::{SystemTime, UNIX_EPOCH};
 // trailer_park/suburbia/red_light_district). Area ids are stored raw in save
 // fields, so the bump forces a clean wipe of any dead-id save (io.rs rejects
 // version mismatch -> fresh account).
-pub const SAVE_VERSION: u32 = 7;
+// SOW-034: v8 adds the consumable stock ledger (AccountState.stock) and a
+// charges field on FrontState. Products became limited-use, so any v7 save's
+// permanent-unlock economy is stale - the bump wipes it to a fresh, seeded
+// account (io.rs rejects version mismatch -> fresh).
+pub const SAVE_VERSION: u32 = 8;
 
 /// Maximum sanity values for validation
 const MAX_HEAT: u32 = 10_000;
@@ -94,19 +98,27 @@ pub struct SaveData {
     pub supplier_standing: HashMap<String, SupplierStanding>,
 }
 
-/// SOW-031: a card taken on credit from a zone's supplier
+/// SOW-031: a batch of product taken on credit from a zone's supplier.
+/// SOW-034: `card_id` now means "the product this batch is of" (name kept to
+/// minimize churn); the batch delivered `charges` charges of stock.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct FrontState {
     pub card_id: String,
     /// The zone whose supplier fronted it (the supplier is the face,
     /// the zone is the account)
     pub area_id: String,
-    /// The lump due: shop price + vig
+    /// The lump due: batch cost + vig
     pub owed: u64,
     /// Runs until the due date. EVERY completed run ticks this, including
     /// the runner's own (unlike jail) - that is the whole point: an
     /// unproductive run still spends a tick toward consequence.
     pub runs_remaining: u32,
+    /// SOW-034: charges this batch delivered. Souring repossesses the UNSOLD
+    /// remainder (min of this and what's still in stock); access is never
+    /// touched. Old (pre-v8) saves are wiped by the version bump, so the
+    /// serde default 0 only ever applies to freshly-migrated absent fields.
+    #[serde(default)]
+    pub charges: u32,
 }
 
 /// SOW-031: how a zone's supplier sees the empire
@@ -373,6 +385,7 @@ impl SaveData {
             area_id: area_id.to_string(),
             owed: front_owed(shop_price),
             runs_remaining: FRONT_WINDOW_RUNS,
+            charges: BATCH_SIZE,
         });
         self.account.unlocked_cards.insert(card_id.to_string());
         Ok(())
@@ -1045,6 +1058,10 @@ pub const LAY_LOW_COOLING: u32 = 40;
 const LAWYER_COST: u64 = 625;
 pub const LAWYER_COOLING: u32 = 25;
 
+/// SOW-034: a batch of a product is BATCH_SIZE charges. One global constant
+/// for now; per-zone batch sizes are a deferred later knob (SOW-034 §2.7).
+pub const BATCH_SIZE: u32 = 4;
+
 /// SOW-031 fronts (tuning candidates - see SOW-031 Discussion).
 /// The vig over shop price: a $500 card fronts at $625 owed.
 pub const FRONT_VIG_PCT: u64 = 25;
@@ -1344,17 +1361,29 @@ pub struct AccountState {
     /// SOW-020: Shop location IDs the player can access
     #[serde(default)]
     pub unlocked_locations: HashSet<String>,
+    /// SOW-034: consumable stock ledger, keyed by product `card.id` -> charges
+    /// on hand. Separate from `unlocked_cards` (permanent access): a product
+    /// can be unlocked with 0 charges (out of stock, inert) or restocked
+    /// without changing access. Absent entries read 0 (`charges_in`).
+    #[serde(default)]
+    pub stock: HashMap<String, u32>,
 }
 
 impl AccountState {
     pub fn new() -> Self {
-        Self {
+        let mut account = Self {
             cash_on_hand: 0,
             lifetime_revenue: 0,
             hands_completed: 0,
             unlocked_cards: Self::starting_collection(),
             unlocked_locations: HashSet::from(["trailer_park".to_string()]),
-        }
+            stock: HashMap::new(),
+        };
+        // SOW-034: seed one Weed batch so turn 1 is playable without a forced
+        // front (0-start is legal since fronting is the floor, but a seeded
+        // batch is friendlier - SOW-034 §2.2)
+        account.add_stock("weed", BATCH_SIZE);
+        account
     }
 
     /// SOW-020: Starting card collection for new players
@@ -1419,6 +1448,39 @@ impl AccountState {
             true
         } else {
             false
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // SOW-034: consumable product stock (charges on hand, keyed by card id)
+    // ------------------------------------------------------------------
+
+    /// Charges of a product currently in stock (0 if none/absent)
+    pub fn charges_in(&self, card_id: &str) -> u32 {
+        self.stock.get(card_id).copied().unwrap_or(0)
+    }
+
+    /// Whether at least one charge is available to commit a play
+    pub fn has_stock(&self, card_id: &str) -> bool {
+        self.charges_in(card_id) > 0
+    }
+
+    /// Add charges to a product's stock (buying or fronting a batch). A zero
+    /// add is a no-op (never materializes an empty entry that isn't there).
+    pub fn add_stock(&mut self, card_id: &str, charges: u32) {
+        if charges == 0 {
+            return;
+        }
+        *self.stock.entry(card_id.to_string()).or_insert(0) += charges;
+    }
+
+    /// Burn one charge on a committed product play. Saturating: a zero-stock
+    /// product is gated inert upstream, so this only ever runs with stock, but
+    /// it floors at 0 defensively. The entry is kept at 0 (unlocked, out of
+    /// stock) rather than removed.
+    pub fn burn_charge(&mut self, card_id: &str) {
+        if let Some(charges) = self.stock.get_mut(card_id) {
+            *charges = charges.saturating_sub(1);
         }
     }
 
@@ -1601,6 +1663,50 @@ mod tests {
         data.account.cash_on_hand = 500;
         assert!(data.hire_dealer());
         assert_eq!(data.dealers[1].portrait, "Barista");
+    }
+
+    // ------------------------------------------------------------------
+    // SOW-034: consumable product stock
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_fresh_account_seeds_one_weed_batch() {
+        let account = AccountState::new();
+        assert_eq!(account.charges_in("weed"), BATCH_SIZE);
+        assert!(account.has_stock("weed"));
+        // Nothing else is stocked (the other starting cards are access-only)
+        assert_eq!(account.charges_in("shrooms"), 0);
+        assert!(!account.has_stock("shrooms"));
+    }
+
+    #[test]
+    fn test_add_and_burn_stock() {
+        let mut account = AccountState::new();
+        // Absent product reads 0 and is not in stock
+        assert_eq!(account.charges_in("codeine"), 0);
+        assert!(!account.has_stock("codeine"));
+
+        account.add_stock("codeine", BATCH_SIZE);
+        assert_eq!(account.charges_in("codeine"), 4);
+        assert!(account.has_stock("codeine"));
+
+        // A zero add never materializes an entry for an absent product
+        account.add_stock("xanax", 0);
+        assert!(!account.stock.contains_key("xanax"));
+
+        // Burning walks the batch down and floors at 0 (out of stock, kept)
+        account.burn_charge("codeine");
+        assert_eq!(account.charges_in("codeine"), 3);
+        for _ in 0..3 {
+            account.burn_charge("codeine");
+        }
+        assert_eq!(account.charges_in("codeine"), 0);
+        assert!(!account.has_stock("codeine"));
+        account.burn_charge("codeine"); // saturating - no underflow
+        assert_eq!(account.charges_in("codeine"), 0);
+        // Burning an untracked product is inert
+        account.burn_charge("never_seen");
+        assert_eq!(account.charges_in("never_seen"), 0);
     }
 
     // ------------------------------------------------------------------
