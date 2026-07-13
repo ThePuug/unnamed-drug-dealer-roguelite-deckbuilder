@@ -701,11 +701,11 @@ fn load_background_images(asset_server: &AssetServer, game_assets: &mut GameAsse
         ("At the Park", "at_the_park.png"),
         ("In a Limo", "in_a_limo.png"),
         ("Parking Lot", "parking_lot.png"),
-        // SOW-028 Strip locations - reusing authored art that reads right
-        // (neon back alley; PARTY ZONE lounge). Dedicated club-alley and
-        // VIP-lounge backgrounds are a listed art ask for Reed.
+        // SOW-028 Strip locations. VIP Room now has dedicated art (Reed,
+        // 2026-07-13); Back of the Club still reuses the neon alley
+        // (dead_drop) until its own club-alley background lands.
         ("Back of the Club", "dead_drop.png"),
-        ("VIP Room", "frat_house.png"),
+        ("VIP Room", "vip_club_lounge.png"),
     ]);
 
     let count = background_files.len();
