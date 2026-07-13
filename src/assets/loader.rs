@@ -688,20 +688,24 @@ fn load_narrative_defaults(path: &str) -> Result<crate::models::narrative::Narra
 fn load_background_images(asset_server: &AssetServer, game_assets: &mut GameAssets) {
     // Map of location names to their background image filenames
     let background_files = HashMap::from([
+        // Extensions vary: Reed's watermark-removal re-export (2026-07-13)
+        // changed 5 of these from .png to .jpg/.jpeg. Backgrounds are still a
+        // silent fallback (unlike the loud portrait check) — keep these aligned
+        // to the files on disk. (E3 follow-up: add a loud existence check here.)
         ("Safe House", "safe_house.png"),
-        ("Abandoned Warehouse", "abandoned_warehouse.png"),
+        ("Abandoned Warehouse", "abandoned_warehouse.jpg"),
         ("Storage Unit", "storage_unit.png"),
-        ("Dead Drop", "dead_drop.png"),
+        ("Dead Drop", "dead_drop.jpg"),
         ("Locker Room", "locker_room.png"),
         ("Frat House", "frat_house.png"),
-        ("By the Pool", "by_the_pool.png"),
-        ("At the Park", "at_the_park.png"),
+        ("By the Pool", "by_the_pool.jpg"),
+        ("At the Park", "at_the_park.jpg"),
         ("In a Limo", "in_a_limo.png"),
-        ("Parking Lot", "parking_lot.png"),
+        ("Parking Lot", "parking_lot.jpg"),
         // SOW-028 Strip locations - reusing authored art that reads right
         // (neon back alley; PARTY ZONE lounge). Dedicated club-alley and
         // VIP-lounge backgrounds are a listed art ask for Reed.
-        ("Back of the Club", "dead_drop.png"),
+        ("Back of the Club", "dead_drop.jpg"),
         ("VIP Room", "frat_house.png"),
     ]);
 
