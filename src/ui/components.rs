@@ -409,7 +409,13 @@ pub struct ShopCardDisplay;
 #[derive(Component)]
 pub struct ShopPurchaseButton {
     pub card_id: String,
+    /// Total cash this click spends: the one-time unlock price for a
+    /// non-product, or the full batch cost for a consumable product.
     pub price: u32,
+    /// SOW-034: per-charge restock cost when this card is a consumable product
+    /// batch (routes the buy through `buy_batch`); None for a one-time unlock
+    /// (Location/Cover/Insurance/Modifier), which just grants access.
+    pub restock_unit: Option<u32>,
 }
 
 /// SOW-024: Purchase button for a locked area ("THE BLOCK — $2,000").
@@ -429,13 +435,15 @@ pub struct ShopFeedbackText;
 // SOW-031: Suppliers & fronts
 // ============================================================================
 
-/// FRONT button on an unaffordable product card - take it on the zone
-/// supplier's credit (owed = price + vig, due on the run ticker)
+/// FRONT button on an unaffordable product card - take a BATCH on the zone
+/// supplier's credit (owed = batch_cost + vig, due on the run ticker). SOW-034:
+/// requires access to the product already (unlock is the cash+cred ladder).
 #[derive(Component)]
 pub struct FrontTakeButton {
     pub card_id: String,
     pub area_id: String,
-    pub price: u32,
+    /// The full batch cost the front is against (owed = front_owed(batch_cost))
+    pub batch_cost: u32,
 }
 
 /// PAY button wherever the debt is visible (shop supplier header)

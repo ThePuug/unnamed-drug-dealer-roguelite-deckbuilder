@@ -94,6 +94,21 @@ pub fn unlocked_area_ids<'a>(
         .collect()
 }
 
+/// SOW-034: per-charge restock cost of a product at a zone's margin.
+/// `product_price` is the Product card's BASE SALE price (its CardType price),
+/// NOT its one-time shop unlock price. The margin is the fraction of a base
+/// sale that a restock charge costs, so restock_unit stays below the sale it
+/// enables and no product runs underwater. Rounded to whole dollars.
+pub fn restock_unit(product_price: u32, margin: f32) -> u32 {
+    (product_price as f32 * margin).round() as u32
+}
+
+/// SOW-034: cash to buy or restock one full batch (BATCH_SIZE charges) of a
+/// product at a zone's margin.
+pub fn batch_cost(product_price: u32, margin: f32) -> u32 {
+    restock_unit(product_price, margin) * crate::save::BATCH_SIZE
+}
+
 // ============================================================================
 // TESTS
 // ============================================================================
@@ -160,6 +175,25 @@ mod tests {
     fn all_locked_rejected() {
         let areas = vec![area("suburbia", false, 2000)];
         assert!(validate_shop_locations(&areas).unwrap_err().contains("nowhere to operate"));
+    }
+
+    #[test]
+    fn restock_unit_rounds_and_stays_below_the_sale() {
+        // Margin < 1 keeps the per-charge cost under the base sale price,
+        // so a batch of 4 sales always clears a batch's cost (never underwater).
+        assert_eq!(restock_unit(30, 0.35), 11); // round(10.5) -> 11
+        assert_eq!(restock_unit(40, 0.35), 14); // round(14.0)
+        assert_eq!(restock_unit(80, 0.65), 52); // round(52.0)
+        // Every case: unit < price
+        for (price, margin) in [(30, 0.35), (40, 0.35), (120, 0.65)] {
+            assert!(restock_unit(price, margin) < price, "margin<1 must stay under sale");
+        }
+    }
+
+    #[test]
+    fn batch_cost_is_unit_times_batch_size() {
+        assert_eq!(batch_cost(30, 0.35), 11 * crate::save::BATCH_SIZE);
+        assert_eq!(batch_cost(80, 0.65), 52 * crate::save::BATCH_SIZE);
     }
 
     #[test]

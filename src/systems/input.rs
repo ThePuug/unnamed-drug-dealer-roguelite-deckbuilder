@@ -280,10 +280,12 @@ pub fn go_home_button_system(
     }
 
     if should_go_home {
-        // SOW-020: Capture unlocked cards before save_data is consumed
-        // (re-snapshotted below after tick_fronts - a repossession there
-        // changes ownership mid-flight)
-        let mut unlocked_cards = save_data
+        // SOW-020: Capture unlocked cards before save_data is consumed.
+        // SOW-034: tick_fronts no longer touches access (a soured front
+        // repossesses unsold STOCK, not the unlock), so this access snapshot
+        // is stable across the tick - the deck-carry filter below keys on
+        // access, and stock only gates committability at play time.
+        let unlocked_cards = save_data
             .as_ref()
             .map(|data| data.account.unlocked_cards.clone())
             .unwrap_or_else(|| crate::save::AccountState::starting_collection());
@@ -341,11 +343,6 @@ pub fn go_home_button_system(
                 }
             }
 
-            // SOW-031 review fix: tick_fronts may have REPOSSESSED a card -
-            // re-snapshot ownership after the tick so the DeckBuilder
-            // rebuild below can't resurrect it for the rest of the session
-            unlocked_cards = save_data.account.unlocked_cards.clone();
-
             if let Err(e) = save_manager.save(&save_data) {
                 bevy::log::warn!("Failed to save on go home: {:?}", e);
             }
@@ -359,9 +356,10 @@ pub fn go_home_button_system(
         // Collect all cards (hand + deck + played) back into deck
         player_cards.collect_all();
 
-        // SOW-031 review fix: the just-played deck goes through the same
-        // ownership filter - a repossessed card must not ride selected_cards
-        // back into the next run
+        // The just-played deck goes through the access filter so stale
+        // content can't ride selected_cards into the next run. SOW-034: an
+        // out-of-stock product is still ACCESSED, so it correctly stays in the
+        // deck (inert, drawable) - stock gates play, not deck membership.
         player_cards.deck.retain(|c| unlocked_cards.contains(&c.id));
 
         // SOW-020: Update DeckBuilder with unlocked cards filter

@@ -29,11 +29,12 @@ pub fn standing_label(standing: SupplierStanding) -> Option<&'static str> {
     }
 }
 
-/// The FRONT button's face: full cost + window BEFORE commit
-pub fn front_button_label(shop_price: u32) -> String {
+/// The FRONT button's face: full cost + window BEFORE commit. SOW-034: the
+/// front is against a BATCH, so `batch_cost` is the batch's cash price.
+pub fn front_button_label(batch_cost: u32) -> String {
     format!(
         "FRONT ${} · DUE {} RUNS",
-        crate::save::front_owed(shop_price),
+        crate::save::front_owed(batch_cost),
         FRONT_WINDOW_RUNS
     )
 }
