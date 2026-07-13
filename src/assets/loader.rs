@@ -944,6 +944,25 @@ mod tests {
                 "{name} should be Red Light stock"
             );
         }
+
+        // SOW-033 headline: EXACTLY 2 shop products per zone (6 total). The
+        // shelved premium tier (Acid/Ice/Heroin/Fentanyl) must carry no
+        // shop_location - re-hooking one would otherwise silently break the
+        // "2 products/zone" invariant while every other test stayed green.
+        // (Guards the gap the SOW-033 adversarial review caught: the 3-buyers
+        // /zone invariant was pinned above, the 2-products/zone one was not.)
+        for id in ["trailer_park", "suburbia", "red_light_district"] {
+            let count = products
+                .iter()
+                .filter(|c| c.shop_location.as_deref() == Some(id))
+                .count();
+            assert_eq!(count, 2, "zone {id} should stock exactly 2 products, has {count}");
+        }
+        let stocked = products.iter().filter(|c| c.shop_location.is_some()).count();
+        assert_eq!(
+            stocked, 6,
+            "only the 6 zone products should have a shop_location; a shelved product got re-hooked"
+        );
     }
 
     #[test]
