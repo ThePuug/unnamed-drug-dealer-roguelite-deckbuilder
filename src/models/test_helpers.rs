@@ -208,6 +208,7 @@ fn create_mock_buyer_persona() -> BuyerPersona {
 
     BuyerPersona {
         area: "trailer_park".to_string(),
+        portrait: String::new(),
         display_name: "Test Buyer".to_string(),
         demand: BuyerDemand {
             products: vec!["Weed".to_string()],

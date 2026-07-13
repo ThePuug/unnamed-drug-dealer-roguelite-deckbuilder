@@ -159,6 +159,7 @@ mod tests {
                 name: name.to_string(),
                 voice: "Trust me.".to_string(),
             }),
+            narc_portrait: None,
         }
     }
 

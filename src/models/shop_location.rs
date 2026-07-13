@@ -35,6 +35,10 @@ pub struct ShopLocationDef {
     /// SOW-031: who fronts this zone's stock
     #[serde(default)]
     pub supplier: Option<SupplierDef>,
+    /// SOW-033: per-area narc portrait filename under assets/art/actors/
+    /// ("narc-<slug>.png"). None falls back to "narc-default.png" at load.
+    #[serde(default)]
+    pub narc_portrait: Option<String>,
 }
 
 /// Load-time validation for the area list:
@@ -111,6 +115,7 @@ mod tests {
                 name: "Plug".to_string(),
                 voice: "First one rides on trust.".to_string(),
             }),
+            narc_portrait: None,
         }
     }
 

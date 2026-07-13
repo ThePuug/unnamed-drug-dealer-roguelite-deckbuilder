@@ -29,6 +29,7 @@ mod tests {
     fn persona(name: &str, area: &str) -> BuyerPersona {
         BuyerPersona {
             area: area.to_string(),
+            portrait: String::new(),
             display_name: name.to_string(),
             demand: BuyerDemand {
                 products: vec![],

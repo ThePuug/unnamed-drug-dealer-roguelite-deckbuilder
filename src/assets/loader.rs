@@ -76,8 +76,8 @@ fn load_game_assets(mut commands: Commands, asset_server: Res<AssetServer>, mut 
     // Load background images for locations
     load_background_images(&asset_server, &mut game_assets);
 
-    // Load actor portraits
-    load_actor_portraits(&asset_server, &mut game_assets);
+    // SOW-033: actor portraits load AFTER buyers + shop_locations (their
+    // `portrait` / `narc_portrait` RON fields drive the map) - see below.
 
     // Load card template
     game_assets.card_template = asset_server.load("art/card-template.png");
@@ -362,6 +362,11 @@ fn load_game_assets(mut commands: Commands, asset_server: Res<AssetServer>, mut 
             panic!("Critical asset loading failure - fix buyers.ron");
         }
     }
+
+    // SOW-033: portrait map is built from the loaded buyers' `portrait` and
+    // the areas' `narc_portrait` RON fields (plus the dealer pool). Runs here
+    // so both are populated; a missing mapped file panics loud.
+    load_actor_portraits(&asset_server, &mut game_assets);
 
     // SOW-026: the lean starting collection must still build a legal deck
     // (>=1 Product, >=1 Location) - fail loudly in debug, error in release.
@@ -711,44 +716,65 @@ fn load_background_images(asset_server: &AssetServer, game_assets: &mut GameAsse
     info!("Initiated loading of {} background images", count);
 }
 
-/// Load actor portrait images
+/// SOW-033: build the actor portrait map from RON (buyers.ron `portrait`,
+/// shop_locations.ron `narc_portrait`) plus the code-owned dealer hire pool.
+/// The hard-coded name->file HashMap is gone (art-backlog E3: new personas
+/// silently got no art). A mapped portrait whose file is missing on disk is a
+/// LOUD load error - Bevy's async asset_server.load would otherwise fail
+/// silently. Must be called AFTER buyers + shop_locations are loaded.
 fn load_actor_portraits(asset_server: &AssetServer, game_assets: &mut GameAssets) {
-    // Map of actor names to their portrait filenames
-    let portrait_files = HashMap::from([
-        ("Frat Bro", "frat-bro.png"),
-        ("Desperate Housewife", "desperate-housewife.png"),
-        ("Wall Street Wolf", "wall-street-wolf.png"),
-        ("Narc", "narc.png"),
-        ("Barista", "barista.png"),
-        ("Displaced Patriot", "displaced-patriot.png"),
-        ("Flower Child", "flower-child.png"),
-        ("Hells Angel", "hells-angel.png"),
-        ("Hippie", "hippie.png"),
-        ("Pimp", "pimp.png"),
-        ("Pretty Woman", "pretty-woman.png"),
-        ("Street Walker", "street-walker.png"),
-        ("Widow", "widow.png"),
-        // SOW-031 (Reed art drop): five dealer faces for the hire pool
-        ("Julie", "julie.png"),
-        ("Marcus", "marcus.png"),
-        ("Gladys", "gladys.png"),
-        ("Bubba", "bubba.png"),
-        ("Roxanne", "roxanne.png"),
-        // SOW-031: the no-chosen-face-yet placeholder (worn by the kingpin
-        // until character customization ships; generic by design)
-        ("Silhouette", "silhouette.png"),
-    ]);
+    // Runtime fallback narc face (also the Red Light District's authored art)
+    const NARC_DEFAULT: &str = "narc-default.png";
 
-    let mut count = 0;
-    for (actor_name, filename) in portrait_files.iter() {
-        count += 1;
-        let path = format!("art/actors/{}", filename);
-        let handle = asset_server.load(&path);
-        game_assets.actor_portraits.insert(actor_name.to_string(), handle);
-        info!("Loading actor portrait: {} -> {}", actor_name, path);
+    // (portrait-key, filename) pairs from every source; loaded through one
+    // path with a loud file-existence check.
+    let mut mapped: Vec<(String, String)> = Vec::new();
+
+    // Buyers: keyed by display_name (the render lookup), file from RON
+    for buyer in &game_assets.buyers {
+        assert!(
+            !buyer.portrait.trim().is_empty(),
+            "buyer '{}' has no portrait in buyers.ron (SOW-033/E3 requires one)",
+            buyer.display_name
+        );
+        mapped.push((buyer.display_name.clone(), buyer.portrait.clone()));
     }
 
-    info!("Initiated loading of {} actor portraits", count);
+    // Narcs: keyed by area id (ui_update looks up by the current run area),
+    // file from RON narc_portrait, else the shared default. A dedicated
+    // NARC_DEFAULT key backs the runtime fallback for any future area.
+    mapped.push((NARC_DEFAULT.to_string(), NARC_DEFAULT.to_string()));
+    for area in &game_assets.shop_locations {
+        let file = area
+            .narc_portrait
+            .clone()
+            .unwrap_or_else(|| NARC_DEFAULT.to_string());
+        mapped.push((area.id.clone(), file));
+    }
+
+    // Dealer hire-pool faces + the kingpin placeholder. Code-owned pool;
+    // filenames track the SOW-033 dealer-<slug>.png renames.
+    mapped.push(("Silhouette".to_string(), "silhouette.png".to_string()));
+    for key in crate::save::DEALER_PORTRAIT_POOL {
+        let slug = key.to_lowercase().replace(' ', "-");
+        mapped.push((key.to_string(), format!("dealer-{slug}.png")));
+    }
+
+    for (key, filename) in mapped {
+        let disk_path = format!("assets/art/actors/{filename}");
+        assert!(
+            std::path::Path::new(&disk_path).exists(),
+            "actor portrait '{key}' -> '{filename}' not found at {disk_path} \
+             (SOW-033/E3: a mapped portrait must exist on disk)"
+        );
+        let handle = asset_server.load(format!("art/actors/{filename}"));
+        game_assets.actor_portraits.insert(key, handle);
+    }
+
+    info!(
+        "Loaded {} actor portraits (RON-mapped buyers/narcs + dealer pool)",
+        game_assets.actor_portraits.len()
+    );
 }
 
 #[cfg(test)]
@@ -759,6 +785,7 @@ mod tests {
     fn test_buyer(scenario_products: Vec<&str>, scenario_locations: Vec<&str>) -> BuyerPersona {
         BuyerPersona {
             area: "trailer_park".to_string(),
+            portrait: String::new(),
             display_name: "Test Buyer".to_string(),
             demand: BuyerDemand {
                 products: vec!["Weed".to_string()],
@@ -826,6 +853,7 @@ mod tests {
             identity: "CRAFT".to_string(),
             narc_hint: "eyes".to_string(),
             supplier: None,
+            narc_portrait: None,
         };
 
         // OK: one area, one persona living there (test_buyer defaults to trailer_park)
@@ -1038,6 +1066,7 @@ mod tests {
                 identity: "CRAFT".to_string(),
                 narc_hint: "eyes".to_string(),
                 supplier: None,
+                narc_portrait: None,
             },
             crate::models::shop_location::ShopLocationDef {
                 id: "suburbia".to_string(),
@@ -1048,6 +1077,7 @@ mod tests {
                 identity: "CRAFT".to_string(),
                 narc_hint: "eyes".to_string(),
                 supplier: None,
+                narc_portrait: None,
             },
         ];
         // Corner buyer demanding a Block-gated product = dead payout -> warn

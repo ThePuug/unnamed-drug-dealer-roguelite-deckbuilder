@@ -37,6 +37,12 @@ pub struct BuyerPersona {
     /// SOW-024: home territory - personas are drawn only for runs in their area
     #[serde(default = "default_persona_area")]
     pub area: String,
+    /// SOW-033: portrait filename under assets/art/actors/ ("buyer-<slug>.png").
+    /// Authored in buyers.ron (no longer a hard-coded map in loader.rs); a
+    /// missing mapped file is a loud load error. Defaults empty for test
+    /// fixtures that never load portraits.
+    #[serde(default)]
+    pub portrait: String,
     pub base_multiplier: f32,                // ×1.0 to ×3.0 range (when demand met)
     pub reduced_multiplier: f32,             // When demand not met (typically ×1.0)
     pub evidence_threshold: Option<u32>,     // Buyer bails if Evidence exceeds (None = never bails)

@@ -251,6 +251,7 @@ mod tests {
     fn persona(name: &str, area: &str, mult: f32) -> BuyerPersona {
         BuyerPersona {
             area: area.to_string(),
+            portrait: String::new(),
             display_name: name.to_string(),
             demand: BuyerDemand {
                 products: vec![],
@@ -292,6 +293,7 @@ mod tests {
                 name: "Plug".to_string(),
                 voice: "Trust me.".to_string(),
             }),
+            narc_portrait: None,
         }
     }
 

@@ -1074,16 +1074,16 @@ pub const DEALER_NAME_POOL: [&str; 12] = [
 ];
 
 /// Actor portraits available as dealer faces (keys into
-/// GameAssets.actor_portraits). Excludes the narc and every buyer persona -
-/// SOW-028 promoted the Pimp to the Strip's clientele, so his face left the
-/// pool (E1, art-backlog): a hire must never wear a buyer's face.
-/// SOW-031 (Reed art drop): five new faces appended - 13 faces >= 12 names,
-/// so hires no longer wrap/duplicate faces until roster 14. Appended, not
+/// GameAssets.actor_portraits; the loader loads each as "dealer-<key>.png").
+/// Excludes the narc and every buyer persona - a hire must never wear a
+/// buyer's face. SOW-033 repurposed the old character faces (Hells Angel,
+/// Hippie, Flower Child, Pretty Woman, Street Walker, Widow, Displaced
+/// Patriot) as BUYER portraits, so they left the pool; six dedicated dealer
+/// faces remain. Fewer faces than names (6 < 12) means hires past the sixth
+/// reuse a face until Reed drops more dealer art (art-backlog). Appended, not
 /// reordered: recruit() is deterministic by pool order.
-pub const DEALER_PORTRAIT_POOL: [&str; 13] = [
-    "Barista", "Displaced Patriot", "Flower Child", "Hells Angel", "Hippie",
-    "Pretty Woman", "Street Walker", "Widow",
-    "Julie", "Marcus", "Gladys", "Bubba", "Roxanne",
+pub const DEALER_PORTRAIT_POOL: [&str; 6] = [
+    "Barista", "Julie", "Marcus", "Gladys", "Bubba", "Roxanne",
 ];
 
 /// Whether a dealer can be sent out on a run
