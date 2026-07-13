@@ -162,7 +162,7 @@ pub fn signature_status(area: &ShopLocationDef, save: &SaveData) -> SignatureSta
     let Some(sig) = &area.signature_dealer else {
         return SignatureStatus::Unavailable;
     };
-    let unlocked = area.unlocked || save.account.unlocked_locations.contains(&area.id);
+    let unlocked = save.account.unlocked_locations.contains(&area.id);
     if !unlocked {
         return SignatureStatus::Unavailable;
     }
@@ -623,6 +623,19 @@ mod tests {
             signature_status(&locked, &save_with_cash(100_000)),
             SignatureStatus::Unavailable
         );
+    }
+
+    #[test]
+    fn signature_unavailable_when_flagged_unlocked_but_not_in_account_set() {
+        // SOW-036 review finding #1: signature_status must mirror the model guard
+        // (hire_signature_dealer), which keys off the account's unlocked_locations
+        // set alone - NOT the def's `unlocked` flag. A zone flagged unlocked:true
+        // that the account has not actually unlocked must offer no hire the model
+        // would refuse. (Fresh save unlocks only trailer_park.)
+        let flagged = area("suburbia", true, 0);
+        let save = save_with_cash(100_000);
+        assert!(!save.account.unlocked_locations.contains("suburbia"));
+        assert_eq!(signature_status(&flagged, &save), SignatureStatus::Unavailable);
     }
 
     #[test]

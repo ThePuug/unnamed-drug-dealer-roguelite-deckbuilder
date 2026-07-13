@@ -2,7 +2,7 @@
 
 ## Status
 
-**In Progress** - 2026-07-13
+**Complete** - 2026-07-13 (adversarial review: safe to merge; live boot verified)
 
 ## References
 
@@ -183,22 +183,53 @@ done.
 `actor_portraits[key]`). `load_actor_portraits` maps `key -> dealer-<slug>.png`,
 so the loud disk-existence check and the render both resolve it.
 
-### OPEN QUESTION (Reed to decide - not acted on here): retire generic hiring?
+### RESOLVED (Reed, 2026-07-13): retire the generic hire pool entirely
 
 Face scarcity: 3 of 4 dealer faces are now reserved for signatures, so generic
-hiring is effectively Gladys-only. Options: retire generic hiring entirely (the
-roster-panel HIRE button), or add more dealer faces so generic hiring keeps
-variety. Left as-is for now (generic `hire_dealer()` + roster HIRE button
-unchanged, pool = `[Gladys]`). Reed to decide.
+hiring is effectively Gladys-only. Options considered: retire generic hiring
+entirely (the roster-panel HIRE button), or add more dealer faces so generic
+hiring keeps variety.
+
+**Decision:** RETIRE the generic hire pool entirely. Signature-per-zone becomes
+the only hire path - you hire a named face AT a zone you operate, and that is the
+whole hiring model. This is scheduled on the product roadmap as a follow-up SOW
+(see `docs/00-spec/product-roadmap.md`), so SOW-036 ships **as-is** with its
+transitional Gladys-only generic pool still present; the follow-up SOW removes
+the generic `hire_dealer()` path and roster-panel HIRE button. No further change
+in this SOW.
 
 ---
 
 ## Acceptance Review
 
-*Populated by ARCHITECT after implementation.*
+**Adversarial review verdict (2026-07-13): SAFE TO MERGE.** No blocker or major
+findings.
+
+- **Finding #1 (minor, applied at closeout):** `signature_status`
+  (`src/ui/map_view.rs`) computed `unlocked = area.unlocked ||
+  account.unlocked_locations.contains(id)`, a broader check than the model guard
+  `hire_signature_dealer`, which keys off `unlocked_locations` alone. A zone
+  flagged `unlocked: true` but absent from the account set would have advertised
+  a HIRE the model would refuse. Tightened to
+  `unlocked = account.unlocked_locations.contains(&area.id)` so the button and
+  the guard agree, with a regression test asserting a `unlocked:true`-but-absent
+  zone yields `Unavailable`. (`zone_status`, which feeds the UNLOCK button, keeps
+  its intentionally broader check.)
+- **Two nits accepted, not changed:** they match established button patterns
+  (`ShopAreaUnlockButton` / `RosterMoveButton`) already in the codebase; changing
+  them would diverge from the house style for no functional gain.
+
+**Live boot smoke (2026-07-13):** confirmed the P0 Pimp-reaction-deck boot fix
+boots cleanly (the alley dropped to 7 cards) and the signature-dealer map UI
+renders (HIRE `<NAME>` action on unlocked zone nodes).
 
 ---
 
 ## Conclusion
 
-*Populated at closeout.*
+Shipped as specified across all three phases: content model + face reservation,
+guarded `hire_signature_dealer` (SAVE_VERSION 8 -> 9), and the map HIRE button
+driven by the pure `signature_status` view-model. Generic hiring is left intact
+but transitional (Gladys-only pool); its full retirement is scheduled as a
+follow-up SOW per the RESOLVED open question above. Adversarial review: safe to
+merge, one minor finding applied at closeout. Live boot verified.
