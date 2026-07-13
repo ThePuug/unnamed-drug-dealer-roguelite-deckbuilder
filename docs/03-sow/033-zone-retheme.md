@@ -181,8 +181,9 @@ warnings on build AND test.
 Establish the `<role>-<slug>.png` naming template, **move the hard-coded
 portrait map out of `loader.rs` into RON** (pays down art-backlog E3),
 rename the actor files to the template, wire the 6 new buyer portraits,
-and add **per-area narc art** (the new `narc-trailer-park.png` drop; other
-zones fall back to `narc-default.png` until Reed drops their art).
+and add **per-area narc art** — all three zones ship distinct narc art
+(`narc-trailer-park.png`, `narc-suburbia.png`, and the original narc as
+`narc-default.png` for Red Light + future-zone fallback).
 **Exit criteria:** portraits load from RON; a missing mapped file is a
 **loud** load error (not a silent fallback); build + tests green.
 
@@ -355,7 +356,8 @@ path only; NEVER touch `ui-concept.png` or `style-reference/`)
 | *(spare buyer art)* | `buyer-displaced-patriot.png` | `displaced-patriot.png` |
 | Julie/Marcus/Gladys/Bubba/Roxanne/Barista | `dealer-<name>.png` | `<name>.png` |
 | Narc (Trailer Park) | `narc-trailer-park.png` | *(done)* |
-| Narc (default/fallback) | `narc-default.png` | `narc.png` |
+| Narc (Suburbia) | `narc-suburbia.png` | `Gemini_Generated_Image_kdfdxmkdfdxmkdfd_256w_nobg.png` |
+| Narc (Red Light / default fallback) | `narc-default.png` | `narc.png` |
 | Player placeholder | `silhouette.png` | *(unchanged)* |
 
 *Art→persona assignments are Reed's aesthetic call and explicitly
@@ -365,8 +367,11 @@ path only; NEVER touch `ui-concept.png` or `style-reference/`)
 
 - **`buyers.ron`:** add `portrait: "buyer-<slug>.png"` to every persona.
 - **`shop_locations.ron`:** add `narc_portrait: Option<String>` per area
-  — `trailer_park` → `"narc-trailer-park.png"`; `suburbia` /
-  `red_light_district` → `None` (loader substitutes `narc-default.png`).
+  — `trailer_park` → `"narc-trailer-park.png"`; `suburbia` →
+  `"narc-suburbia.png"`; `red_light_district` → `"narc-default.png"` (the
+  original narc art, kept as the fallback for any future zone). All three
+  zones now ship explicit narc art; `None` still falls back to
+  `narc-default.png` for zones authored later.
 - **Dealer pool** (`DEALER_PORTRAIT_POOL`, `src/save/types.rs`): update
   the filenames to `dealer-*.png` (moving the pool wholesale to RON is a
   nice-to-have; at minimum the filenames must track the renames).
@@ -388,8 +393,6 @@ path only; NEVER touch `ui-concept.png` or `style-reference/`)
 
 ### Art backlog follow-ups (log at closeout, ship on placeholder)
 
-- `narc-suburbia.png`, `narc-red-light-district.png` (fall back to
-  `narc-default.png`).
 - `buyer-club-kid.png` real art (using `pretty-woman.png` as placeholder).
 - The `at_the_park` / `abandoned_warehouse` re-skin flags from §2.
 

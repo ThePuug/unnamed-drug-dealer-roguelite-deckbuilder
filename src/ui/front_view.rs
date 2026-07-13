@@ -177,7 +177,7 @@ mod tests {
 
     #[test]
     fn due_line_pluralizes_runs() {
-        let mut save = save_with_front("the_corner", 625, 2);
+        let mut save = save_with_front("trailer_park", 625, 2);
         assert_eq!(due_line(&save.fronts[0]), "DUE IN 2 RUNS — $625");
         save.fronts[0].runs_remaining = 1;
         assert_eq!(due_line(&save.fronts[0]), "DUE IN 1 RUN — $625");
@@ -193,7 +193,7 @@ mod tests {
     #[test]
     fn header_quiet_while_good_with_no_front() {
         let save = SaveData::new();
-        let h = supplier_header(&area("the_corner", true, Some("Lil Smoke")), &save).unwrap();
+        let h = supplier_header(&area("trailer_park", true, Some("Lil Smoke")), &save).unwrap();
         assert_eq!(h.name_line, "SUPPLIER: LIL SMOKE");
         assert_eq!(h.voice_line, "\u{201c}Trust me.\u{201d}");
         assert!(h.status_line.is_none());
@@ -203,8 +203,8 @@ mod tests {
 
     #[test]
     fn header_shows_due_and_pay_while_fronted() {
-        let save = save_with_front("the_corner", 125, 3);
-        let h = supplier_header(&area("the_corner", true, Some("Lil Smoke")), &save).unwrap();
+        let save = save_with_front("trailer_park", 125, 3);
+        let h = supplier_header(&area("trailer_park", true, Some("Lil Smoke")), &save).unwrap();
         assert_eq!(h.status_line.as_deref(), Some("DUE IN 3 RUNS — $125"));
         assert_eq!(h.payable, Some(125));
         assert!(!h.urgent);
@@ -212,14 +212,14 @@ mod tests {
 
     #[test]
     fn header_urgent_at_one_run_or_bad_standing() {
-        let save = save_with_front("the_corner", 125, 1);
-        let h = supplier_header(&area("the_corner", true, Some("Lil Smoke")), &save).unwrap();
+        let save = save_with_front("trailer_park", 125, 1);
+        let h = supplier_header(&area("trailer_park", true, Some("Lil Smoke")), &save).unwrap();
         assert!(h.urgent);
 
-        let mut save = save_with_front("the_corner", 125, 4);
+        let mut save = save_with_front("trailer_park", 125, 4);
         save.supplier_standing
-            .insert("the_corner".to_string(), SupplierStanding::CutOff);
-        let h = supplier_header(&area("the_corner", true, Some("Lil Smoke")), &save).unwrap();
+            .insert("trailer_park".to_string(), SupplierStanding::CutOff);
+        let h = supplier_header(&area("trailer_park", true, Some("Lil Smoke")), &save).unwrap();
         assert!(h.urgent);
         assert_eq!(
             h.status_line.as_deref(),
@@ -231,8 +231,8 @@ mod tests {
     fn header_soured_reads_cash_only() {
         let mut save = SaveData::new();
         save.supplier_standing
-            .insert("the_corner".to_string(), SupplierStanding::Soured);
-        let h = supplier_header(&area("the_corner", true, Some("Lil Smoke")), &save).unwrap();
+            .insert("trailer_park".to_string(), SupplierStanding::Soured);
+        let h = supplier_header(&area("trailer_park", true, Some("Lil Smoke")), &save).unwrap();
         assert_eq!(
             h.status_line.as_deref(),
             Some("SOURED — cash only, no more fronts")
@@ -247,18 +247,18 @@ mod tests {
     fn map_line_name_only_while_locked() {
         let save = SaveData::new();
         assert_eq!(
-            supplier_map_line(&area("the_strip", false, Some("Miss Velvet")), &save).as_deref(),
+            supplier_map_line(&area("red_light_district", false, Some("Miss Velvet")), &save).as_deref(),
             Some("SUPPLIER: MISS VELVET")
         );
     }
 
     #[test]
     fn map_line_appends_standing_and_due() {
-        let mut save = save_with_front("the_corner", 125, 2);
+        let mut save = save_with_front("trailer_park", 125, 2);
         save.supplier_standing
-            .insert("the_corner".to_string(), SupplierStanding::CutOff);
+            .insert("trailer_park".to_string(), SupplierStanding::CutOff);
         assert_eq!(
-            supplier_map_line(&area("the_corner", true, Some("Lil Smoke")), &save).as_deref(),
+            supplier_map_line(&area("trailer_park", true, Some("Lil Smoke")), &save).as_deref(),
             Some("SUPPLIER: LIL SMOKE · CUT OFF · DUE IN 2 RUNS — $125")
         );
     }
@@ -266,7 +266,7 @@ mod tests {
     #[test]
     fn map_line_none_without_supplier() {
         let save = SaveData::new();
-        assert!(supplier_map_line(&area("the_corner", true, None), &save).is_none());
+        assert!(supplier_map_line(&area("trailer_park", true, None), &save).is_none());
     }
 
     // -- hub pressure --
@@ -274,22 +274,22 @@ mod tests {
     #[test]
     fn pressure_absent_with_clean_books() {
         let save = SaveData::new();
-        assert!(pressure_line(&save, &[area("the_corner", true, Some("Lil Smoke"))]).is_none());
+        assert!(pressure_line(&save, &[area("trailer_park", true, Some("Lil Smoke"))]).is_none());
         assert!(!pressure_urgent(&save));
     }
 
     #[test]
     fn pressure_names_the_most_urgent_supplier() {
-        let mut save = save_with_front("the_corner", 125, 3);
+        let mut save = save_with_front("trailer_park", 125, 3);
         save.fronts.push(FrontState {
             card_id: "ecstasy".to_string(),
-            area_id: "the_strip".to_string(),
+            area_id: "red_light_district".to_string(),
             owed: 2000,
             runs_remaining: 1,
         });
         let areas = [
-            area("the_corner", true, Some("Lil Smoke")),
-            area("the_strip", true, Some("Miss Velvet")),
+            area("trailer_park", true, Some("Lil Smoke")),
+            area("red_light_district", true, Some("Miss Velvet")),
         ];
         assert_eq!(
             pressure_line(&save, &areas).as_deref(),

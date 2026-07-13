@@ -23,7 +23,7 @@ impl ShopState {
     pub fn new() -> Self {
         Self {
             viewing_shop: false,
-            selected_location: "the_corner".to_string(),
+            selected_location: "trailer_park".to_string(),
         }
     }
 }

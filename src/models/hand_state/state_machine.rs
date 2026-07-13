@@ -579,9 +579,9 @@ mod tests {
             player_cards.deck.push(create_product(&format!("P{i}"), 50, 5));
         }
 
-        hand_state.run_area = "the_block".to_string();
+        hand_state.run_area = "suburbia".to_string();
         hand_state.start_next_hand();
-        assert_eq!(hand_state.run_area, "the_block");
+        assert_eq!(hand_state.run_area, "suburbia");
     }
 
     #[test]

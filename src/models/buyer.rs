@@ -26,7 +26,7 @@ pub struct BuyerScenario {
 
 /// SOW-024: fresh-empire home turf is every persona's default area
 fn default_persona_area() -> String {
-    "the_corner".to_string()
+    "trailer_park".to_string()
 }
 
 /// Buyer persona - merges Dealer scenario deck + Customer modifiers into one entity

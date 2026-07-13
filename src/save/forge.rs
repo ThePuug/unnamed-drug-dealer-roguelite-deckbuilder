@@ -47,18 +47,19 @@ pub fn scenario(name: &str) -> Option<SaveData> {
             save.account.cash_on_hand = 500;
             save.dealers[0].character.heat = 90;
         }
-        // SOW-024: enough cash to buy The Block ($2,000), which starts locked
+        // SOW-024: enough cash to buy Suburbia ($1,200), which starts locked
         "mogul" => {
             save.account.cash_on_hand = 3000;
             save.dealers[0].character.heat = 20;
         }
-        // SOW-025: stationing/cred demo - kingpin repped-up on the Corner
-        // (4 cred: clears Storage Unit's 3), a hired dealer stationed in the
-        // already-unlocked Block with 2 cred (Heroin's 5 stays locked),
-        // and $1,500 to afford the Storage Unit purchase or a move+change
+        // SOW-025: stationing/cred demo - kingpin repped-up in Trailer Park
+        // (4 cred), a hired dealer stationed in the unlocked Suburbia with 2
+        // cred (clears Codeine/Xanax there; Red Light's Coke stays out of
+        // reach), and $1,500 to afford a Suburbia buy or a move+change
+        // (SOW-033: Storage Unit re-homed to Suburbia; Heroin shelved)
         "hustler" => {
             save.account.cash_on_hand = 1500;
-            save.account.unlocked_locations.insert("the_block".to_string());
+            save.account.unlocked_locations.insert("suburbia".to_string());
             save.dealers[0].character.heat = 10;
             for _ in 0..4 {
                 save.dealers[0].add_cred(DEFAULT_STATION);
@@ -66,23 +67,23 @@ pub fn scenario(name: &str) -> Option<SaveData> {
 
             let mut ray = DealerState::recruit(&save.dealers);
             ray.name = "Ray".to_string();
-            ray.station = "the_block".to_string();
+            ray.station = "suburbia".to_string();
             ray.character.heat = 30;
             for _ in 0..2 {
-                ray.add_cred("the_block");
+                ray.add_cred("suburbia");
             }
             save.dealers.push(ray);
         }
-        // SOW-028: Strip pacing/e2e - kingpin stationed on the Strip with
-        // entry cred, both expansion zones unlocked, mid-game wallet
+        // SOW-033: Red Light pacing/e2e - kingpin stationed in the Red Light
+        // District with entry cred, both expansion zones unlocked, mid-game wallet
         "nightowl" => {
             save.account.cash_on_hand = 2500;
-            save.account.unlocked_locations.insert("the_strip".to_string());
-            save.account.unlocked_locations.insert("the_block".to_string());
-            save.dealers[0].station = "the_strip".to_string();
+            save.account.unlocked_locations.insert("red_light_district".to_string());
+            save.account.unlocked_locations.insert("suburbia".to_string());
+            save.dealers[0].station = "red_light_district".to_string();
             save.dealers[0].character.heat = 20;
             for _ in 0..2 {
-                save.dealers[0].add_cred("the_strip");
+                save.dealers[0].add_cred("red_light_district");
             }
         }
         // SOW-030: ledger e2e - an empire with history. Two fallen empires
@@ -91,7 +92,7 @@ pub fn scenario(name: &str) -> Option<SaveData> {
         "legacy" => {
             save.account.cash_on_hand = 800;
             save.account.lifetime_revenue = 2000;
-            save.account.unlocked_locations.insert("the_strip".to_string());
+            save.account.unlocked_locations.insert("red_light_district".to_string());
             save.dealers[0].character.heat = 35;
             save.dealers[0].character.decks_played = 6;
             for _ in 0..3 {
@@ -105,12 +106,12 @@ pub fn scenario(name: &str) -> Option<SaveData> {
 
             let mut ray = DealerState::recruit(&save.dealers);
             ray.name = "Ray".to_string();
-            ray.station = "the_strip".to_string();
+            ray.station = "red_light_district".to_string();
             ray.character.heat = 55;
             ray.character.decks_played = 3;
             ray.prior_convictions = 1;
             for _ in 0..2 {
-                ray.add_cred("the_strip");
+                ray.add_cred("red_light_district");
             }
             ray.character.story_history.push(
                 "Ray worked the velvet rope like he owned the club.".to_string(),
@@ -143,7 +144,7 @@ pub fn scenario(name: &str) -> Option<SaveData> {
         }
         // SOW-031: a live front mid-window - Shrooms on Lil Smoke's credit
         // ($125 owed, 3 of 4 runs left), $60 cash (can pay after ~1 deal),
-        // 1 Corner cred (Shrooms' gate was already cleared to front it)
+        // 1 Trailer Park cred (Shrooms' gate was already cleared to front it)
         "fronted" => {
             save.account.cash_on_hand = 60;
             save.dealers[0].add_cred(DEFAULT_STATION);
@@ -153,7 +154,7 @@ pub fn scenario(name: &str) -> Option<SaveData> {
         }
         // SOW-031: the muscle is one run out - CutOff standing, $40 cash
         // (seizure = $8), front expires on the next completed run. Also
-        // demonstrates the stock lock on the Corner shop tab.
+        // demonstrates the stock lock on the Trailer Park shop tab.
         "strapped" => {
             save.account.cash_on_hand = 40;
             save.dealers[0].add_cred(DEFAULT_STATION);
@@ -234,18 +235,18 @@ mod tests {
         let save = scenario("hustler").unwrap();
         assert_eq!(save.dealers.len(), 2);
         assert_eq!(save.dealers[0].cred_in(DEFAULT_STATION), 4); // clears Storage Unit's 3
-        assert_eq!(save.dealers[1].station, "the_block");
-        assert_eq!(save.dealers[1].cred_in("the_block"), 2); // Heroin's 5 stays locked
-        assert!(save.account.unlocked_locations.contains("the_block"));
+        assert_eq!(save.dealers[1].station, "suburbia");
+        assert_eq!(save.dealers[1].cred_in("suburbia"), 2); // Heroin's 5 stays locked
+        assert!(save.account.unlocked_locations.contains("suburbia"));
     }
 
     #[test]
     fn nightowl_scenario_shape() {
         let save = scenario("nightowl").unwrap();
-        assert_eq!(save.dealers[0].station, "the_strip");
-        assert_eq!(save.dealers[0].cred_in("the_strip"), 2);
-        assert!(save.account.unlocked_locations.contains("the_strip"));
-        assert!(save.account.unlocked_locations.contains("the_block"));
+        assert_eq!(save.dealers[0].station, "red_light_district");
+        assert_eq!(save.dealers[0].cred_in("red_light_district"), 2);
+        assert!(save.account.unlocked_locations.contains("red_light_district"));
+        assert!(save.account.unlocked_locations.contains("suburbia"));
     }
 
     #[test]

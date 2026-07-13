@@ -116,59 +116,59 @@ mod tests {
 
     #[test]
     fn valid_area_list_passes() {
-        let areas = vec![area("the_corner", true, 0), area("the_block", false, 2000)];
+        let areas = vec![area("trailer_park", true, 0), area("suburbia", false, 2000)];
         assert!(validate_shop_locations(&areas).is_ok());
     }
 
     #[test]
     fn missing_flavor_or_supplier_rejected() {
-        let mut no_identity = area("the_corner", true, 0);
+        let mut no_identity = area("trailer_park", true, 0);
         no_identity.identity = String::new();
         assert!(validate_shop_locations(&[no_identity]).unwrap_err().contains("identity"));
 
-        let mut no_hint = area("the_corner", true, 0);
+        let mut no_hint = area("trailer_park", true, 0);
         no_hint.narc_hint = "  ".to_string();
         assert!(validate_shop_locations(&[no_hint]).unwrap_err().contains("narc_hint"));
 
-        let mut no_supplier = area("the_corner", true, 0);
+        let mut no_supplier = area("trailer_park", true, 0);
         no_supplier.supplier = None;
         assert!(validate_shop_locations(&[no_supplier]).unwrap_err().contains("supplier"));
 
-        let mut mute_supplier = area("the_corner", true, 0);
+        let mut mute_supplier = area("trailer_park", true, 0);
         mute_supplier.supplier = Some(SupplierDef { name: "Plug".to_string(), voice: String::new() });
         assert!(validate_shop_locations(&[mute_supplier]).unwrap_err().contains("voice"));
     }
 
     #[test]
     fn duplicate_ids_rejected() {
-        let areas = vec![area("the_corner", true, 0), area("the_corner", false, 100)];
+        let areas = vec![area("trailer_park", true, 0), area("trailer_park", false, 100)];
         assert!(validate_shop_locations(&areas).unwrap_err().contains("duplicate"));
     }
 
     #[test]
     fn locked_area_without_price_rejected() {
-        let areas = vec![area("the_corner", true, 0), area("the_block", false, 0)];
+        let areas = vec![area("trailer_park", true, 0), area("suburbia", false, 0)];
         assert!(validate_shop_locations(&areas).unwrap_err().contains("no price"));
     }
 
     #[test]
     fn all_locked_rejected() {
-        let areas = vec![area("the_block", false, 2000)];
+        let areas = vec![area("suburbia", false, 2000)];
         assert!(validate_shop_locations(&areas).unwrap_err().contains("nowhere to operate"));
     }
 
     #[test]
     fn unlocked_area_ids_filters_and_preserves_order() {
         let areas = vec![
-            area("the_corner", true, 0),
-            area("the_block", false, 2000),
+            area("trailer_park", true, 0),
+            area("suburbia", false, 2000),
             area("downtown", false, 5000),
         ];
         let mut unlocked = std::collections::HashSet::new();
-        unlocked.insert("the_corner".to_string());
-        assert_eq!(unlocked_area_ids(&areas, &unlocked), vec!["the_corner"]);
+        unlocked.insert("trailer_park".to_string());
+        assert_eq!(unlocked_area_ids(&areas, &unlocked), vec!["trailer_park"]);
 
         unlocked.insert("downtown".to_string());
-        assert_eq!(unlocked_area_ids(&areas, &unlocked), vec!["the_corner", "downtown"]);
+        assert_eq!(unlocked_area_ids(&areas, &unlocked), vec!["trailer_park", "downtown"]);
     }
 }

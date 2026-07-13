@@ -296,7 +296,7 @@ mod tests {
     }
 
     /// SaveData::new() starts with the kingpin at the default station
-    /// (the_corner); tests extend from there.
+    /// (trailer_park); tests extend from there.
     fn save_with_cash(cash: u64) -> SaveData {
         let mut save = SaveData::new();
         save.account.cash_on_hand = cash;
@@ -308,24 +308,24 @@ mod tests {
     #[test]
     fn unlocked_area_reports_unlocked() {
         let save = save_with_cash(0);
-        assert_eq!(zone_status(&area("the_corner", true, 0), &save), ZoneStatus::Unlocked);
+        assert_eq!(zone_status(&area("trailer_park", true, 0), &save), ZoneStatus::Unlocked);
     }
 
     #[test]
     fn purchased_area_reports_unlocked() {
         let mut save = save_with_cash(5000);
         save.account
-            .purchase_location("the_strip", 1200)
+            .purchase_location("red_light_district", 1200)
             .expect("purchase");
         assert_eq!(
-            zone_status(&area("the_strip", false, 1200), &save),
+            zone_status(&area("red_light_district", false, 1200), &save),
             ZoneStatus::Unlocked
         );
     }
 
     #[test]
     fn locked_area_affordability_tracks_cash() {
-        let strip = area("the_strip", false, 1200);
+        let strip = area("red_light_district", false, 1200);
         assert_eq!(
             zone_status(&strip, &save_with_cash(1199)),
             ZoneStatus::Locked { price: 1200, affordable: false }
@@ -341,26 +341,26 @@ mod tests {
     #[test]
     fn clientele_lines_filter_by_area_and_format_multiplier() {
         let personas = vec![
-            persona("Frat Bro", "the_corner", 2.5),
-            persona("Wolf", "the_block", 2.8),
+            persona("Frat Bro", "trailer_park", 2.5),
+            persona("Wolf", "suburbia", 2.8),
         ];
-        assert_eq!(clientele_lines(&personas, "the_corner"), vec!["Frat Bro ×2.5"]);
-        assert_eq!(clientele_lines(&personas, "the_block"), vec!["Wolf ×2.8"]);
+        assert_eq!(clientele_lines(&personas, "trailer_park"), vec!["Frat Bro ×2.5"]);
+        assert_eq!(clientele_lines(&personas, "suburbia"), vec!["Wolf ×2.8"]);
     }
 
     #[test]
     fn payout_band_spans_min_to_max() {
         let personas = vec![
-            persona("Housewife", "the_block", 1.5),
-            persona("Wolf", "the_block", 2.8),
+            persona("Housewife", "suburbia", 1.5),
+            persona("Wolf", "suburbia", 2.8),
         ];
-        assert_eq!(payout_band(&personas, "the_block"), Some("×1.5–×2.8".to_string()));
+        assert_eq!(payout_band(&personas, "suburbia"), Some("×1.5–×2.8".to_string()));
     }
 
     #[test]
     fn payout_band_collapses_when_flat_and_none_when_empty() {
-        let personas = vec![persona("Pimp", "the_strip", 2.0)];
-        assert_eq!(payout_band(&personas, "the_strip"), Some("×2.0".to_string()));
+        let personas = vec![persona("Pimp", "red_light_district", 2.0)];
+        assert_eq!(payout_band(&personas, "red_light_district"), Some("×2.0".to_string()));
         assert_eq!(payout_band(&personas, "nowhere"), None);
     }
 
@@ -369,22 +369,22 @@ mod tests {
     #[test]
     fn native_products_sorted_cheapest_first() {
         let cards = vec![
-            product("Acid", "the_corner", 400),
-            product("Weed", "the_corner", 0),
-            product("Shrooms", "the_corner", 100),
-            product("Coke", "the_block", 5000),
+            product("Acid", "trailer_park", 400),
+            product("Weed", "trailer_park", 0),
+            product("Shrooms", "trailer_park", 100),
+            product("Coke", "suburbia", 5000),
         ];
         assert_eq!(
-            native_products(cards.iter(), "the_corner"),
+            native_products(cards.iter(), "trailer_park"),
             vec!["Weed", "Shrooms", "Acid"]
         );
     }
 
     #[test]
     fn native_products_ignores_unstocked_cards() {
-        let mut unstocked = product("Mystery", "the_corner", 0);
+        let mut unstocked = product("Mystery", "trailer_park", 0);
         unstocked.shop_location = None;
-        assert!(native_products([unstocked].iter(), "the_corner").is_empty());
+        assert!(native_products([unstocked].iter(), "trailer_park").is_empty());
     }
 
     // -- dealer chips --
@@ -393,21 +393,21 @@ mod tests {
     fn chips_only_for_dealers_stationed_in_area() {
         let mut save = save_with_cash(10_000);
         save.hire_dealer();
-        save.dealers[1].station = "the_block".to_string();
-        let corner = dealer_chips(&save, "the_corner");
+        save.dealers[1].station = "suburbia".to_string();
+        let corner = dealer_chips(&save, "trailer_park");
         assert_eq!(corner.len(), 1);
         assert_eq!(corner[0].name, "The Kingpin");
-        assert_eq!(dealer_chips(&save, "the_block").len(), 1);
+        assert_eq!(dealer_chips(&save, "suburbia").len(), 1);
     }
 
     #[test]
     fn best_cred_marker_matches_roster_best() {
         let mut save = save_with_cash(10_000);
         save.hire_dealer();
-        save.dealers[0].add_cred("the_corner");
-        save.dealers[1].add_cred("the_corner");
-        save.dealers[1].add_cred("the_corner");
-        let chips = dealer_chips(&save, "the_corner");
+        save.dealers[0].add_cred("trailer_park");
+        save.dealers[1].add_cred("trailer_park");
+        save.dealers[1].add_cred("trailer_park");
+        let chips = dealer_chips(&save, "trailer_park");
         assert_eq!(chips.len(), 2);
         assert!(!chips[0].is_best_cred, "kingpin has 1 cred, not the best");
         assert!(chips[1].is_best_cred, "hire has 2 cred - the credit line");
@@ -417,7 +417,7 @@ mod tests {
     #[test]
     fn no_best_marker_when_area_has_no_cred() {
         let save = save_with_cash(0);
-        let chips = dealer_chips(&save, "the_corner");
+        let chips = dealer_chips(&save, "trailer_park");
         assert!(!chips[0].is_best_cred, "0 cred earns no credit line");
     }
 
@@ -429,7 +429,7 @@ mod tests {
             sentence_total: 3,
             heat_at_bust: 50,
         };
-        let chips = dealer_chips(&save, "the_corner");
+        let chips = dealer_chips(&save, "trailer_park");
         assert!(!chips[0].selectable);
         assert_eq!(chips[0].status_note.as_deref(), Some("JAILED · 2 RUNS"));
     }
@@ -438,7 +438,7 @@ mod tests {
     fn chip_carries_heat_tier() {
         let mut save = save_with_cash(0);
         save.dealers[0].character.heat = 95;
-        let chips = dealer_chips(&save, "the_corner");
+        let chips = dealer_chips(&save, "trailer_park");
         assert_eq!(chips[0].tier_name, "Blazing");
         assert_eq!(chips[0].heat, 95);
     }
@@ -449,7 +449,7 @@ mod tests {
     fn move_eligible_when_available_elsewhere_and_funded() {
         let save = save_with_cash(1000);
         assert_eq!(
-            move_eligibility(&save, 0, "the_block"),
+            move_eligibility(&save, 0, "suburbia"),
             MoveEligibility::Eligible { fee: save.move_fee() }
         );
     }
@@ -457,14 +457,14 @@ mod tests {
     #[test]
     fn move_to_own_station_is_stationed_here() {
         let save = save_with_cash(1000);
-        assert_eq!(move_eligibility(&save, 0, "the_corner"), MoveEligibility::StationedHere);
+        assert_eq!(move_eligibility(&save, 0, "trailer_park"), MoveEligibility::StationedHere);
     }
 
     #[test]
     fn broke_empire_cant_afford_the_move() {
         let save = save_with_cash(0);
         assert_eq!(
-            move_eligibility(&save, 0, "the_block"),
+            move_eligibility(&save, 0, "suburbia"),
             MoveEligibility::CantAfford { fee: save.move_fee() }
         );
     }
@@ -477,12 +477,12 @@ mod tests {
             sentence_total: 1,
             heat_at_bust: 10,
         };
-        assert_eq!(move_eligibility(&save, 0, "the_block"), MoveEligibility::DealerUnavailable);
+        assert_eq!(move_eligibility(&save, 0, "suburbia"), MoveEligibility::DealerUnavailable);
 
         save.dealers[0].status = DealerStatus::Relocating { runs_remaining: 1 };
-        assert_eq!(move_eligibility(&save, 0, "the_block"), MoveEligibility::DealerUnavailable);
+        assert_eq!(move_eligibility(&save, 0, "suburbia"), MoveEligibility::DealerUnavailable);
 
-        assert_eq!(move_eligibility(&save, 99, "the_block"), MoveEligibility::DealerUnavailable);
+        assert_eq!(move_eligibility(&save, 99, "suburbia"), MoveEligibility::DealerUnavailable);
     }
 
     // -- hint line --
@@ -508,9 +508,9 @@ mod tests {
     #[test]
     fn locked_node_still_sells_the_aspiration() {
         let save = save_with_cash(500);
-        let personas = vec![persona("Pimp", "the_strip", 2.0)];
-        let cards = vec![product("Ecstasy", "the_strip", 1600)];
-        let strip = area("the_strip", false, 1200);
+        let personas = vec![persona("Pimp", "red_light_district", 2.0)];
+        let cards = vec![product("Ecstasy", "red_light_district", 1600)];
+        let strip = area("red_light_district", false, 1200);
         let node = zone_node_view(&strip, &save, &personas, cards.iter());
 
         assert_eq!(node.status, ZoneStatus::Locked { price: 1200, affordable: false });

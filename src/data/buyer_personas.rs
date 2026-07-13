@@ -48,18 +48,18 @@ mod tests {
     #[test]
     fn personas_filter_by_area() {
         let personas = vec![
-            persona("Frat Bro", "the_corner"),
-            persona("Wall Street Wolf", "the_block"),
-            persona("Desperate Housewife", "the_corner"),
+            persona("Frat Bro", "trailer_park"),
+            persona("Wall Street Wolf", "suburbia"),
+            persona("Desperate Housewife", "trailer_park"),
         ];
 
-        let corner: Vec<&str> = personas_in_area(&personas, "the_corner")
+        let corner: Vec<&str> = personas_in_area(&personas, "trailer_park")
             .iter()
             .map(|p| p.display_name.as_str())
             .collect();
         assert_eq!(corner, vec!["Frat Bro", "Desperate Housewife"]);
 
-        let block: Vec<&str> = personas_in_area(&personas, "the_block")
+        let block: Vec<&str> = personas_in_area(&personas, "suburbia")
             .iter()
             .map(|p| p.display_name.as_str())
             .collect();

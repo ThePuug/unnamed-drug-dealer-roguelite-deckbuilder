@@ -52,13 +52,13 @@ pub struct DossierRow {
     pub dealer_index: usize,
     pub name: String,
     pub is_kingpin: bool,
-    /// Station's display name ("The Corner"), falling back to the raw id
+    /// Station's display name ("Trailer Park"), falling back to the raw id
     /// for areas missing from content
     pub station: String,
     /// Σ street_cred across all zones - +1 per successful deal makes cred
     /// a deals-closed counter for free
     pub deals_closed: u32,
-    /// "The Corner 4 · The Block 2" in canonical area order (zero-cred
+    /// "Trailer Park 4 · Suburbia 2" in canonical area order (zero-cred
     /// zones omitted); empty string when no cred anywhere
     pub cred_line: String,
     pub decks_played: u32,
@@ -327,7 +327,7 @@ mod tests {
             id: id.to_string(),
             name: name.to_string(),
             description: String::new(),
-            unlocked: id == "the_corner",
+            unlocked: id == "trailer_park",
             price: 1000,
             identity: "CRAFT".to_string(),
             narc_hint: "eyes".to_string(),
@@ -337,9 +337,9 @@ mod tests {
 
     fn city() -> Vec<ShopLocationDef> {
         vec![
-            area("the_corner", "The Corner"),
-            area("the_strip", "The Strip"),
-            area("the_block", "The Block"),
+            area("trailer_park", "Trailer Park"),
+            area("red_light_district", "Red Light District"),
+            area("suburbia", "Suburbia"),
         ]
     }
 
@@ -384,8 +384,8 @@ mod tests {
     #[test]
     fn empire_summary_counts_unlocked_zones() {
         let mut save = roster_save();
-        assert_eq!(empire_summary(&save).zones_unlocked, 1); // the_corner
-        save.account.unlocked_locations.insert("the_strip".to_string());
+        assert_eq!(empire_summary(&save).zones_unlocked, 1); // trailer_park
+        save.account.unlocked_locations.insert("red_light_district".to_string());
         assert_eq!(empire_summary(&save).zones_unlocked, 2);
     }
 
@@ -403,9 +403,9 @@ mod tests {
     #[test]
     fn deals_closed_sums_cred_across_zones() {
         let mut save = roster_save();
-        save.dealers[0].add_cred("the_corner");
-        save.dealers[0].add_cred("the_corner");
-        save.dealers[0].add_cred("the_block");
+        save.dealers[0].add_cred("trailer_park");
+        save.dealers[0].add_cred("trailer_park");
+        save.dealers[0].add_cred("suburbia");
         let rows = dossier_rows(&save, &city());
         assert_eq!(rows[0].deals_closed, 3);
         assert_eq!(rows[1].deals_closed, 0);
@@ -414,20 +414,20 @@ mod tests {
     #[test]
     fn cred_line_in_canonical_order_with_display_names() {
         let mut save = roster_save();
-        save.dealers[0].add_cred("the_block"); // inserted first,
-        save.dealers[0].add_cred("the_corner"); // renders second anyway
+        save.dealers[0].add_cred("suburbia"); // inserted first,
+        save.dealers[0].add_cred("trailer_park"); // renders second anyway
         let rows = dossier_rows(&save, &city());
-        assert_eq!(rows[0].cred_line, "The Corner 1 · The Block 1");
+        assert_eq!(rows[0].cred_line, "Trailer Park 1 · Suburbia 1");
         assert_eq!(rows[1].cred_line, "");
     }
 
     #[test]
     fn cred_in_unknown_zone_still_renders_after_known() {
         let mut save = roster_save();
-        save.dealers[0].add_cred("the_corner");
+        save.dealers[0].add_cred("trailer_park");
         save.dealers[0].add_cred("the_docks"); // content no longer ships it
         let rows = dossier_rows(&save, &city());
-        assert_eq!(rows[0].cred_line, "The Corner 1 · the_docks 1");
+        assert_eq!(rows[0].cred_line, "Trailer Park 1 · the_docks 1");
     }
 
     #[test]
@@ -435,7 +435,7 @@ mod tests {
         let mut save = roster_save();
         save.dealers[1].station = "atlantis".to_string();
         let rows = dossier_rows(&save, &city());
-        assert_eq!(rows[0].station, "The Corner");
+        assert_eq!(rows[0].station, "Trailer Park");
         assert_eq!(rows[1].station, "atlantis");
     }
 
@@ -641,21 +641,21 @@ mod tests {
     #[test]
     fn zone_deals_closed_sums_roster_cred() {
         let mut save = roster_save();
-        save.dealers[0].add_cred("the_corner");
-        save.dealers[1].add_cred("the_corner");
-        save.dealers[1].add_cred("the_corner");
-        assert_eq!(zone_deals_closed(&save, "the_corner"), 3);
-        assert_eq!(zone_deals_closed(&save, "the_block"), 0);
+        save.dealers[0].add_cred("trailer_park");
+        save.dealers[1].add_cred("trailer_park");
+        save.dealers[1].add_cred("trailer_park");
+        assert_eq!(zone_deals_closed(&save, "trailer_park"), 3);
+        assert_eq!(zone_deals_closed(&save, "suburbia"), 0);
     }
 
     #[test]
     fn zone_history_line_names_the_best_dealer() {
         let mut save = roster_save();
-        save.dealers[0].add_cred("the_corner");
-        save.dealers[1].add_cred("the_corner");
-        save.dealers[1].add_cred("the_corner");
+        save.dealers[0].add_cred("trailer_park");
+        save.dealers[1].add_cred("trailer_park");
+        save.dealers[1].add_cred("trailer_park");
         assert_eq!(
-            zone_history_line(&save, "the_corner").as_deref(),
+            zone_history_line(&save, "trailer_park").as_deref(),
             Some("3 deals closed · best: Slim (2)")
         );
     }
@@ -663,10 +663,10 @@ mod tests {
     #[test]
     fn zone_history_singular_and_silent_when_empty() {
         let mut save = roster_save();
-        assert_eq!(zone_history_line(&save, "the_corner"), None);
-        save.dealers[0].add_cred("the_corner");
+        assert_eq!(zone_history_line(&save, "trailer_park"), None);
+        save.dealers[0].add_cred("trailer_park");
         assert_eq!(
-            zone_history_line(&save, "the_corner").as_deref(),
+            zone_history_line(&save, "trailer_park").as_deref(),
             Some("1 deal closed · best: The Kingpin (1)")
         );
     }
@@ -677,15 +677,15 @@ mod tests {
         let mut save = roster_save();
         // Soured alone is history worth telling
         save.supplier_standing
-            .insert("the_corner".to_string(), SupplierStanding::Soured);
+            .insert("trailer_park".to_string(), SupplierStanding::Soured);
         assert_eq!(
-            zone_history_line(&save, "the_corner").as_deref(),
+            zone_history_line(&save, "trailer_park").as_deref(),
             Some("supplier burned")
         );
         // And it rides after the deals when both exist
-        save.dealers[0].add_cred("the_corner");
+        save.dealers[0].add_cred("trailer_park");
         assert_eq!(
-            zone_history_line(&save, "the_corner").as_deref(),
+            zone_history_line(&save, "trailer_park").as_deref(),
             Some("1 deal closed · best: The Kingpin (1) · supplier burned")
         );
     }
@@ -697,13 +697,13 @@ mod tests {
         assert_eq!(empire_summary(&save).debt, 0);
         save.fronts.push(FrontState {
             card_id: "shrooms".to_string(),
-            area_id: "the_corner".to_string(),
+            area_id: "trailer_park".to_string(),
             owed: 125,
             runs_remaining: 3,
         });
         save.fronts.push(FrontState {
             card_id: "ecstasy".to_string(),
-            area_id: "the_strip".to_string(),
+            area_id: "red_light_district".to_string(),
             owed: 2000,
             runs_remaining: 4,
         });
@@ -715,10 +715,10 @@ mod tests {
         // The map's history line and the shop's "unlocked by" must never
         // disagree - both come from SaveData::best_cred
         let mut save = roster_save();
-        save.dealers[0].add_cred("the_corner");
-        save.dealers[1].add_cred("the_corner");
-        let (best_idx, _) = save.best_cred("the_corner").unwrap();
-        let line = zone_history_line(&save, "the_corner").unwrap();
+        save.dealers[0].add_cred("trailer_park");
+        save.dealers[1].add_cred("trailer_park");
+        let (best_idx, _) = save.best_cred("trailer_park").unwrap();
+        let line = zone_history_line(&save, "trailer_park").unwrap();
         assert!(line.contains(&save.dealers[best_idx].name), "{line}");
     }
 }

@@ -758,7 +758,7 @@ mod tests {
 
     fn test_buyer(scenario_products: Vec<&str>, scenario_locations: Vec<&str>) -> BuyerPersona {
         BuyerPersona {
-            area: "the_corner".to_string(),
+            area: "trailer_park".to_string(),
             display_name: "Test Buyer".to_string(),
             demand: BuyerDemand {
                 products: vec!["Weed".to_string()],
@@ -828,8 +828,8 @@ mod tests {
             supplier: None,
         };
 
-        // OK: one area, one persona living there (test_buyer defaults to the_corner)
-        let corner_only = vec![area("the_corner", true)];
+        // OK: one area, one persona living there (test_buyer defaults to trailer_park)
+        let corner_only = vec![area("trailer_park", true)];
         let buyer = test_buyer(vec!["Weed"], vec!["Safe House"]);
         assert!(validate_persona_areas(&[buyer.clone()], &corner_only).is_ok());
 
@@ -841,7 +841,7 @@ mod tests {
             .contains("unknown area"));
 
         // Area without clientele rejected
-        let with_block = vec![area("the_corner", true), area("the_block", false)];
+        let with_block = vec![area("trailer_park", true), area("suburbia", false)];
         assert!(validate_persona_areas(&[buyer], &with_block)
             .unwrap_err()
             .contains("no clientele"));
@@ -855,60 +855,65 @@ mod tests {
         crate::models::shop_location::validate_shop_locations(&areas).expect("areas valid");
         let buyers = load_and_validate_buyers("assets/buyers.ron").expect("buyers load");
         validate_persona_areas(&buyers, &areas).expect("shipped persona areas resolve");
-        // And the reframe's headline: the Wolf is Block clientele
-        let wolf = buyers.iter().find(|b| b.display_name == "Wall Street Wolf").unwrap();
-        assert_eq!(wolf.area, "the_block");
+        // SOW-033: the Wall Street Wolf is shelved - no longer active clientele
+        assert!(
+            buyers.iter().all(|b| b.display_name != "Wall Street Wolf"),
+            "Wolf should be shelved from the active roster"
+        );
     }
 
     #[test]
     fn test_shipped_three_zone_coherence() {
-        // SOW-028: the city is Corner -> Strip -> Block, each with clientele
+        // SOW-033: the city is trailer_park -> suburbia -> red_light_district,
+        // each with clientele; Red Light is the top (priciest) rung.
         let areas = load_shop_locations("assets/data/shop_locations.ron").expect("areas load");
         let ids: Vec<&str> = areas.iter().map(|a| a.id.as_str()).collect();
-        assert_eq!(ids, vec!["the_corner", "the_strip", "the_block"]);
-        let strip = areas.iter().find(|a| a.id == "the_strip").unwrap();
-        assert_eq!(strip.price, 1200); // between free Corner and $2,000 Block
+        assert_eq!(ids, vec!["trailer_park", "suburbia", "red_light_district"]);
+        let suburbia = areas.iter().find(|a| a.id == "suburbia").unwrap();
+        let red_light = areas.iter().find(|a| a.id == "red_light_district").unwrap();
+        assert_eq!(suburbia.price, 1200);
+        assert_eq!(red_light.price, 2500);
+        assert!(red_light.price > suburbia.price, "top rung must out-price the middle");
 
-        // SOW-031: every shipped zone carries its authored flavor + a named
-        // supplier (validate_shop_locations enforces it; this pins the
-        // shipped names so a content edit that renames one is deliberate)
+        // SOW-031/033: every shipped zone carries its authored flavor + a named
+        // supplier (validate_shop_locations enforces it; this pins the shipped
+        // names so a content edit that renames one is deliberate)
         let suppliers: Vec<&str> = areas
             .iter()
             .map(|a| a.supplier.as_ref().expect("supplier").name.as_str())
             .collect();
-        assert_eq!(suppliers, vec!["Lil Smoke", "Miss Velvet", "The Broker"]);
+        assert_eq!(suppliers, vec!["Lil Smoke", "Deb", "Miss Velvet"]);
         assert!(areas.iter().all(|a| !a.identity.is_empty() && !a.narc_hint.is_empty()));
 
         let buyers = load_and_validate_buyers("assets/buyers.ron").expect("buyers load");
         let pimp = buyers.iter().find(|b| b.display_name == "Pimp").unwrap();
-        assert_eq!(pimp.area, "the_strip");
-        // Zone coherence: the Housewife is now the Block's first rung
+        assert_eq!(pimp.area, "red_light_district");
+        // Zone coherence: the Housewife is Suburbia's clientele
         let housewife = buyers
             .iter()
             .find(|b| b.display_name == "Desperate Housewife")
             .unwrap();
-        assert_eq!(housewife.area, "the_block");
+        assert_eq!(housewife.area, "suburbia");
         assert_eq!(housewife.base_multiplier, 1.5);
 
-        // Party economy lives on the Strip now
+        // Party economy lives in the Red Light District now
         let products =
             load_and_validate_cards("assets/cards/products.ron", "Product").expect("products");
-        for name in ["Ecstasy", "Ice"] {
+        for name in ["Ecstasy", "Coke"] {
             let card = products.iter().find(|c| c.name == name).unwrap();
             assert_eq!(
                 card.shop_location.as_deref(),
-                Some("the_strip"),
-                "{name} should be Strip stock"
+                Some("red_light_district"),
+                "{name} should be Red Light stock"
             );
         }
     }
 
     #[test]
-    fn test_shipped_block_first_rung_pays_without_coke() {
-        // SOW-027 flagged that the Block's x2.8 headline was unreachable
-        // before a $5,000 Coke. SOW-028's answer: the Housewife (Block, x1.5)
+    fn test_shipped_suburbia_first_rung_pays_without_coke() {
+        // SOW-033 (carries SOW-028's reasoning): the Housewife (Suburbia, x1.5)
         // is satisfiable with STARTING-collection Weed once she brings her
-        // own location - Block expansion pays before any Block product buy.
+        // own location - Suburbia expansion pays before any Suburbia product buy.
         let buyers = load_and_validate_buyers("assets/buyers.ron").expect("buyers load");
         let mut housewife = buyers
             .iter()
@@ -1013,11 +1018,11 @@ mod tests {
     fn test_ladder_warning_when_all_demands_gated_above() {
         use crate::models::test_helpers::create_product;
         let mut premium = create_product("Fentanyl", 200, 50);
-        premium.shop_location = Some("the_block".to_string());
+        premium.shop_location = Some("suburbia".to_string());
         let areas = vec![
             crate::models::shop_location::ShopLocationDef {
-                id: "the_corner".to_string(),
-                name: "The Corner".to_string(),
+                id: "trailer_park".to_string(),
+                name: "Trailer Park".to_string(),
                 description: "test".to_string(),
                 unlocked: true,
                 price: 0,
@@ -1026,8 +1031,8 @@ mod tests {
                 supplier: None,
             },
             crate::models::shop_location::ShopLocationDef {
-                id: "the_block".to_string(),
-                name: "The Block".to_string(),
+                id: "suburbia".to_string(),
+                name: "Suburbia".to_string(),
                 description: "test".to_string(),
                 unlocked: false,
                 price: 2000,
@@ -1043,7 +1048,7 @@ mod tests {
 
         // The same demand from a Block buyer is fine
         let mut block_buyer = test_buyer(vec!["Fentanyl"], vec![]);
-        block_buyer.area = "the_block".to_string();
+        block_buyer.area = "suburbia".to_string();
         let warnings = ladder_attainability_warnings(&[block_buyer], &[premium], &areas);
         assert!(warnings.is_empty());
     }
@@ -1117,9 +1122,9 @@ mod tests {
     }
 
     #[test]
-    fn test_shipped_corner_cold_composition_is_gentle() {
-        // SOW-027: the fresh-run floor fix. A fresh kingpin on the Corner at
-        // Cold must face a mostly-donut deck (avg heat/card well under the
+    fn test_shipped_trailer_park_cold_composition_is_gentle() {
+        // SOW-027/033: the fresh-run floor fix. A fresh kingpin in Trailer Park
+        // at Cold must face a mostly-donut deck (avg heat/card well under the
         // old flat deck) or the 3-blind-session floor regresses to Inferno.
         let file = load_narc_compositions("assets/narc_deck.ron")
             .expect("narc_deck.ron should parse");
@@ -1133,7 +1138,7 @@ mod tests {
             })
             .collect();
 
-        // the_corner inherits default entirely, so Cold == default Cold
+        // trailer_park inherits default entirely, so Cold == default Cold
         let cold = file.default.get("Cold").expect("default has Cold");
         let total_heat: i32 = cold
             .iter()
@@ -1142,7 +1147,7 @@ mod tests {
         let avg = total_heat as f32 / cold.len() as f32;
         assert!(
             avg <= 3.0,
-            "Corner/Cold composition too hot: avg {:.1} heat/card (want <= 3.0)",
+            "Trailer Park/Cold composition too hot: avg {:.1} heat/card (want <= 3.0)",
             avg
         );
     }
