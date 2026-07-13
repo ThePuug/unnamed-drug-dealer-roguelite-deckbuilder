@@ -142,24 +142,28 @@ pub fn scenario(name: &str) -> Option<SaveData> {
                 ],
             });
         }
-        // SOW-031: a live front mid-window - Shrooms on Lil Smoke's credit
-        // ($125 owed, 3 of 4 runs left), $60 cash (can pay after ~1 deal),
-        // 1 Trailer Park cred (Shrooms' gate was already cleared to front it)
+        // SOW-031/034: a live front mid-window - a Shrooms BATCH on Lil
+        // Smoke's credit ($125 owed, 3 of 4 runs left), $60 cash (can pay after
+        // ~1 deal). Shrooms is unlocked first (fronting is the out-of-stock
+        // floor for a product you already have access to).
         "fronted" => {
             save.account.cash_on_hand = 60;
             save.dealers[0].add_cred(DEFAULT_STATION);
+            save.account.unlocked_cards.insert("shrooms".to_string());
             save.take_front("shrooms", DEFAULT_STATION, 100)
-                .expect("fronted scenario takes the shrooms front");
+                .expect("fronted scenario takes the shrooms batch");
             save.fronts[0].runs_remaining = 3;
         }
-        // SOW-031: the muscle is one run out - CutOff standing, $40 cash
-        // (seizure = $8), front expires on the next completed run. Also
-        // demonstrates the stock lock on the Trailer Park shop tab.
+        // SOW-031/034: the muscle is one run out - CutOff standing, $40 cash
+        // (seizure = $8), front expires on the next completed run. On souring
+        // it seizes the unsold Shrooms batch (access stays). Also demonstrates
+        // the stock lock on the Trailer Park shop tab.
         "strapped" => {
             save.account.cash_on_hand = 40;
             save.dealers[0].add_cred(DEFAULT_STATION);
+            save.account.unlocked_cards.insert("shrooms".to_string());
             save.take_front("shrooms", DEFAULT_STATION, 100)
-                .expect("strapped scenario takes the shrooms front");
+                .expect("strapped scenario takes the shrooms batch");
             save.supplier_standing
                 .insert(DEFAULT_STATION.to_string(), SupplierStanding::CutOff);
             save.fronts[0].runs_remaining = 1;
@@ -269,7 +273,10 @@ mod tests {
         assert_eq!(front.card_id, "shrooms");
         assert_eq!(front.owed, 125);
         assert_eq!(front.runs_remaining, 3);
-        assert!(save.account.unlocked_cards.contains("shrooms"), "playable while fronted");
+        assert_eq!(front.charges, BATCH_SIZE);
+        // SOW-034: the batch is in stock and playable, access already granted
+        assert_eq!(save.account.charges_in("shrooms"), BATCH_SIZE);
+        assert!(save.account.unlocked_cards.contains("shrooms"));
         assert_eq!(save.standing_with(DEFAULT_STATION), SupplierStanding::Good);
         assert_eq!(save.account.cash_on_hand, 60);
     }
@@ -279,6 +286,7 @@ mod tests {
         let save = scenario("strapped").unwrap();
         assert_eq!(save.standing_with(DEFAULT_STATION), SupplierStanding::CutOff);
         assert_eq!(save.front_in(DEFAULT_STATION).unwrap().runs_remaining, 1);
+        assert_eq!(save.account.charges_in("shrooms"), BATCH_SIZE); // seized on souring
         assert_eq!(save.account.cash_on_hand, 40); // muscle seizure will be $8
     }
 

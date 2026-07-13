@@ -5,6 +5,7 @@
 use bevy::prelude::*;
 use rand::prelude::*;
 use crate::{Owner, HandState, HandPhase, HandOutcome, DeckBuilder};
+use crate::models::card::{Card, CardType};
 use crate::game_state::GameState;
 use crate::ui::components::*;
 use crate::ui::theme;
@@ -279,10 +280,12 @@ pub fn go_home_button_system(
     }
 
     if should_go_home {
-        // SOW-020: Capture unlocked cards before save_data is consumed
-        // (re-snapshotted below after tick_fronts - a repossession there
-        // changes ownership mid-flight)
-        let mut unlocked_cards = save_data
+        // SOW-020: Capture unlocked cards before save_data is consumed.
+        // SOW-034: tick_fronts no longer touches access (a soured front
+        // repossesses unsold STOCK, not the unlock), so this access snapshot
+        // is stable across the tick - the deck-carry filter below keys on
+        // access, and stock only gates committability at play time.
+        let unlocked_cards = save_data
             .as_ref()
             .map(|data| data.account.unlocked_cards.clone())
             .unwrap_or_else(|| crate::save::AccountState::starting_collection());
@@ -340,11 +343,6 @@ pub fn go_home_button_system(
                 }
             }
 
-            // SOW-031 review fix: tick_fronts may have REPOSSESSED a card -
-            // re-snapshot ownership after the tick so the DeckBuilder
-            // rebuild below can't resurrect it for the rest of the session
-            unlocked_cards = save_data.account.unlocked_cards.clone();
-
             if let Err(e) = save_manager.save(&save_data) {
                 bevy::log::warn!("Failed to save on go home: {:?}", e);
             }
@@ -358,9 +356,10 @@ pub fn go_home_button_system(
         // Collect all cards (hand + deck + played) back into deck
         player_cards.collect_all();
 
-        // SOW-031 review fix: the just-played deck goes through the same
-        // ownership filter - a repossessed card must not ride selected_cards
-        // back into the next run
+        // The just-played deck goes through the access filter so stale
+        // content can't ride selected_cards into the next run. SOW-034: an
+        // out-of-stock product is still ACCESSED, so it correctly stays in the
+        // deck (inert, drawable) - stock gates play, not deck membership.
         player_cards.deck.retain(|c| unlocked_cards.contains(&c.id));
 
         // SOW-020: Update DeckBuilder with unlocked cards filter
@@ -435,6 +434,21 @@ pub fn start_run_button_system(
                 .unwrap_or(true);
             if !active_available {
                 continue;
+            }
+
+            // SOW-034 §2.4: a run whose deck has no product in stock is legal
+            // but unwinnable (every product is inert). Warn, don't block - let
+            // the player proceed (they may intend to fold their way to cash).
+            if let Some(ref save) = save_data {
+                let has_playable_product = deck_builder.selected_cards.iter().any(|c| {
+                    matches!(c.card_type, CardType::Product { .. }) && save.account.has_stock(&c.id)
+                });
+                if !has_playable_product {
+                    bevy::log::warn!(
+                        "Starting a run with no product in stock - restock or front a batch, \
+                         or this run can't close a deal"
+                    );
+                }
             }
 
             // Despawn any existing HandState
@@ -523,9 +537,45 @@ pub fn start_run_button_system(
 // ============================================================================
 // CARD CLICK SYSTEM
 // ============================================================================
+
+/// SOW-034: what a hand-slot click resolves to. Pure so the commit and
+/// out-of-stock rules are unit-tested without ECS; the system just executes.
+#[derive(Debug, PartialEq, Eq)]
+pub enum SlotClick {
+    /// Empty slot, or a Product with no charges left: the click does nothing
+    /// (an out-of-stock product stays drawable but is inert, so the deck stays
+    /// legal - it just can't commit).
+    Inert,
+    /// Commit the play. `burn` is Some(product id) when a successful play
+    /// should burn one charge of stock (Products only); None for every other
+    /// card type (they are permanent, not consumable).
+    Commit { burn: Option<String> },
+}
+
+/// SOW-034: decide a hand-slot click. `product_in_stock` answers `has_stock`
+/// for a Product slot (`None` = no save data, so gameplay is permitted and the
+/// burn is a no-op); it is ignored for non-Products, which always commit
+/// without burning. This is the single commit edge where a charge is spent -
+/// NOT resolution, and NOT the Safe-gated increment_play_count loop (a bust or
+/// a fold-after-play must still have burned the charge at click time).
+pub fn resolve_slot_click(card: Option<&Card>, product_in_stock: Option<bool>) -> SlotClick {
+    let Some(card) = card else {
+        return SlotClick::Inert;
+    };
+    if matches!(card.card_type, CardType::Product { .. }) {
+        match product_in_stock {
+            Some(false) => SlotClick::Inert, // unlocked but out of stock - inert
+            _ => SlotClick::Commit { burn: Some(card.id.clone()) },
+        }
+    } else {
+        SlotClick::Commit { burn: None }
+    }
+}
+
 pub fn card_click_system(
     mut interaction_query: Query<(&Interaction, &CardButton), Changed<Interaction>>,
     mut hand_state_query: Query<&mut HandState>,
+    mut save_data: Option<ResMut<crate::save::SaveData>>,
 ) {
     let Ok(mut hand_state) = hand_state_query.single_mut() else {
         return;
@@ -536,23 +586,42 @@ pub fn card_click_system(
             println!("Card clicked! Index: {}, State: {:?}", card_button.card_index, hand_state.current_state);
 
             // SOW-008: Clicking card during PlayerPhase plays it immediately
-            if hand_state.current_state == HandPhase::PlayerPhase {
-                // Only if it's Player's turn
-                if hand_state.current_player() == Owner::Player {
-                    // SOW-022: validate against the SLOT array, not the
-                    // None-filtered hand - with an empty deck, a card in slot 2
-                    // behind empty slots was silently unclickable
-                    let slot_has_card = hand_state
-                        .cards(Owner::Player)
-                        .hand
-                        .get(card_button.card_index)
-                        .is_some_and(|slot| slot.is_some());
-                    if slot_has_card {
-                        println!("Player playing card {}", card_button.card_index);
+            if hand_state.current_state == HandPhase::PlayerPhase
+                && hand_state.current_player() == Owner::Player
+            {
+                let index = card_button.card_index;
 
-                        // Play the card face-up immediately
-                        // RFC-017: Play count is incremented on successful deal resolution, not here
-                        let _ = hand_state.play_card(Owner::Player, card_button.card_index);
+                // SOW-022: validate against the SLOT array, not the
+                // None-filtered hand - with an empty deck, a card in slot 2
+                // behind empty slots was silently unclickable.
+                // SOW-034: snapshot the slot card's stock BEFORE the &mut
+                // play_card borrow so the commit decision (and the charge to
+                // burn) is fixed pre-play.
+                let slot_card = hand_state
+                    .cards(Owner::Player)
+                    .hand
+                    .get(index)
+                    .and_then(|slot| slot.as_ref());
+                let product_in_stock = slot_card.and_then(|card| {
+                    matches!(card.card_type, CardType::Product { .. })
+                        .then(|| save_data.as_ref().map(|s| s.account.has_stock(&card.id)))
+                        .flatten()
+                });
+                let decision = resolve_slot_click(slot_card, product_in_stock);
+
+                if let SlotClick::Commit { burn } = decision {
+                    println!("Player playing card {index}");
+
+                    // Play the card face-up immediately.
+                    // RFC-017: play count is incremented on successful deal
+                    // resolution, not here.
+                    if hand_state.play_card(Owner::Player, index).is_ok() {
+                        // SOW-034: a committed Product burns one charge at this
+                        // single edge - fold-before-play burns nothing, a bust
+                        // keeps the rest of the batch.
+                        if let (Some(id), Some(save)) = (burn, save_data.as_mut()) {
+                            save.account.burn_charge(&id);
+                        }
                     }
                 }
             }
@@ -694,5 +763,79 @@ pub fn update_start_run_button_system(
                 **text = label.to_string();
             }
         }
+    }
+}
+
+// ============================================================================
+// TESTS
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn card(id: &str, card_type: CardType) -> Card {
+        Card {
+            id: id.to_string(),
+            name: id.to_string(),
+            card_type,
+            narrative_fragments: None,
+            shop_location: None,
+            shop_price: None,
+            shop_cred_required: None,
+        }
+    }
+
+    fn product(id: &str) -> Card {
+        card(id, CardType::Product { price: 30, heat: 5 })
+    }
+
+    #[test]
+    fn empty_slot_click_is_inert() {
+        assert_eq!(resolve_slot_click(None, None), SlotClick::Inert);
+        assert_eq!(resolve_slot_click(None, Some(true)), SlotClick::Inert);
+    }
+
+    #[test]
+    fn in_stock_product_commits_and_burns_its_charge() {
+        let weed = product("weed");
+        // In stock -> commit, burn weed (one play burns one charge)
+        assert_eq!(
+            resolve_slot_click(Some(&weed), Some(true)),
+            SlotClick::Commit { burn: Some("weed".to_string()) }
+        );
+    }
+
+    #[test]
+    fn out_of_stock_product_is_inert() {
+        let weed = product("weed");
+        assert_eq!(resolve_slot_click(Some(&weed), Some(false)), SlotClick::Inert);
+    }
+
+    #[test]
+    fn product_without_save_data_still_commits_with_a_noop_burn() {
+        // No save (None) permits play so gameplay never wedges; the system only
+        // burns when save data is present, so Some(id) is harmless.
+        let weed = product("weed");
+        assert_eq!(
+            resolve_slot_click(Some(&weed), None),
+            SlotClick::Commit { burn: Some("weed".to_string()) }
+        );
+    }
+
+    #[test]
+    fn non_product_cards_commit_without_burning() {
+        // Non-products are permanent, never consumable - never burn, and their
+        // stock argument is irrelevant.
+        let location = card("dead_drop", CardType::Location { evidence: 2, cover: 3, heat: 1 });
+        let cover = card("alibi", CardType::Cover { cover: 4, heat: 1 });
+        assert_eq!(
+            resolve_slot_click(Some(&location), Some(false)),
+            SlotClick::Commit { burn: None }
+        );
+        assert_eq!(
+            resolve_slot_click(Some(&cover), None),
+            SlotClick::Commit { burn: None }
+        );
     }
 }

@@ -333,6 +333,7 @@ mod tests {
             narc_hint: "eyes".to_string(),
             supplier: None,
             narc_portrait: None,
+            restock_margin: 0.5,
         }
     }
 
@@ -701,12 +702,14 @@ mod tests {
             area_id: "trailer_park".to_string(),
             owed: 125,
             runs_remaining: 3,
+            charges: crate::save::BATCH_SIZE,
         });
         save.fronts.push(FrontState {
             card_id: "ecstasy".to_string(),
             area_id: "red_light_district".to_string(),
             owed: 2000,
             runs_remaining: 4,
+            charges: crate::save::BATCH_SIZE,
         });
         assert_eq!(empire_summary(&save).debt, 2125);
     }

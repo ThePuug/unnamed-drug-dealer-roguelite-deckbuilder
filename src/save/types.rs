@@ -16,7 +16,11 @@ use std::time::{SystemTime, UNIX_EPOCH};
 // trailer_park/suburbia/red_light_district). Area ids are stored raw in save
 // fields, so the bump forces a clean wipe of any dead-id save (io.rs rejects
 // version mismatch -> fresh account).
-pub const SAVE_VERSION: u32 = 7;
+// SOW-034: v8 adds the consumable stock ledger (AccountState.stock) and a
+// charges field on FrontState. Products became limited-use, so any v7 save's
+// permanent-unlock economy is stale - the bump wipes it to a fresh, seeded
+// account (io.rs rejects version mismatch -> fresh).
+pub const SAVE_VERSION: u32 = 8;
 
 /// Maximum sanity values for validation
 const MAX_HEAT: u32 = 10_000;
@@ -94,19 +98,27 @@ pub struct SaveData {
     pub supplier_standing: HashMap<String, SupplierStanding>,
 }
 
-/// SOW-031: a card taken on credit from a zone's supplier
+/// SOW-031: a batch of product taken on credit from a zone's supplier.
+/// SOW-034: `card_id` now means "the product this batch is of" (name kept to
+/// minimize churn); the batch delivered `charges` charges of stock.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct FrontState {
     pub card_id: String,
     /// The zone whose supplier fronted it (the supplier is the face,
     /// the zone is the account)
     pub area_id: String,
-    /// The lump due: shop price + vig
+    /// The lump due: batch cost + vig
     pub owed: u64,
     /// Runs until the due date. EVERY completed run ticks this, including
     /// the runner's own (unlike jail) - that is the whole point: an
     /// unproductive run still spends a tick toward consequence.
     pub runs_remaining: u32,
+    /// SOW-034: charges this batch delivered. Souring repossesses the UNSOLD
+    /// remainder (min of this and what's still in stock); access is never
+    /// touched. Old (pre-v8) saves are wiped by the version bump, so the
+    /// serde default 0 only ever applies to freshly-migrated absent fields.
+    #[serde(default)]
+    pub charges: u32,
 }
 
 /// SOW-031: how a zone's supplier sees the empire
@@ -345,14 +357,18 @@ impl SaveData {
         self.fronts.iter().map(|f| f.owed).sum()
     }
 
-    /// Take a card on credit from a zone's supplier: the card is playable
-    /// NOW, the lump (price + vig) is due in FRONT_WINDOW_RUNS. Error
-    /// strings are display-ready.
+    /// SOW-034: take a BATCH of an already-unlocked product on the zone
+    /// supplier's credit. The batch (BATCH_SIZE charges) lands in stock NOW,
+    /// the lump (batch cost + vig) is due in FRONT_WINDOW_RUNS. Access is a
+    /// precondition, not a reward: unlock is the cred+cash ladder's job, and
+    /// fronting is the out-of-stock floor for a product you already run.
+    /// Repeatable (once the current front with this supplier is cleared).
+    /// Error strings are display-ready.
     pub fn take_front(
         &mut self,
         card_id: &str,
         area_id: &str,
-        shop_price: u32,
+        batch_cost: u32,
     ) -> Result<(), &'static str> {
         match self.standing_with(area_id) {
             SupplierStanding::Good => {}
@@ -362,25 +378,29 @@ impl SaveData {
         if self.front_in(area_id).is_some() {
             return Err("one front at a time");
         }
-        if self.account.unlocked_cards.contains(card_id) {
-            return Err("already owned");
+        if !self.account.unlocked_cards.contains(card_id) {
+            return Err("no access yet");
         }
-        if shop_price == 0 {
+        if batch_cost == 0 {
             return Err("nothing to front");
         }
         self.fronts.push(FrontState {
             card_id: card_id.to_string(),
             area_id: area_id.to_string(),
-            owed: front_owed(shop_price),
+            owed: front_owed(batch_cost),
             runs_remaining: FRONT_WINDOW_RUNS,
+            charges: BATCH_SIZE,
         });
-        self.account.unlocked_cards.insert(card_id.to_string());
+        self.account.add_stock(card_id, BATCH_SIZE);
         Ok(())
     }
 
-    /// Settle a front in cash, any time before the muscle visits. The card
-    /// becomes owned forever; a CutOff supplier goes back to Good (settled
-    /// means settled - Soured is the only permanent mark).
+    /// Settle a front in cash, any time before the muscle visits. SOW-034:
+    /// the fronted BATCH is already in stock and stays yours (you paid for
+    /// it); settling just clears the debt so the supplier keeps dealing. A
+    /// CutOff supplier goes back to Good (settled means settled - Soured is
+    /// the only permanent mark). Access was a precondition, so nothing about
+    /// ownership changes here.
     /// Returns false (no mutation) if there is no front or cash falls short.
     pub fn pay_front(&mut self, area_id: &str) -> bool {
         let Some(pos) = self.fronts.iter().position(|f| f.area_id == area_id) else {
@@ -458,7 +478,11 @@ impl SaveData {
                         });
                     }
                     let front = self.fronts.remove(i);
-                    self.account.unlocked_cards.remove(&front.card_id);
+                    // SOW-034: repossess UNSOLD product only - seize up to the
+                    // delivered batch, capped by what's still on hand. Access
+                    // (unlocked_cards) is never revoked; charges the runner
+                    // already burned are gone and stay sold.
+                    self.account.seize_stock(&front.card_id, front.charges);
                     self.supplier_standing
                         .insert(area_id.clone(), SupplierStanding::Soured);
                     events.push(FrontEvent::Soured {
@@ -1045,6 +1069,10 @@ pub const LAY_LOW_COOLING: u32 = 40;
 const LAWYER_COST: u64 = 625;
 pub const LAWYER_COOLING: u32 = 25;
 
+/// SOW-034: a batch of a product is BATCH_SIZE charges. One global constant
+/// for now; per-zone batch sizes are a deferred later knob (SOW-034 §2.7).
+pub const BATCH_SIZE: u32 = 4;
+
 /// SOW-031 fronts (tuning candidates - see SOW-031 Discussion).
 /// The vig over shop price: a $500 card fronts at $625 owed.
 pub const FRONT_VIG_PCT: u64 = 25;
@@ -1344,17 +1372,29 @@ pub struct AccountState {
     /// SOW-020: Shop location IDs the player can access
     #[serde(default)]
     pub unlocked_locations: HashSet<String>,
+    /// SOW-034: consumable stock ledger, keyed by product `card.id` -> charges
+    /// on hand. Separate from `unlocked_cards` (permanent access): a product
+    /// can be unlocked with 0 charges (out of stock, inert) or restocked
+    /// without changing access. Absent entries read 0 (`charges_in`).
+    #[serde(default)]
+    pub stock: HashMap<String, u32>,
 }
 
 impl AccountState {
     pub fn new() -> Self {
-        Self {
+        let mut account = Self {
             cash_on_hand: 0,
             lifetime_revenue: 0,
             hands_completed: 0,
             unlocked_cards: Self::starting_collection(),
             unlocked_locations: HashSet::from(["trailer_park".to_string()]),
-        }
+            stock: HashMap::new(),
+        };
+        // SOW-034: seed one Weed batch so turn 1 is playable without a forced
+        // front (0-start is legal since fronting is the floor, but a seeded
+        // batch is friendlier - SOW-034 §2.2)
+        account.add_stock("weed", BATCH_SIZE);
+        account
     }
 
     /// SOW-020: Starting card collection for new players
@@ -1419,6 +1459,63 @@ impl AccountState {
             true
         } else {
             false
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // SOW-034: consumable product stock (charges on hand, keyed by card id)
+    // ------------------------------------------------------------------
+
+    /// Charges of a product currently in stock (0 if none/absent)
+    pub fn charges_in(&self, card_id: &str) -> u32 {
+        self.stock.get(card_id).copied().unwrap_or(0)
+    }
+
+    /// Whether at least one charge is available to commit a play
+    pub fn has_stock(&self, card_id: &str) -> bool {
+        self.charges_in(card_id) > 0
+    }
+
+    /// Add charges to a product's stock (buying or fronting a batch). A zero
+    /// add is a no-op (never materializes an empty entry that isn't there).
+    pub fn add_stock(&mut self, card_id: &str, charges: u32) {
+        if charges == 0 {
+            return;
+        }
+        *self.stock.entry(card_id.to_string()).or_insert(0) += charges;
+    }
+
+    /// Burn one charge on a committed product play. Saturating: a zero-stock
+    /// product is gated inert upstream, so this only ever runs with stock, but
+    /// it floors at 0 defensively. The entry is kept at 0 (unlocked, out of
+    /// stock) rather than removed.
+    pub fn burn_charge(&mut self, card_id: &str) {
+        if let Some(charges) = self.stock.get_mut(card_id) {
+            *charges = charges.saturating_sub(1);
+        }
+    }
+
+    /// Buy (or restock) a batch: grant access on the first buy (idempotent
+    /// after), spend `unit_price` x `batch`, add the charges. Returns false
+    /// with NO mutation when the batch is unaffordable. Access is granted here
+    /// because a cash purchase is exactly how a product enters the collection
+    /// (the cred+cash ladder); fronting, by contrast, requires access first.
+    pub fn buy_batch(&mut self, card_id: &str, unit_price: u32, batch: u32) -> bool {
+        let cost = unit_price as u64 * batch as u64;
+        if !self.spend(cost) {
+            return false;
+        }
+        self.unlocked_cards.insert(card_id.to_string());
+        self.add_stock(card_id, batch);
+        true
+    }
+
+    /// SOW-034: repossess up to `wanted` unsold charges of a product, capped
+    /// by what's on hand (souring takes back the delivered batch, never more,
+    /// never access). Used by tick_fronts.
+    fn seize_stock(&mut self, card_id: &str, wanted: u32) {
+        if let Some(charges) = self.stock.get_mut(card_id) {
+            *charges = charges.saturating_sub(wanted);
         }
     }
 
@@ -1604,6 +1701,78 @@ mod tests {
     }
 
     // ------------------------------------------------------------------
+    // SOW-034: consumable product stock
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_fresh_account_seeds_one_weed_batch() {
+        let account = AccountState::new();
+        assert_eq!(account.charges_in("weed"), BATCH_SIZE);
+        assert!(account.has_stock("weed"));
+        // Nothing else is stocked (the other starting cards are access-only)
+        assert_eq!(account.charges_in("shrooms"), 0);
+        assert!(!account.has_stock("shrooms"));
+    }
+
+    #[test]
+    fn test_add_and_burn_stock() {
+        let mut account = AccountState::new();
+        // Absent product reads 0 and is not in stock
+        assert_eq!(account.charges_in("codeine"), 0);
+        assert!(!account.has_stock("codeine"));
+
+        account.add_stock("codeine", BATCH_SIZE);
+        assert_eq!(account.charges_in("codeine"), 4);
+        assert!(account.has_stock("codeine"));
+
+        // A zero add never materializes an entry for an absent product
+        account.add_stock("xanax", 0);
+        assert!(!account.stock.contains_key("xanax"));
+
+        // Burning walks the batch down and floors at 0 (out of stock, kept)
+        account.burn_charge("codeine");
+        assert_eq!(account.charges_in("codeine"), 3);
+        for _ in 0..3 {
+            account.burn_charge("codeine");
+        }
+        assert_eq!(account.charges_in("codeine"), 0);
+        assert!(!account.has_stock("codeine"));
+        account.burn_charge("codeine"); // saturating - no underflow
+        assert_eq!(account.charges_in("codeine"), 0);
+        // Burning an untracked product is inert
+        account.burn_charge("never_seen");
+        assert_eq!(account.charges_in("never_seen"), 0);
+    }
+
+    #[test]
+    fn test_buy_batch_grants_access_spends_and_stocks() {
+        let mut account = AccountState::new();
+        account.cash_on_hand = 112; // two batches at 14 x 4 = 56 each
+        assert!(!account.unlocked_cards.contains("shrooms"));
+
+        // First buy: 56 spent, access granted, 4 charges added
+        assert!(account.buy_batch("shrooms", 14, BATCH_SIZE));
+        assert_eq!(account.cash_on_hand, 56);
+        assert!(account.unlocked_cards.contains("shrooms"));
+        assert_eq!(account.charges_in("shrooms"), 4);
+
+        // Restock: adds another batch, no re-unlock, spends again
+        assert!(account.buy_batch("shrooms", 14, BATCH_SIZE));
+        assert_eq!(account.cash_on_hand, 0);
+        assert_eq!(account.charges_in("shrooms"), 8);
+    }
+
+    #[test]
+    fn test_buy_batch_refused_when_unaffordable_leaves_no_mutation() {
+        let mut account = AccountState::new();
+        account.cash_on_hand = 40; // batch costs 56
+        assert!(!account.buy_batch("shrooms", 14, BATCH_SIZE));
+        assert_eq!(account.cash_on_hand, 40);
+        assert!(!account.unlocked_cards.contains("shrooms"));
+        assert_eq!(account.charges_in("shrooms"), 0);
+    }
+
+    // ------------------------------------------------------------------
     // SOW-031: fronts
     // ------------------------------------------------------------------
 
@@ -1615,12 +1784,17 @@ mod tests {
     }
 
     #[test]
-    fn test_take_front_makes_card_playable_and_books_the_debt() {
+    fn test_take_front_delivers_a_batch_and_books_the_debt() {
+        // SOW-034: fronting a product you already have ACCESS to lands a batch
+        // of stock now; the batch cost + vig is the debt.
         let mut data = SaveData::new();
+        data.account.unlocked_cards.insert("shrooms".to_string());
+        assert_eq!(data.account.charges_in("shrooms"), 0);
         assert!(data.take_front("shrooms", "trailer_park", 100).is_ok());
-        assert!(data.account.unlocked_cards.contains("shrooms"));
+        assert_eq!(data.account.charges_in("shrooms"), BATCH_SIZE, "batch delivered");
         let front = data.front_in("trailer_park").expect("front live");
-        assert_eq!(front.owed, 125);
+        assert_eq!(front.owed, 125); // front_owed(100)
+        assert_eq!(front.charges, BATCH_SIZE);
         assert_eq!(front.runs_remaining, FRONT_WINDOW_RUNS);
         assert_eq!(data.total_debt(), 125);
     }
@@ -1628,20 +1802,24 @@ mod tests {
     #[test]
     fn test_take_front_guards() {
         let mut data = SaveData::new();
+        // Access is a precondition now - unlock the products we'll front
+        data.account.unlocked_cards.insert("shrooms".to_string());
+        data.account.unlocked_cards.insert("ecstasy".to_string());
+
         assert!(data.take_front("shrooms", "trailer_park", 100).is_ok());
-        // One front per supplier
+        // One front per supplier (checked before access)
         assert_eq!(
             data.take_front("codeine", "trailer_park", 250),
             Err("one front at a time")
         );
         // A different zone's supplier is a different account
         assert!(data.take_front("ecstasy", "red_light_district", 1600).is_ok());
-        // Already-owned cards can't be fronted
+        // SOW-034: fronting needs access first (unlock is the cash+cred ladder)
         assert_eq!(
-            data.take_front("weed", "suburbia", 100),
-            Err("already owned")
+            data.take_front("xanax", "suburbia", 800),
+            Err("no access yet")
         );
-        // Standing gates
+        // Standing gates (checked before access)
         data.supplier_standing
             .insert("suburbia".to_string(), SupplierStanding::CutOff);
         assert_eq!(
@@ -1657,10 +1835,12 @@ mod tests {
     }
 
     #[test]
-    fn test_pay_front_owns_the_card_and_clears_cutoff() {
+    fn test_pay_front_clears_debt_and_keeps_the_batch() {
         let mut data = SaveData::new();
         data.account.cash_on_hand = 1000;
+        data.account.unlocked_cards.insert("shrooms".to_string());
         data.take_front("shrooms", "trailer_park", 100).unwrap();
+        assert_eq!(data.account.charges_in("shrooms"), BATCH_SIZE);
         data.supplier_standing
             .insert("trailer_park".to_string(), SupplierStanding::CutOff);
 
@@ -1673,6 +1853,8 @@ mod tests {
         assert!(data.pay_front("trailer_park"));
         assert_eq!(data.account.cash_on_hand, 75);
         assert!(data.front_in("trailer_park").is_none());
+        // SOW-034: the batch you paid for stays yours; access is untouched
+        assert_eq!(data.account.charges_in("shrooms"), BATCH_SIZE);
         assert!(data.account.unlocked_cards.contains("shrooms"));
         assert_eq!(data.standing_with("trailer_park"), SupplierStanding::Good);
         // No front, nothing to pay
@@ -1682,6 +1864,7 @@ mod tests {
     #[test]
     fn test_front_tick_counts_every_run_and_escalates_to_cutoff() {
         let mut data = SaveData::new();
+        data.account.unlocked_cards.insert("shrooms".to_string());
         data.take_front("shrooms", "trailer_park", 100).unwrap();
 
         // Window runs down one per completed run - the runner's own included
@@ -1699,14 +1882,16 @@ mod tests {
         assert_eq!(data.standing_with("trailer_park"), SupplierStanding::CutOff);
         let front = data.front_in("trailer_park").expect("debt still on the books");
         assert_eq!(front.runs_remaining, FRONT_WINDOW_RUNS);
-        assert!(data.account.unlocked_cards.contains("shrooms"), "card still playable");
+        assert_eq!(data.account.charges_in("shrooms"), BATCH_SIZE, "batch still in stock");
     }
 
     #[test]
     fn test_second_blown_window_muscle_seizes_and_sours() {
         let mut data = SaveData::new();
         data.account.cash_on_hand = 500;
+        data.account.unlocked_cards.insert("shrooms".to_string());
         data.take_front("shrooms", "trailer_park", 100).unwrap();
+        assert_eq!(data.account.charges_in("shrooms"), BATCH_SIZE);
         data.supplier_standing
             .insert("trailer_park".to_string(), SupplierStanding::CutOff);
         data.fronts[0].runs_remaining = 1;
@@ -1723,7 +1908,9 @@ mod tests {
             ]
         );
         assert_eq!(data.account.cash_on_hand, 400); // 20% of 500
-        assert!(!data.account.unlocked_cards.contains("shrooms"), "repossessed");
+        // SOW-034: the UNSOLD batch is repossessed; ACCESS is never revoked
+        assert_eq!(data.account.charges_in("shrooms"), 0, "unsold batch seized");
+        assert!(data.account.unlocked_cards.contains("shrooms"), "access is never revoked");
         assert!(data.front_in("trailer_park").is_none());
         assert_eq!(data.standing_with("trailer_park"), SupplierStanding::Soured);
         // Soured is permanent - paying can't fix what muscle settled
@@ -1734,11 +1921,46 @@ mod tests {
     }
 
     #[test]
+    fn test_souring_seizes_only_unsold_charges() {
+        // A charge the runner already burned is sold and gone; the muscle
+        // takes back only what remains, up to the delivered batch.
+        let mut data = SaveData::new();
+        data.account.unlocked_cards.insert("shrooms".to_string());
+        data.take_front("shrooms", "trailer_park", 100).unwrap(); // +4 -> 4
+        data.account.burn_charge("shrooms"); // sold 1 -> 3 left
+        assert_eq!(data.account.charges_in("shrooms"), 3);
+        data.supplier_standing
+            .insert("trailer_park".to_string(), SupplierStanding::CutOff);
+        data.fronts[0].runs_remaining = 1;
+        data.tick_fronts();
+        // seize min(batch 4, on-hand 3) = 3 -> 0
+        assert_eq!(data.account.charges_in("shrooms"), 0);
+        assert!(data.account.unlocked_cards.contains("shrooms"));
+    }
+
+    #[test]
+    fn test_souring_seizes_at_most_the_delivered_batch() {
+        // Charges bought outright are not the supplier's to take - seizure is
+        // capped at the batch the front delivered.
+        let mut data = SaveData::new();
+        data.account.unlocked_cards.insert("shrooms".to_string());
+        data.account.add_stock("shrooms", 2); // 2 owned outright
+        data.take_front("shrooms", "trailer_park", 100).unwrap(); // +4 -> 6
+        data.supplier_standing
+            .insert("trailer_park".to_string(), SupplierStanding::CutOff);
+        data.fronts[0].runs_remaining = 1;
+        data.tick_fronts();
+        // seize min(batch 4, on-hand 6) = 4 -> 2 (the outright-owned charges)
+        assert_eq!(data.account.charges_in("shrooms"), 2);
+    }
+
+    #[test]
     fn test_broke_muscle_benches_the_active_dealer_when_backup_exists() {
         let mut data = SaveData::new();
         data.account.cash_on_hand = 500;
         assert!(data.hire_dealer());
         data.account.cash_on_hand = 4; // 20% rounds to 0 - nothing worth taking
+        data.account.unlocked_cards.insert("shrooms".to_string());
         data.take_front("shrooms", "trailer_park", 100).unwrap();
         data.supplier_standing
             .insert("trailer_park".to_string(), SupplierStanding::CutOff);
@@ -1766,6 +1988,7 @@ mod tests {
         // repossession and the souring still land.
         let mut data = SaveData::new();
         data.account.cash_on_hand = 4;
+        data.account.unlocked_cards.insert("shrooms".to_string());
         data.take_front("shrooms", "trailer_park", 100).unwrap();
         data.supplier_standing
             .insert("trailer_park".to_string(), SupplierStanding::CutOff);
@@ -1776,7 +1999,9 @@ mod tests {
         assert!(matches!(events[0], FrontEvent::Soured { .. }));
         assert!(data.dealers[0].is_available(), "the only runner keeps running");
         assert_eq!(data.standing_with("trailer_park"), SupplierStanding::Soured);
-        assert!(!data.account.unlocked_cards.contains("shrooms"), "repossession lands");
+        // SOW-034: the unsold batch is seized, access stays
+        assert_eq!(data.account.charges_in("shrooms"), 0, "repossession lands");
+        assert!(data.account.unlocked_cards.contains("shrooms"), "access kept");
     }
 
     #[test]
@@ -1784,6 +2009,7 @@ mod tests {
         let mut data = SaveData::new();
         data.account.cash_on_hand = 0;
         data.dealers[0].status = DealerStatus::LayingLow { runs_remaining: 2 };
+        data.account.unlocked_cards.insert("shrooms".to_string());
         data.take_front("shrooms", "trailer_park", 100).unwrap();
         data.supplier_standing
             .insert("trailer_park".to_string(), SupplierStanding::CutOff);
@@ -1799,8 +2025,8 @@ mod tests {
     #[test]
     fn test_fresh_save_has_no_fronts_and_clean_standings() {
         // Old-save handling is the SOW-021 policy: bincode carries no
-        // field-level migration, so SAVE_VERSION was bumped (6 -> 7) and
-        // version-mismatched saves fall back to fresh (pinned by
+        // field-level migration, so SAVE_VERSION was bumped (7 -> 8 for
+        // SOW-034) and version-mismatched saves fall back to fresh (pinned by
         // io::test_old_version_rejected). What must hold here: a fresh
         // empire starts clean.
         let data = SaveData::new();
@@ -1812,6 +2038,7 @@ mod tests {
     #[test]
     fn test_reset_empire_clears_fronts_and_standings() {
         let mut data = SaveData::new();
+        data.account.unlocked_cards.insert("shrooms".to_string());
         data.take_front("shrooms", "trailer_park", 100).unwrap();
         data.supplier_standing
             .insert("red_light_district".to_string(), SupplierStanding::Soured);

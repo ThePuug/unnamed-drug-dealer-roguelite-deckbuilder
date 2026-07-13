@@ -4,11 +4,27 @@ use bevy::prelude::*;
 use crate::ui::components::*;
 use crate::ui::theme;
 use crate::models::card::{Card, CardType};
-use crate::save::{SaveData, SaveManager, AccountState};
+use crate::models::shop_location::{batch_cost, restock_unit};
+use crate::save::{SaveData, SaveManager, AccountState, BATCH_SIZE};
 use crate::assets::GameAssets;
 
 /// Hover color for buttons
 const BUTTON_HOVER_BG: Color = Color::srgb(0.4, 0.9, 0.4);
+
+/// SOW-034: defensive fallback margin if a selected zone's def is somehow
+/// missing (validate_shop_locations guarantees a valid per-zone margin, so
+/// this is never hit in practice - the real margins live in shop_locations.ron).
+const DEFAULT_RESTOCK_MARGIN: f32 = 0.5;
+
+/// SOW-034: a product card's consumable state in the shop - how many charges
+/// are on hand, what one charge costs to restock at this zone's margin, and the
+/// full batch cost. `None` at the spawn site marks a non-product (a permanent
+/// one-time unlock).
+struct ProductStock {
+    charges: u32,
+    unit_price: u32,
+    batch_cost: u32,
+}
 
 /// Resource tracking which shop view is active
 #[derive(Resource, Default)]
@@ -219,6 +235,14 @@ pub fn populate_shop_cards_system(
             }
         }
 
+        // SOW-034: the zone's per-zone restock margin (authored in RON,
+        // validated in (0.0, 1.0) at load) - forgiving in the starter zone,
+        // tighter up the ladder. Defensive fallback if the def is missing.
+        let margin = area_def
+            .as_ref()
+            .map(|a| a.restock_margin)
+            .unwrap_or(DEFAULT_RESTOCK_MARGIN);
+
         for card in location_cards {
             let is_unlocked = unlocked_cards.contains(&card.id);
             let price = card.shop_price.unwrap_or(0);
@@ -228,6 +252,22 @@ pub fn populate_shop_cards_system(
                 unlocked_by: area_best_cred.as_ref().map(|(n, _)| n.clone()),
             });
 
+            // SOW-034: products are consumable stock, priced off their base
+            // sale price x the zone margin; every other type stays a one-time
+            // unlock (product_stock None).
+            let product_stock = if let CardType::Product { price: base, .. } = card.card_type {
+                Some(ProductStock {
+                    charges: save_data
+                        .as_ref()
+                        .map(|d| d.account.charges_in(&card.id))
+                        .unwrap_or(0),
+                    unit_price: restock_unit(base, margin),
+                    batch_cost: batch_cost(base, margin),
+                })
+            } else {
+                None
+            };
+
             spawn_shop_card(
                 parent,
                 card,
@@ -236,6 +276,7 @@ pub fn populate_shop_cards_system(
                 cred_gate,
                 &shop_state.selected_location,
                 front_ctx.as_ref(),
+                product_stock,
             );
         }
     });
@@ -348,6 +389,111 @@ impl CredGate {
     }
 }
 
+/// SOW-034: a purchase button. `restock_unit` Some(unit) routes the click
+/// through `buy_batch` (a consumable product batch); None is a permanent
+/// one-time unlock (Location/Cover/Insurance/Modifier).
+fn spawn_purchase_button(
+    parent: &mut ChildSpawnerCommands,
+    card_id: &str,
+    label: String,
+    price: u32,
+    restock_unit: Option<u32>,
+) {
+    parent
+        .spawn((
+            Button,
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Px(30.0),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            BackgroundColor(theme::CONTINUE_BUTTON_BG),
+            ShopPurchaseButton {
+                card_id: card_id.to_string(),
+                price,
+                restock_unit,
+            },
+        ))
+        .with_children(|btn| {
+            btn.spawn((
+                Text::new(label),
+                TextFont::from_font_size(14.0),
+                TextColor(Color::WHITE),
+            ));
+        });
+}
+
+/// SOW-034: FRONT-a-batch button on a product you have access to but can't
+/// afford to restock in cash. Full cost + window on the face before commit.
+fn spawn_front_button(
+    parent: &mut ChildSpawnerCommands,
+    card_id: &str,
+    area_id: &str,
+    batch_cost: u32,
+) {
+    parent
+        .spawn((
+            Button,
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Px(30.0),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                margin: UiRect::top(Val::Px(4.0)),
+                ..default()
+            },
+            BackgroundColor(Color::srgb(0.55, 0.42, 0.12)),
+            FrontTakeButton {
+                card_id: card_id.to_string(),
+                area_id: area_id.to_string(),
+                batch_cost,
+            },
+        ))
+        .with_children(|btn| {
+            btn.spawn((
+                Text::new(crate::ui::front_view::front_button_label(batch_cost)),
+                TextFont::from_font_size(11.0),
+                TextColor(Color::WHITE),
+            ));
+        });
+}
+
+/// A cred gate that names the dealer whose rep opened the door (Reed: make
+/// the unlocking dealer visible). No-op when the gate is absent or unnamed.
+fn spawn_unlocked_by_line(parent: &mut ChildSpawnerCommands, cred_gate: Option<&CredGate>) {
+    if let Some(gate) = cred_gate {
+        if let Some(name) = &gate.unlocked_by {
+            parent.spawn((
+                Text::new(format!("unlocked by {name}")),
+                TextFont::from_font_size(10.0),
+                TextColor(theme::SHOP_CREDIT_LINE_TEXT),
+            ));
+        }
+    }
+}
+
+/// The shop's "NEEDS CRED n" lock line
+fn spawn_cred_lock_line(parent: &mut ChildSpawnerCommands, gate: &CredGate) {
+    parent.spawn((
+        Text::new(format!("NEEDS CRED {}\n(best: {})", gate.required, gate.best)),
+        TextFont::from_font_size(12.0),
+        TextColor(theme::SHOP_CRED_LOCK_TEXT),
+        TextLayout::new_with_justify(bevy::text::Justify::Center),
+    ));
+}
+
+/// The shop's "CUT OFF — settle your debt" stock lock line
+fn spawn_cut_off_line(parent: &mut ChildSpawnerCommands) {
+    parent.spawn((
+        Text::new("CUT OFF\nsettle your debt"),
+        TextFont::from_font_size(12.0),
+        TextColor(theme::ROSTER_STATUS_JAILED),
+        TextLayout::new_with_justify(bevy::text::Justify::Center),
+    ));
+}
+
 /// Spawn a shop card display
 fn spawn_shop_card(
     parent: &mut ChildSpawnerCommands,
@@ -357,6 +503,7 @@ fn spawn_shop_card(
     cred_gate: Option<CredGate>,
     area_id: &str,
     front_ctx: Option<&FrontContext>,
+    product_stock: Option<ProductStock>,
 ) {
     let card_color = match card.card_type {
         CardType::Product { .. } => theme::PRODUCT_CARD_COLOR,
@@ -412,112 +559,83 @@ fn spawn_shop_card(
         ));
 
         // Price/status row
-        if is_unlocked {
-            card_parent.spawn((
-                Text::new("✓ OWNED"),
-                TextFont::from_font_size(14.0),
-                TextColor(Color::srgb(0.3, 0.8, 0.3)),
-            ));
-        } else if price == 0 {
-            // Shouldn't happen - starting cards are unlocked
-            card_parent.spawn((
-                Text::new("FREE"),
-                TextFont::from_font_size(14.0),
-                TextColor(Color::srgb(0.8, 0.8, 0.3)),
-            ));
-        } else if cred_gate.as_ref().is_some_and(|gate| !gate.met()) {
-            // SOW-025: cred-locked - "to unlock it, you gotta deal here"
-            let gate = cred_gate.as_ref().unwrap();
-            card_parent.spawn((
-                Text::new(format!("NEEDS CRED {}\n(best: {})", gate.required, gate.best)),
-                TextFont::from_font_size(12.0),
-                TextColor(theme::SHOP_CRED_LOCK_TEXT),
-                TextLayout::new_with_justify(bevy::text::Justify::Center),
-            ));
-        } else if front_ctx
-            .is_some_and(|ctx| ctx.standing == crate::save::SupplierStanding::CutOff)
-        {
-            // SOW-031: a blown due date locks this supplier's whole stock
-            // until the debt is settled - no purchase, no front
-            card_parent.spawn((
-                Text::new("CUT OFF\nsettle your debt"),
-                TextFont::from_font_size(12.0),
-                TextColor(theme::ROSTER_STATUS_JAILED),
-                TextLayout::new_with_justify(bevy::text::Justify::Center),
-            ));
-        } else {
-            // SOW-025: a met cred requirement names the dealer whose rep
-            // opened the door (Reed: make the unlocking dealer visible)
-            if let Some(gate) = cred_gate.as_ref() {
-                if let Some(name) = &gate.unlocked_by {
-                    card_parent.spawn((
-                        Text::new(format!("unlocked by {name}")),
-                        TextFont::from_font_size(10.0),
-                        TextColor(theme::SHOP_CREDIT_LINE_TEXT),
-                    ));
+        let cut_off = front_ctx
+            .is_some_and(|ctx| ctx.standing == crate::save::SupplierStanding::CutOff);
+        match &product_stock {
+            // SOW-034: consumable product - stock badge, then BUY BATCH (first
+            // acquisition) / RESTOCK (already have access). Gating order mirrors
+            // the unlock path: cred lock, then the supplier's stock lock.
+            Some(ps) => {
+                let batch = ps.batch_cost;
+                let (stock_label, in_stock) =
+                    crate::ui::stock_view::shop_stock_line(ps.charges);
+                card_parent.spawn((
+                    Text::new(stock_label),
+                    TextFont::from_font_size(13.0),
+                    TextColor(if in_stock {
+                        Color::srgb(0.3, 0.8, 0.3)
+                    } else {
+                        theme::ROSTER_STATUS_JAILED
+                    }),
+                ));
+
+                if cred_gate.as_ref().is_some_and(|gate| !gate.met()) {
+                    spawn_cred_lock_line(card_parent, cred_gate.as_ref().unwrap());
+                } else if cut_off {
+                    // SOW-031: a blown due date locks this supplier's whole
+                    // stock until the debt is settled - no buy, no front
+                    spawn_cut_off_line(card_parent);
+                } else {
+                    spawn_unlocked_by_line(card_parent, cred_gate.as_ref());
+                    let label = if is_unlocked {
+                        format!("RESTOCK ${batch}")
+                    } else {
+                        format!("BUY BATCH ${batch}")
+                    };
+                    spawn_purchase_button(
+                        card_parent,
+                        &card.id,
+                        label,
+                        batch,
+                        Some(ps.unit_price),
+                    );
+                    // SOW-034: FRONT a batch when you have access but can't
+                    // afford it in cash, while the supplier still deals on
+                    // trust (Good + no front already running with them).
+                    if is_unlocked
+                        && front_ctx.is_some_and(|ctx| {
+                            ctx.standing == crate::save::SupplierStanding::Good
+                                && !ctx.has_front
+                                && ctx.cash < batch as u64
+                        })
+                    {
+                        spawn_front_button(card_parent, &card.id, area_id, batch);
+                    }
                 }
             }
-
-            // Purchase button
-            card_parent.spawn((
-                Button,
-                Node {
-                    width: Val::Percent(100.0),
-                    height: Val::Px(30.0),
-                    justify_content: JustifyContent::Center,
-                    align_items: AlignItems::Center,
-                    ..default()
-                },
-                BackgroundColor(theme::CONTINUE_BUTTON_BG),
-                ShopPurchaseButton {
-                    card_id: card.id.clone(),
-                    price,
-                },
-            ))
-            .with_children(|btn| {
-                btn.spawn((
-                    Text::new(format!("${}", price)),
-                    TextFont::from_font_size(14.0),
-                    TextColor(Color::WHITE),
-                ));
-            });
-
-            // SOW-031: FRONT offer - products only, only when cash falls
-            // short, only while the supplier still deals on trust (Good +
-            // no front already running with them). Full cost + window on
-            // the face BEFORE commit.
-            let is_product = matches!(card.card_type, CardType::Product { .. });
-            if is_product
-                && front_ctx.is_some_and(|ctx| {
-                    ctx.standing == crate::save::SupplierStanding::Good
-                        && !ctx.has_front
-                        && ctx.cash < price as u64
-                })
-            {
-                card_parent.spawn((
-                    Button,
-                    Node {
-                        width: Val::Percent(100.0),
-                        height: Val::Px(30.0),
-                        justify_content: JustifyContent::Center,
-                        align_items: AlignItems::Center,
-                        margin: UiRect::top(Val::Px(4.0)),
-                        ..default()
-                    },
-                    BackgroundColor(Color::srgb(0.55, 0.42, 0.12)),
-                    FrontTakeButton {
-                        card_id: card.id.clone(),
-                        area_id: area_id.to_string(),
-                        price,
-                    },
-                ))
-                .with_children(|btn| {
-                    btn.spawn((
-                        Text::new(crate::ui::front_view::front_button_label(price)),
-                        TextFont::from_font_size(11.0),
-                        TextColor(Color::WHITE),
+            // Non-products stay permanent one-time unlocks (unchanged)
+            None => {
+                if is_unlocked {
+                    card_parent.spawn((
+                        Text::new("✓ OWNED"),
+                        TextFont::from_font_size(14.0),
+                        TextColor(Color::srgb(0.3, 0.8, 0.3)),
                     ));
-                });
+                } else if price == 0 {
+                    // Shouldn't happen - starting cards are unlocked
+                    card_parent.spawn((
+                        Text::new("FREE"),
+                        TextFont::from_font_size(14.0),
+                        TextColor(Color::srgb(0.8, 0.8, 0.3)),
+                    ));
+                } else if cred_gate.as_ref().is_some_and(|gate| !gate.met()) {
+                    spawn_cred_lock_line(card_parent, cred_gate.as_ref().unwrap());
+                } else if cut_off {
+                    spawn_cut_off_line(card_parent);
+                } else {
+                    spawn_unlocked_by_line(card_parent, cred_gate.as_ref());
+                    spawn_purchase_button(card_parent, &card.id, format!("${price}"), price, None);
+                }
             }
         }
     });
@@ -573,18 +691,40 @@ pub fn shop_purchase_system(
             }
         }
 
-        // Deduct cash and unlock card
-        data.account.cash_on_hand -= button.price as u64;
-        data.account.unlocked_cards.insert(button.card_id.clone());
+        // SOW-034: a consumable product routes through buy_batch (grants
+        // access on the first buy, adds a batch of charges, spends unit x
+        // BATCH_SIZE); every other card is a permanent one-time unlock.
+        match button.restock_unit {
+            Some(unit) => {
+                if !data.account.buy_batch(&button.card_id, unit, BATCH_SIZE) {
+                    // Affordability was pre-checked, but buy_batch is the source
+                    // of truth (no mutation on a short wallet)
+                    info!("Cannot afford batch of {}", button.card_id);
+                    continue;
+                }
+                info!(
+                    "Bought a batch of {} for ${} ({} charges, remaining: ${})",
+                    button.card_id,
+                    button.price,
+                    data.account.charges_in(&button.card_id),
+                    data.account.cash_on_hand
+                );
+            }
+            None => {
+                data.account.cash_on_hand -= button.price as u64;
+                data.account.unlocked_cards.insert(button.card_id.clone());
+                info!(
+                    "Purchased card {} for ${} (remaining: ${})",
+                    button.card_id, button.price, data.account.cash_on_hand
+                );
+            }
+        }
 
         // SOW-031 review fix: the pool reflects the buy NOW - the
         // DeckBuilder is otherwise only rebuilt at go-home
         if let Some(ref mut db) = deck_builder {
             db.resync_available(&game_assets, &data.account.unlocked_cards);
         }
-
-        info!("Purchased card {} for ${} (remaining: ${})",
-              button.card_id, button.price, data.account.cash_on_hand);
 
         // Save immediately
         if let Some(ref manager) = save_manager {
@@ -603,9 +743,9 @@ pub fn shop_purchase_system(
     }
 }
 
-/// SOW-031: take a card on the supplier's credit. The model owns every
-/// guard (standing, one-per-supplier, ownership); this system just routes
-/// the click and refreshes the tab.
+/// SOW-031/034: take a BATCH on the supplier's credit. The model owns every
+/// guard (standing, one-per-supplier, access precondition); this system just
+/// routes the click and refreshes the tab.
 pub fn front_take_system(
     mut commands: Commands,
     interaction_query: Query<(&Interaction, &FrontTakeButton), Changed<Interaction>>,
@@ -622,11 +762,11 @@ pub fn front_take_system(
         let Some(ref mut data) = save_data else {
             continue;
         };
-        match data.take_front(&button.card_id, &button.area_id, button.price) {
+        match data.take_front(&button.card_id, &button.area_id, button.batch_cost) {
             Ok(()) => {
                 let front = data.front_in(&button.area_id).expect("just taken");
                 info!(
-                    "Fronted {} in {}: ${} due in {} runs",
+                    "Fronted a batch of {} in {}: ${} due in {} runs",
                     button.card_id, button.area_id, front.owed, front.runs_remaining
                 );
                 // SOW-031 review fix: playable NOW must be literal - the

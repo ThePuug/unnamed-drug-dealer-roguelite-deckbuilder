@@ -29,11 +29,12 @@ pub fn standing_label(standing: SupplierStanding) -> Option<&'static str> {
     }
 }
 
-/// The FRONT button's face: full cost + window BEFORE commit
-pub fn front_button_label(shop_price: u32) -> String {
+/// The FRONT button's face: full cost + window BEFORE commit. SOW-034: the
+/// front is against a BATCH, so `batch_cost` is the batch's cash price.
+pub fn front_button_label(batch_cost: u32) -> String {
     format!(
         "FRONT ${} · DUE {} RUNS",
-        crate::save::front_owed(shop_price),
+        crate::save::front_owed(batch_cost),
         FRONT_WINDOW_RUNS
     )
 }
@@ -160,6 +161,7 @@ mod tests {
                 voice: "Trust me.".to_string(),
             }),
             narc_portrait: None,
+            restock_margin: 0.5,
         }
     }
 
@@ -170,6 +172,7 @@ mod tests {
             area_id: area_id.to_string(),
             owed,
             runs_remaining: runs,
+            charges: crate::save::BATCH_SIZE,
         });
         save
     }
@@ -287,6 +290,7 @@ mod tests {
             area_id: "red_light_district".to_string(),
             owed: 2000,
             runs_remaining: 1,
+            charges: crate::save::BATCH_SIZE,
         });
         let areas = [
             area("trailer_park", true, Some("Lil Smoke")),
