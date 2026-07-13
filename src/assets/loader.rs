@@ -886,6 +886,12 @@ mod tests {
         assert!(areas.iter().all(|a| !a.identity.is_empty() && !a.narc_hint.is_empty()));
 
         let buyers = load_and_validate_buyers("assets/buyers.ron").expect("buyers load");
+        // SOW-033 headline: exactly 3 clientele per zone (9 personas total)
+        assert_eq!(buyers.len(), 9);
+        for id in ["trailer_park", "suburbia", "red_light_district"] {
+            let count = buyers.iter().filter(|b| b.area == id).count();
+            assert_eq!(count, 3, "zone {id} should have 3 buyers, has {count}");
+        }
         let pimp = buyers.iter().find(|b| b.display_name == "Pimp").unwrap();
         assert_eq!(pimp.area, "red_light_district");
         // Zone coherence: the Housewife is Suburbia's clientele
@@ -895,6 +901,9 @@ mod tests {
             .unwrap();
         assert_eq!(housewife.area, "suburbia");
         assert_eq!(housewife.base_multiplier, 1.5);
+        // SOW-033: the Frat Bro re-homed from the start to Suburbia
+        let frat = buyers.iter().find(|b| b.display_name == "Frat Bro").unwrap();
+        assert_eq!(frat.area, "suburbia");
 
         // Party economy lives in the Red Light District now
         let products =
@@ -1149,6 +1158,53 @@ mod tests {
             avg <= 3.0,
             "Trailer Park/Cold composition too hot: avg {:.1} heat/card (want <= 3.0)",
             avg
+        );
+    }
+
+    #[test]
+    fn test_shipped_narc_difficulty_climbs_with_the_ladder() {
+        // SOW-033 (silent-risk flag 11): the narc override blocks were swapped
+        // so difficulty climbs trailer_park < suburbia < red_light_district.
+        // A find/replace that renamed keys without swapping contents would
+        // leave suburbia harder than red_light - caught here by comparing
+        // total Cold-tier evidence pressure (all three define Cold).
+        let file = load_narc_compositions("assets/narc_deck.ron")
+            .expect("narc_deck.ron should parse");
+        let evidence = load_and_validate_cards("assets/cards/evidence.ron", "Evidence")
+            .expect("evidence.ron should load");
+        let evidence_by_id: HashMap<&str, u32> = evidence
+            .iter()
+            .filter_map(|c| match c.card_type {
+                CardType::Evidence { evidence, .. } => Some((c.id.as_str(), evidence)),
+                _ => None,
+            })
+            .collect();
+
+        let cold_pressure = |ids: &[String]| -> u32 {
+            ids.iter()
+                .map(|id| evidence_by_id.get(id.as_str()).copied().unwrap_or(0))
+                .sum()
+        };
+
+        // trailer_park inherits the default Cold; suburbia and red_light both
+        // override it
+        let trailer = cold_pressure(file.default.get("Cold").expect("default Cold"));
+        let suburbia = cold_pressure(
+            file.areas
+                .get("suburbia")
+                .and_then(|o| o.get("Cold"))
+                .expect("suburbia Cold override"),
+        );
+        let red_light = cold_pressure(
+            file.areas
+                .get("red_light_district")
+                .and_then(|o| o.get("Cold"))
+                .expect("red_light_district Cold override"),
+        );
+
+        assert!(
+            trailer < suburbia && suburbia < red_light,
+            "narc Cold-tier evidence must climb with the ladder: trailer {trailer} < suburbia {suburbia} < red_light {red_light}"
         );
     }
 }
