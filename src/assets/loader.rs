@@ -719,7 +719,8 @@ fn load_background_images(asset_server: &AssetServer, game_assets: &mut GameAsse
 }
 
 /// SOW-033: build the actor portrait map from RON (buyers.ron `portrait`,
-/// shop_locations.ron `narc_portrait`) plus the code-owned dealer hire pool.
+/// shop_locations.ron `narc_portrait`, SOW-036 `signature_dealer.portrait`)
+/// plus the code-owned generic dealer pool.
 /// The hard-coded name->file HashMap is gone (art-backlog E3: new personas
 /// silently got no art). A mapped portrait whose file is missing on disk is a
 /// LOUD load error - Bevy's async asset_server.load would otherwise fail
@@ -756,6 +757,18 @@ fn load_actor_portraits(asset_server: &AssetServer, game_assets: &mut GameAssets
     for key in crate::save::DEALER_PORTRAIT_POOL {
         let slug = key.to_lowercase().replace(' ', "-");
         mapped.push((key.to_string(), format!("dealer-{slug}.png")));
+    }
+
+    // SOW-036: signature-dealer faces, RESERVED from the generic pool above
+    // and authored per zone in shop_locations.ron. Keyed like the pool
+    // (portrait key -> "dealer-<slug>.png") so the map/roster render resolves
+    // them and the loud disk-existence check below still covers every dealer
+    // face. (This runs after shop_locations are loaded - see the doc note.)
+    for area in &game_assets.shop_locations {
+        if let Some(sig) = &area.signature_dealer {
+            let slug = sig.portrait.to_lowercase().replace(' ', "-");
+            mapped.push((sig.portrait.clone(), format!("dealer-{slug}.png")));
+        }
     }
 
     for (key, filename) in mapped {
@@ -851,6 +864,7 @@ mod tests {
             identity: "CRAFT".to_string(),
             narc_hint: "eyes".to_string(),
             supplier: None,
+            signature_dealer: None,
             narc_portrait: None,
             restock_margin: 0.5,
         };
@@ -1084,6 +1098,7 @@ mod tests {
                 identity: "CRAFT".to_string(),
                 narc_hint: "eyes".to_string(),
                 supplier: None,
+                signature_dealer: None,
                 narc_portrait: None,
                 restock_margin: 0.5,
             },
@@ -1096,6 +1111,7 @@ mod tests {
                 identity: "CRAFT".to_string(),
                 narc_hint: "eyes".to_string(),
                 supplier: None,
+                signature_dealer: None,
                 narc_portrait: None,
                 restock_margin: 0.5,
             },

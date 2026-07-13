@@ -66,12 +66,59 @@ backgrounds — studio art-backlog). (2) **Unlockable dealers per area**.
 (3) Utility-card consumables. (4) **"Widen the margins" mechanic** (the
 limited-use progression reward). (5) SOW-032 Tutorial Arc.
 
+**Roadmap adds (Reed, 2026-07-13):**
+- **Retire the generic hire pool** — DECIDED. Signature-per-zone hiring
+  (SOW-036) becomes the ONLY way to hire a dealer. Remove the generic
+  `hire_dealer()` / `recruit()` / `DEALER_PORTRAIT_POOL` path and the
+  roster HIRE button; the transitional **Gladys-only** pool that SOW-036
+  shipped goes away with it. This resolves SOW-036's open
+  generic-hiring-fate question. (Small SOW; touches save/types.rs +
+  roster UI; likely SAVE_VERSION bump.)
+- **`back_of_the_club` → shop-buyable location** — the alley was dropped
+  from the Pimp's reaction deck (boot fix on the SOW-036 branch), so it's
+  now only referenced by demand flavor. Make it a player-purchasable
+  location card in the Red Light shop pool so the scene is obtainable
+  rather than orphaned.
+
 **Closed threads (Reed, 2026-07-12):** dev save wipes are a non-concern for
 the leaderboard; Lay Low stays committed (no cancel); heat stays global per
 dealer. Original debt list fully absorbed: jail-as-wager shipped (023),
 RFC-019 resolved (027), harness isolation/outcome-awareness shipped (023/024).
 
 ## Iteration Log
+
+### Iteration 13 — 2026-07-13
+
+- **SOW-036 Signature Dealers merged** (284 tests, zero warnings): hiring is
+  now a **per-zone** act. Each zone authors one named **signature dealer** you
+  hire AT that zone on the shared hire-cost ladder (`next_hire_cost()` =
+  `500 * 2^(len-1)`, no cred gate); the hire lands **stationed at that zone**
+  and can be hired **once**. Faces: **Trailer Park → Bubba**, **Suburbia →
+  Roxanne**, **Red Light District → Marcus**. The generic hire pool
+  (`DEALER_PORTRAIT_POOL`) shrank to **Gladys-only** — the three signature
+  faces are reserved — with load-time validation that every zone authors a
+  non-empty signature. Model guard + map view-model (`signature_status`) both
+  key off `account.unlocked_locations`; map surfaces a "HIRE `<NAME>` — $X"
+  button on unlocked nodes (mirrors the UNLOCK / SEND button patterns).
+  SAVE_VERSION 8 → 9 (serde-default `signature_of` field; the bump wipes old
+  saves per the SOW-021 policy).
+- **P0 boot fix (on-branch):** the Pimp's reaction deck referenced
+  `back_of_the_club`, which no longer resolved to a playable location and
+  panicked on boot — **dropped the alley** from the Pimp's deck, leaving it at
+  **7 cards**. (Follow-up captured above: make `back_of_the_club` a shop-buyable
+  location so the scene is obtainable rather than orphaned.)
+- **Art:** three **regenerated dealer faces** (bubba / marcus / roxanne) wired
+  through the RON portrait mappings and the loud disk-existence check.
+- **Generic-hire fate DECIDED (Reed):** retire the generic hire pool entirely —
+  signature-per-zone becomes the only hire path — scheduled as a follow-up SOW
+  (see Roadmap adds above). SOW-036 ships **as-is** with the transitional
+  Gladys-only pool.
+- Adversarial review: **safe to merge**, no blocker/major; 1 minor applied at
+  closeout (`signature_status` tightened to the account's `unlocked_locations`
+  set alone, matching the model guard, + a regression test), two nits accepted
+  as matching established button patterns. **Live boot verified:** the Pimp
+  boot fix boots and the signature-dealer map UI renders. Merged `--no-ff`,
+  pushed assets → game.
 
 ### Iteration 12 — 2026-07-13
 

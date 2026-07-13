@@ -10,7 +10,7 @@ use bevy::prelude::*;
 use crate::assets::GameAssets;
 use crate::save::SaveData;
 use crate::ui::components::*;
-use crate::ui::map_view::{self, MoveEligibility, ZoneStatus};
+use crate::ui::map_view::{self, MoveEligibility, SignatureStatus, ZoneStatus};
 use crate::ui::theme;
 
 /// Map overlay state. Selection arms the move flow: pick a dealer chip,
@@ -404,8 +404,13 @@ fn spawn_zone_node(
                     });
                 }
                 ZoneStatus::Unlocked => {
+                    // The armed move flow owns the action area when a dealer is
+                    // selected; otherwise the resting state offers the zone's
+                    // signature-dealer hire (SOW-036).
                     if let Some(dealer_index) = selected {
                         spawn_send_action(card, save_data, dealer_index, node);
+                    } else {
+                        spawn_signature_action(card, node);
                     }
                 }
             }
@@ -537,5 +542,53 @@ fn spawn_send_action(
                 ));
             });
         }
+    }
+}
+
+/// SOW-036: the unlocked node's resting-state action (no dealer armed) - the
+/// zone's signature-dealer hire button, or a "runs this zone" tag once hired.
+/// All state comes from the pure view-model, so the button never promises a
+/// hire the save model would refuse.
+fn spawn_signature_action(card: &mut ChildSpawnerCommands, node: &map_view::ZoneNodeView) {
+    match &node.signature {
+        SignatureStatus::Available { name, portrait, cost, affordable } => {
+            card.spawn((
+                Button,
+                Node {
+                    width: Val::Percent(100.0),
+                    height: Val::Px(56.0),
+                    justify_content: JustifyContent::Center,
+                    align_items: AlignItems::Center,
+                    border_radius: BorderRadius::all(Val::Px(8.0)),
+                    ..default()
+                },
+                BackgroundColor(if *affordable {
+                    theme::CONTINUE_BUTTON_BG
+                } else {
+                    theme::BUTTON_DISABLED_BG
+                }),
+                MapSignatureHireButton {
+                    area_id: node.area_id.clone(),
+                    name: name.clone(),
+                    portrait: portrait.clone(),
+                },
+            ))
+            .with_children(|btn| {
+                btn.spawn((
+                    Text::new(format!("HIRE {} — ${}", name.to_uppercase(), cost)),
+                    TextFont::from_font_size(18.0),
+                    TextColor(Color::WHITE),
+                ));
+            });
+        }
+        SignatureStatus::Hired { name } => {
+            card.spawn((
+                Text::new(format!("{} RUNS THIS ZONE", name.to_uppercase())),
+                TextFont::from_font_size(13.0),
+                TextColor(theme::ROSTER_STATION_TEXT),
+                Node { align_self: AlignSelf::Center, ..default() },
+            ));
+        }
+        SignatureStatus::Unavailable => {}
     }
 }

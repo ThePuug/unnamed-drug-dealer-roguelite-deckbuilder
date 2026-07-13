@@ -35,12 +35,35 @@ pub struct ZoneNodeView {
     /// Dealers stationed here (empty on locked zones by construction -
     /// stations can only be unlocked areas)
     pub dealers: Vec<DealerChip>,
+    /// SOW-036: the zone's signature-dealer hire offer (resting-state action
+    /// on an unlocked node; the move flow takes precedence when armed)
+    pub signature: SignatureStatus,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ZoneStatus {
     Unlocked,
     Locked { price: u32, affordable: bool },
+}
+
+/// SOW-036: the zone's signature-dealer hire offer. Offered only on an
+/// UNLOCKED zone that hasn't hired its signature yet (you hire AT a zone you
+/// already operate). Locked zones and zones with no authored signature report
+/// `Unavailable`.
+#[derive(Debug, Clone, PartialEq)]
+pub enum SignatureStatus {
+    /// Offer open: the named face, the hire cost, and whether cash covers it
+    Available {
+        name: String,
+        /// Portrait key (for the hire button to rebuild the def on click)
+        portrait: String,
+        cost: u64,
+        affordable: bool,
+    },
+    /// Already on the roster - one signature per zone
+    Hired { name: String },
+    /// Zone still locked, or no signature authored: no offer
+    Unavailable,
 }
 
 /// One stationed-dealer chip on a node
@@ -130,6 +153,31 @@ pub fn zone_status(area: &ShopLocationDef, save: &SaveData) -> ZoneStatus {
     }
 }
 
+/// SOW-036: the signature-dealer hire offer for a node. Mirrors
+/// `SaveData::hire_signature_dealer`'s guards so the button never promises a
+/// hire the model would refuse: locked zone or no authored signature ->
+/// Unavailable; already on the roster -> Hired; else Available with the shared
+/// hire-ladder cost and current affordability.
+pub fn signature_status(area: &ShopLocationDef, save: &SaveData) -> SignatureStatus {
+    let Some(sig) = &area.signature_dealer else {
+        return SignatureStatus::Unavailable;
+    };
+    let unlocked = save.account.unlocked_locations.contains(&area.id);
+    if !unlocked {
+        return SignatureStatus::Unavailable;
+    }
+    if save.has_signature_dealer(&area.id) {
+        return SignatureStatus::Hired { name: sig.name.clone() };
+    }
+    let cost = save.next_hire_cost();
+    SignatureStatus::Available {
+        name: sig.name.clone(),
+        portrait: sig.portrait.clone(),
+        cost,
+        affordable: save.account.cash_on_hand >= cost,
+    }
+}
+
 /// Status suffix shared by map chips and ledger dossiers (SOW-030)
 pub fn chip_status_note(dealer: &DealerState) -> Option<String> {
     let plural = |n: u32| if n == 1 { "" } else { "S" };
@@ -186,6 +234,7 @@ pub fn zone_node_view<'a>(
         payout_band: payout_band(personas, &area.id),
         products: native_products(products, &area.id),
         dealers: dealer_chips(save, &area.id),
+        signature: signature_status(area, save),
     }
 }
 
@@ -292,6 +341,10 @@ mod tests {
             supplier: Some(crate::models::shop_location::SupplierDef {
                 name: "Plug".to_string(),
                 voice: "Trust me.".to_string(),
+            }),
+            signature_dealer: Some(crate::models::shop_location::SignatureDealerDef {
+                name: "Bubba".to_string(),
+                portrait: "Bubba".to_string(),
             }),
             narc_portrait: None,
             restock_margin: 0.5,
@@ -525,5 +578,84 @@ mod tests {
         // SOW-031: locked zones still name their supplier - the aspiration
         assert_eq!(node.supplier_line.as_deref(), Some("SUPPLIER: PLUG"));
         assert!(node.dealers.is_empty(), "nobody can be stationed in a locked zone");
+        // SOW-036: a locked zone offers no signature hire (you hire AT a zone
+        // you already operate)
+        assert_eq!(node.signature, SignatureStatus::Unavailable);
+    }
+
+    // -- signature-dealer hire offer (mirrors hire_signature_dealer's guards) --
+
+    fn sig_def(name: &str) -> crate::models::shop_location::SignatureDealerDef {
+        crate::models::shop_location::SignatureDealerDef {
+            name: name.to_string(),
+            portrait: name.to_string(),
+        }
+    }
+
+    #[test]
+    fn signature_available_carries_cost_and_tracks_affordability() {
+        // Fresh save: trailer_park unlocked, roster = [kingpin], next hire $500
+        let tp = area("trailer_park", true, 0);
+        assert_eq!(
+            signature_status(&tp, &save_with_cash(499)),
+            SignatureStatus::Available {
+                name: "Bubba".to_string(),
+                portrait: "Bubba".to_string(),
+                cost: 500,
+                affordable: false,
+            }
+        );
+        assert_eq!(
+            signature_status(&tp, &save_with_cash(500)),
+            SignatureStatus::Available {
+                name: "Bubba".to_string(),
+                portrait: "Bubba".to_string(),
+                cost: 500,
+                affordable: true,
+            }
+        );
+    }
+
+    #[test]
+    fn signature_unavailable_on_locked_zone() {
+        let locked = area("suburbia", false, 1200);
+        assert_eq!(
+            signature_status(&locked, &save_with_cash(100_000)),
+            SignatureStatus::Unavailable
+        );
+    }
+
+    #[test]
+    fn signature_unavailable_when_flagged_unlocked_but_not_in_account_set() {
+        // SOW-036 review finding #1: signature_status must mirror the model guard
+        // (hire_signature_dealer), which keys off the account's unlocked_locations
+        // set alone - NOT the def's `unlocked` flag. A zone flagged unlocked:true
+        // that the account has not actually unlocked must offer no hire the model
+        // would refuse. (Fresh save unlocks only trailer_park.)
+        let flagged = area("suburbia", true, 0);
+        let save = save_with_cash(100_000);
+        assert!(!save.account.unlocked_locations.contains("suburbia"));
+        assert_eq!(signature_status(&flagged, &save), SignatureStatus::Unavailable);
+    }
+
+    #[test]
+    fn signature_reports_hired_after_hiring() {
+        let tp = area("trailer_park", true, 0);
+        let mut save = save_with_cash(500);
+        assert!(save.hire_signature_dealer("trailer_park", &sig_def("Bubba")));
+        assert_eq!(
+            signature_status(&tp, &save),
+            SignatureStatus::Hired { name: "Bubba".to_string() }
+        );
+    }
+
+    #[test]
+    fn signature_unavailable_when_zone_has_no_authored_def() {
+        let mut tp = area("trailer_park", true, 0);
+        tp.signature_dealer = None;
+        assert_eq!(
+            signature_status(&tp, &save_with_cash(500)),
+            SignatureStatus::Unavailable
+        );
     }
 }

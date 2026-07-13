@@ -487,6 +487,18 @@ pub struct MapDealerChipButton {
     pub dealer_index: usize,
 }
 
+/// SOW-036: hire this zone's SIGNATURE dealer, stationed AT the zone. Carries
+/// the authored name + portrait key so the commit path rebuilds the def
+/// without touching content (mirrors ShopAreaUnlockButton's self-contained
+/// payload). The cost is not stored: hire_signature_dealer recomputes it from
+/// the shared hire ladder at click time (the button's label showed it).
+#[derive(Component)]
+pub struct MapSignatureHireButton {
+    pub area_id: String,
+    pub name: String,
+    pub portrait: String,
+}
+
 // ============================================================================
 // SOW-030: Kingpin Ledger overlay
 // ============================================================================

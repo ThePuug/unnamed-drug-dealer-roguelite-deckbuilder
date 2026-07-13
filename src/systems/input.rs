@@ -639,6 +639,9 @@ pub fn roster_button_system(
     move_query: Query<(&Interaction, &RosterMoveButton), Changed<Interaction>>,
     lay_low_query: Query<(&Interaction, &RosterLayLowButton), Changed<Interaction>>,
     lawyer_query: Query<(&Interaction, &RosterLawyerButton), Changed<Interaction>>,
+    // SOW-036: the map's signature-dealer hire (same commit path as the map's
+    // SEND button, handled here so the roster save/rebuild flow is reused)
+    signature_hire_query: Query<(&Interaction, &MapSignatureHireButton), Changed<Interaction>>,
     save_data: Option<ResMut<crate::save::SaveData>>,
     save_manager: Option<Res<crate::save::SaveManager>>,
 ) {
@@ -701,6 +704,27 @@ pub fn roster_button_system(
                 );
             }
             dirty |= laying;
+        }
+    }
+
+    // SOW-036: hire a zone's signature dealer, stationed AT that zone
+    // (hire_signature_dealer no-ops when the zone is locked, its signature is
+    // already on the roster, or the cost is unaffordable)
+    for (interaction, button) in signature_hire_query.iter() {
+        if *interaction == Interaction::Pressed {
+            let def = crate::models::shop_location::SignatureDealerDef {
+                name: button.name.clone(),
+                portrait: button.portrait.clone(),
+            };
+            let hired = save_data.hire_signature_dealer(&button.area_id, &def);
+            if hired {
+                bevy::log::info!(
+                    "Hired signature dealer {} at {}",
+                    button.name,
+                    button.area_id
+                );
+            }
+            dirty |= hired;
         }
     }
 
