@@ -39,6 +39,12 @@ pub struct ShopLocationDef {
     /// ("narc-<slug>.png"). None falls back to "narc-default.png" at load.
     #[serde(default)]
     pub narc_portrait: Option<String>,
+    /// SOW-034: the zone's restock margin - the fraction of a product's BASE
+    /// sale price that one restock charge costs here. Easy in the starter zone,
+    /// tighter up the ladder. Authored in RON, validated in (0.0, 1.0) at load
+    /// (a missing/out-of-range margin fails loud - the authorability rule).
+    #[serde(default)]
+    pub restock_margin: f32,
 }
 
 /// Load-time validation for the area list:
@@ -72,6 +78,15 @@ pub fn validate_shop_locations(areas: &[ShopLocationDef]) -> Result<(), String> 
                 return Err(format!("area '{}' supplier needs a name and a voice", area.id));
             }
             Some(_) => {}
+        }
+        // SOW-034: the restock margin must be a sensible fraction of a sale -
+        // 0 would give product away free, >=1 would run every product
+        // underwater (a restock costs more than the sale it enables)
+        if !(area.restock_margin > 0.0 && area.restock_margin < 1.0) {
+            return Err(format!(
+                "area '{}' restock_margin {} must be in (0.0, 1.0)",
+                area.id, area.restock_margin
+            ));
         }
     }
     if !areas.iter().any(|a| a.unlocked) {
@@ -131,7 +146,19 @@ mod tests {
                 voice: "First one rides on trust.".to_string(),
             }),
             narc_portrait: None,
+            restock_margin: 0.5,
         }
+    }
+
+    #[test]
+    fn restock_margin_out_of_range_rejected() {
+        let mut zero = area("trailer_park", true, 0);
+        zero.restock_margin = 0.0;
+        assert!(validate_shop_locations(&[zero]).unwrap_err().contains("restock_margin"));
+
+        let mut too_high = area("trailer_park", true, 0);
+        too_high.restock_margin = 1.0;
+        assert!(validate_shop_locations(&[too_high]).unwrap_err().contains("restock_margin"));
     }
 
     #[test]
@@ -194,6 +221,26 @@ mod tests {
     fn batch_cost_is_unit_times_batch_size() {
         assert_eq!(batch_cost(30, 0.35), 11 * crate::save::BATCH_SIZE);
         assert_eq!(batch_cost(80, 0.65), 52 * crate::save::BATCH_SIZE);
+    }
+
+    #[test]
+    fn shipped_zone_economy_is_positive_and_laddered() {
+        // (base sale price, shipped zone margin, restock_unit, batch_cost) for
+        // each of the 6 shipped products. Pins the economy and asserts a batch
+        // always clears under four base-price sales (no product runs underwater).
+        let cases = [
+            ("weed", 30u32, 0.35f32, 11u32, 44u32),      // trailer_park
+            ("shrooms", 40, 0.35, 14, 56),               // trailer_park
+            ("codeine", 50, 0.50, 25, 100),              // suburbia
+            ("xanax", 55, 0.50, 28, 112),                // suburbia
+            ("ecstasy", 80, 0.65, 52, 208),              // red_light_district
+            ("coke", 120, 0.65, 78, 312),                // red_light_district
+        ];
+        for (name, base, margin, unit, batch) in cases {
+            assert_eq!(restock_unit(base, margin), unit, "{name} restock_unit");
+            assert_eq!(batch_cost(base, margin), batch, "{name} batch_cost");
+            assert!(batch < base * 4, "{name}: a batch must clear under four base sales");
+        }
     }
 
     #[test]

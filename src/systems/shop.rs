@@ -11,9 +11,9 @@ use crate::assets::GameAssets;
 /// Hover color for buttons
 const BUTTON_HOVER_BG: Color = Color::srgb(0.4, 0.9, 0.4);
 
-/// SOW-034 (Phase 4 replaces this with per-zone `restock_margin` from
-/// shop_locations.ron): interim flat margin used to price every zone's
-/// restock while the batch-buy mechanics land.
+/// SOW-034: defensive fallback margin if a selected zone's def is somehow
+/// missing (validate_shop_locations guarantees a valid per-zone margin, so
+/// this is never hit in practice - the real margins live in shop_locations.ron).
 const DEFAULT_RESTOCK_MARGIN: f32 = 0.5;
 
 /// SOW-034: a product card's consumable state in the shop - how many charges
@@ -235,9 +235,13 @@ pub fn populate_shop_cards_system(
             }
         }
 
-        // SOW-034: the zone's restock margin (Phase 4 sources this per-zone
-        // from RON; interim flat margin until then)
-        let margin = DEFAULT_RESTOCK_MARGIN;
+        // SOW-034: the zone's per-zone restock margin (authored in RON,
+        // validated in (0.0, 1.0) at load) - forgiving in the starter zone,
+        // tighter up the ladder. Defensive fallback if the def is missing.
+        let margin = area_def
+            .as_ref()
+            .map(|a| a.restock_margin)
+            .unwrap_or(DEFAULT_RESTOCK_MARGIN);
 
         for card in location_cards {
             let is_unlocked = unlocked_cards.contains(&card.id);

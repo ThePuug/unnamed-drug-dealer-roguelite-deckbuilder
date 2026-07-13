@@ -294,6 +294,7 @@ mod tests {
                 voice: "Trust me.".to_string(),
             }),
             narc_portrait: None,
+            restock_margin: 0.5,
         }
     }
 

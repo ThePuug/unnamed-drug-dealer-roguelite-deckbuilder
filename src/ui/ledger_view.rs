@@ -333,6 +333,7 @@ mod tests {
             narc_hint: "eyes".to_string(),
             supplier: None,
             narc_portrait: None,
+            restock_margin: 0.5,
         }
     }
 

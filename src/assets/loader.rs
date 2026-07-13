@@ -854,6 +854,7 @@ mod tests {
             narc_hint: "eyes".to_string(),
             supplier: None,
             narc_portrait: None,
+            restock_margin: 0.5,
         };
 
         // OK: one area, one persona living there (test_buyer defaults to trailer_park)
@@ -1086,6 +1087,7 @@ mod tests {
                 narc_hint: "eyes".to_string(),
                 supplier: None,
                 narc_portrait: None,
+                restock_margin: 0.5,
             },
             crate::models::shop_location::ShopLocationDef {
                 id: "suburbia".to_string(),
@@ -1097,6 +1099,7 @@ mod tests {
                 narc_hint: "eyes".to_string(),
                 supplier: None,
                 narc_portrait: None,
+                restock_margin: 0.5,
             },
         ];
         // Corner buyer demanding a Block-gated product = dead payout -> warn
