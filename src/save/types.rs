@@ -20,7 +20,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 // charges field on FrontState. Products became limited-use, so any v7 save's
 // permanent-unlock economy is stale - the bump wipes it to a fresh, seeded
 // account (io.rs rejects version mismatch -> fresh).
-pub const SAVE_VERSION: u32 = 8;
+// SOW-036: v9 adds DealerState.signature_of (the zone a signature dealer is
+// the face of). serde-default keeps it back-compat, but per the SOW-021
+// version-bump policy the mismatch wipes old saves to a fresh account.
+pub const SAVE_VERSION: u32 = 9;
 
 /// Maximum sanity values for validation
 const MAX_HEAT: u32 = 10_000;
@@ -243,6 +246,38 @@ impl SaveData {
             return false;
         }
         self.dealers.push(DealerState::recruit(&self.dealers));
+        true
+    }
+
+    /// Whether a zone's signature dealer is already on the roster
+    pub fn has_signature_dealer(&self, area_id: &str) -> bool {
+        self.dealers
+            .iter()
+            .any(|d| d.signature_of.as_deref() == Some(area_id))
+    }
+
+    /// SOW-036: hire a zone's SIGNATURE dealer - the themed named face you can
+    /// only take on AT that zone. The hire lands stationed there immediately
+    /// (not the default station: the point is you hire at a location). Costs
+    /// the shared hire ladder (`next_hire_cost`), no cred gate. Guarded: the
+    /// zone must be unlocked, its signature not already on the roster, and the
+    /// cost affordable. Returns false (no mutation) otherwise.
+    pub fn hire_signature_dealer(
+        &mut self,
+        area_id: &str,
+        def: &crate::models::shop_location::SignatureDealerDef,
+    ) -> bool {
+        if !self.account.unlocked_locations.contains(area_id) {
+            return false;
+        }
+        if self.has_signature_dealer(area_id) {
+            return false;
+        }
+        let cost = self.next_hire_cost();
+        if !self.account.spend(cost) {
+            return false;
+        }
+        self.dealers.push(DealerState::signature(area_id, def));
         true
     }
 
@@ -1101,18 +1136,17 @@ pub const DEALER_NAME_POOL: [&str; 12] = [
     "Lucky", "Smokes", "Blade", "Ace", "Vega", "Halo",
 ];
 
-/// Actor portraits available as dealer faces (keys into
+/// Actor portraits available as GENERIC dealer faces (keys into
 /// GameAssets.actor_portraits; the loader loads each as "dealer-<key>.png").
 /// Excludes the narc and every buyer persona - a hire must never wear a
-/// buyer's face. SOW-033 repurposed the old character faces (Hells Angel,
-/// Hippie, Flower Child, Pretty Woman, Street Walker, Widow, Displaced
-/// Patriot) as BUYER portraits, so they left the pool; four dedicated dealer
-/// faces remain. Fewer faces than names (4 < 12) means hires past the fourth
-/// reuse a face until Reed drops more dealer art (art-backlog). Appended, not
-/// reordered: recruit() is deterministic by pool order.
-pub const DEALER_PORTRAIT_POOL: [&str; 4] = [
-    "Marcus", "Gladys", "Bubba", "Roxanne",
-];
+/// buyer's face. SOW-033 repurposed the old character faces as BUYER
+/// portraits, leaving four dedicated dealer faces. SOW-036 RESERVES three of
+/// them (Bubba/Roxanne/Marcus) as zone SIGNATURE faces, authored in
+/// shop_locations.ron and loaded from there - so a generic recruit() can
+/// never grab a signature face. Gladys is the only generic face left; the
+/// signature hire is now the way to grow the roster with a distinct face.
+/// recruit() is deterministic by pool order.
+pub const DEALER_PORTRAIT_POOL: [&str; 1] = ["Gladys"];
 
 /// Whether a dealer can be sent out on a run
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
@@ -1161,6 +1195,11 @@ pub struct DealerState {
     /// NEVER decays - jail, moves, time: nothing erases what you built.
     #[serde(default)]
     pub street_cred: HashMap<String, u32>,
+    /// SOW-036: the zone this dealer is the SIGNATURE face of, if any. Set
+    /// only by hire_signature_dealer; None for the kingpin and generic hires.
+    /// Enforces one-signature-per-zone and marks the themed hires.
+    #[serde(default)]
+    pub signature_of: Option<String>,
     /// Career record: heat, play counts, upgrades, stories (RFC-017/018/019)
     pub character: CharacterState,
 }
@@ -1197,6 +1236,24 @@ impl DealerState {
             prior_convictions: 0,
             station: default_station(),
             street_cred: HashMap::new(),
+            signature_of: None,
+            character: CharacterState::new(),
+        }
+    }
+
+    /// SOW-036: a zone's SIGNATURE dealer - a themed named face, stationed AT
+    /// the zone you hired them in (that is the whole point; not the default
+    /// station). `signature_of` records which zone, enforcing one per zone.
+    pub fn signature(area_id: &str, def: &crate::models::shop_location::SignatureDealerDef) -> Self {
+        Self {
+            name: def.name.clone(),
+            portrait: def.portrait.clone(),
+            status: DealerStatus::Available,
+            is_kingpin: false,
+            prior_convictions: 0,
+            station: area_id.to_string(),
+            street_cred: HashMap::new(),
+            signature_of: Some(area_id.to_string()),
             character: CharacterState::new(),
         }
     }
@@ -1224,6 +1281,7 @@ impl DealerState {
             prior_convictions: 0,
             station: default_station(),
             street_cred: HashMap::new(),
+            signature_of: None,
             character: CharacterState::new(),
         }
     }
@@ -1698,6 +1756,91 @@ mod tests {
         data.account.cash_on_hand = 500;
         assert!(data.hire_dealer());
         assert_eq!(data.dealers[1].portrait, DEALER_PORTRAIT_POOL[0]);
+    }
+
+    // ------------------------------------------------------------------
+    // SOW-036: signature dealers
+    // ------------------------------------------------------------------
+
+    fn sig(name: &str) -> crate::models::shop_location::SignatureDealerDef {
+        crate::models::shop_location::SignatureDealerDef {
+            name: name.to_string(),
+            portrait: name.to_string(),
+        }
+    }
+
+    #[test]
+    fn signature_hire_stations_at_the_zone_and_marks_it() {
+        // Station AT the hired zone (not DEFAULT_STATION) is the whole point,
+        // so hire in a zone that ISN'T the default to prove it.
+        let mut save = SaveData::new();
+        save.account.cash_on_hand = 10_000;
+        save.account.unlock_location("suburbia");
+        assert_ne!("suburbia", DEFAULT_STATION);
+
+        assert!(save.hire_signature_dealer("suburbia", &sig("Roxanne")));
+        assert_eq!(save.dealers.len(), 2);
+        let hire = &save.dealers[1];
+        assert_eq!(hire.name, "Roxanne");
+        assert_eq!(hire.portrait, "Roxanne");
+        assert_eq!(hire.station, "suburbia");
+        assert_eq!(hire.signature_of.as_deref(), Some("suburbia"));
+        assert!(!hire.is_kingpin);
+        assert!(hire.is_available());
+    }
+
+    #[test]
+    fn signature_hire_spends_the_shared_ladder_cost() {
+        let mut save = SaveData::new(); // roster = [kingpin], next hire = $500
+        save.account.cash_on_hand = 500;
+        assert_eq!(save.next_hire_cost(), 500);
+        assert!(save.hire_signature_dealer("trailer_park", &sig("Bubba")));
+        assert_eq!(save.account.cash_on_hand, 0);
+        // The ladder advanced with the roster (now 2): next costs $1000
+        assert_eq!(save.next_hire_cost(), 1000);
+    }
+
+    #[test]
+    fn signature_hire_no_ops_when_zone_locked() {
+        let mut save = SaveData::new(); // only trailer_park unlocked
+        save.account.cash_on_hand = 10_000;
+        assert!(!save.hire_signature_dealer("suburbia", &sig("Roxanne")));
+        assert_eq!(save.dealers.len(), 1);
+        assert_eq!(save.account.cash_on_hand, 10_000, "a refused hire never spends");
+    }
+
+    #[test]
+    fn signature_hire_no_ops_when_broke() {
+        let mut save = SaveData::new();
+        save.account.cash_on_hand = 0;
+        assert!(!save.hire_signature_dealer("trailer_park", &sig("Bubba")));
+        assert_eq!(save.dealers.len(), 1);
+    }
+
+    #[test]
+    fn signature_hire_is_one_per_zone() {
+        let mut save = SaveData::new();
+        save.account.cash_on_hand = 100_000;
+        assert!(save.hire_signature_dealer("trailer_park", &sig("Bubba")));
+        let after_first = save.account.cash_on_hand;
+        // Second attempt at the same zone is refused with no mutation/spend
+        assert!(!save.hire_signature_dealer("trailer_park", &sig("Bubba")));
+        assert_eq!(save.dealers.len(), 2);
+        assert_eq!(save.account.cash_on_hand, after_first);
+        assert!(save.has_signature_dealer("trailer_park"));
+    }
+
+    #[test]
+    fn generic_pool_reserves_signature_faces() {
+        // SOW-036: the three signature faces must not be reachable by a
+        // generic recruit - only Gladys remains in the pool.
+        for face in ["Bubba", "Roxanne", "Marcus"] {
+            assert!(
+                !DEALER_PORTRAIT_POOL.contains(&face),
+                "{face} is a signature-only face and must not be in the generic pool"
+            );
+        }
+        assert_eq!(DEALER_PORTRAIT_POOL, ["Gladys"]);
     }
 
     // ------------------------------------------------------------------

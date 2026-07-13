@@ -14,6 +14,19 @@ pub struct SupplierDef {
     pub voice: String,
 }
 
+/// SOW-036: the zone's SIGNATURE dealer - one themed named face you hire AT
+/// this zone (you don't hire generically from anywhere; you hire at a
+/// location, and the hire lands stationed there). Pure fiction: `portrait`
+/// is a KEY into GameAssets.actor_portraits ("Bubba" -> "dealer-bubba.png"),
+/// consistent with DEALER_PORTRAIT_POOL. The hire MECHANICS live in save
+/// state (SaveData::hire_signature_dealer + DealerState.signature_of).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SignatureDealerDef {
+    pub name: String,
+    /// Portrait key into GameAssets.actor_portraits
+    pub portrait: String,
+}
+
 /// An unlockable area: gates a card shop and (RFC-024) its buyer personas
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ShopLocationDef {
@@ -35,6 +48,11 @@ pub struct ShopLocationDef {
     /// SOW-031: who fronts this zone's stock
     #[serde(default)]
     pub supplier: Option<SupplierDef>,
+    /// SOW-036: this zone's signature dealer - the themed named face you hire
+    /// AT this zone. Required at load (validate_shop_locations); serde-default
+    /// keeps old-format tests compiling, but authored content must carry one.
+    #[serde(default)]
+    pub signature_dealer: Option<SignatureDealerDef>,
     /// SOW-033: per-area narc portrait filename under assets/art/actors/
     /// ("narc-<slug>.png"). None falls back to the "narc-<area>.png" template.
     #[serde(default)]
@@ -54,6 +72,8 @@ pub struct ShopLocationDef {
 /// - SOW-031: every area carries its map flavor (identity + narc_hint)
 ///   and a supplier with a name and a voice - the map and shop render
 ///   these unconditionally, so missing content fails loud here
+/// - SOW-036: every area carries a signature dealer with a name and a
+///   portrait - the map offers it as a hire, so missing content fails loud
 pub fn validate_shop_locations(areas: &[ShopLocationDef]) -> Result<(), String> {
     let mut seen = std::collections::HashSet::new();
     for area in areas {
@@ -76,6 +96,18 @@ pub fn validate_shop_locations(areas: &[ShopLocationDef]) -> Result<(), String> 
             None => return Err(format!("area '{}' has no supplier", area.id)),
             Some(s) if s.name.trim().is_empty() || s.voice.trim().is_empty() => {
                 return Err(format!("area '{}' supplier needs a name and a voice", area.id));
+            }
+            Some(_) => {}
+        }
+        // SOW-036: the signature dealer is offered as a hire on the map, so
+        // a missing/empty name or portrait fails loud (authorability rule)
+        match &area.signature_dealer {
+            None => return Err(format!("area '{}' has no signature_dealer", area.id)),
+            Some(s) if s.name.trim().is_empty() || s.portrait.trim().is_empty() => {
+                return Err(format!(
+                    "area '{}' signature_dealer needs a name and a portrait",
+                    area.id
+                ));
             }
             Some(_) => {}
         }
@@ -148,6 +180,10 @@ mod tests {
                 name: "Plug".to_string(),
                 voice: "First one rides on trust.".to_string(),
             }),
+            signature_dealer: Some(SignatureDealerDef {
+                name: "Bubba".to_string(),
+                portrait: "Bubba".to_string(),
+            }),
             narc_portrait: None,
             restock_margin: 0.5,
         }
@@ -187,6 +223,27 @@ mod tests {
         let mut mute_supplier = area("trailer_park", true, 0);
         mute_supplier.supplier = Some(SupplierDef { name: "Plug".to_string(), voice: String::new() });
         assert!(validate_shop_locations(&[mute_supplier]).unwrap_err().contains("voice"));
+    }
+
+    #[test]
+    fn missing_or_faceless_signature_dealer_rejected() {
+        let mut no_sig = area("trailer_park", true, 0);
+        no_sig.signature_dealer = None;
+        assert!(validate_shop_locations(&[no_sig]).unwrap_err().contains("signature_dealer"));
+
+        let mut nameless = area("trailer_park", true, 0);
+        nameless.signature_dealer = Some(SignatureDealerDef {
+            name: "  ".to_string(),
+            portrait: "Bubba".to_string(),
+        });
+        assert!(validate_shop_locations(&[nameless]).unwrap_err().contains("name"));
+
+        let mut faceless = area("trailer_park", true, 0);
+        faceless.signature_dealer = Some(SignatureDealerDef {
+            name: "Bubba".to_string(),
+            portrait: String::new(),
+        });
+        assert!(validate_shop_locations(&[faceless]).unwrap_err().contains("portrait"));
     }
 
     #[test]

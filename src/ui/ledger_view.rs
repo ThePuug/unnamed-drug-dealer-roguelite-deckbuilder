@@ -332,6 +332,7 @@ mod tests {
             identity: "CRAFT".to_string(),
             narc_hint: "eyes".to_string(),
             supplier: None,
+            signature_dealer: None,
             narc_portrait: None,
             restock_margin: 0.5,
         }
