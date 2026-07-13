@@ -486,9 +486,11 @@ Light; Plea Bargain (insurance) re-homed to Suburbia, kept at $4,000/cred 3
 
 ### Flags for the coordinator
 
-- **`dealer-roxanne.png` carries Reed's pre-existing local modification** to
-  `roxanne.png` (it was `M` in the submodule before this SOW; the `git mv`
-  renamed it in place, so that WIP content ships under the new name).
+- **`roxanne.png` had an uncommitted local modification** before this SOW.
+  The `git mv` staged a pure rename (the *previously-committed* roxanne art
+  ships as `dealer-roxanne.png`); Reed's local WIP tweak was NOT committed —
+  it is preserved as an unstaged working-tree change on `dealer-roxanne.png`
+  (same as its prior uncommitted state, just under the new filename).
 - **The interactive window-driver e2e walk was NOT run.** Per the SOW's
   guidance that the loud load validators + unit tests are the real safety
   net, verification was done via three real `cargo run` launches: happy-path
