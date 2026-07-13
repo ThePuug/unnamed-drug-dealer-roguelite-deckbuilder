@@ -420,7 +420,83 @@ deletion over `#[allow]`; new buyer view logic (if any) unit-tested in a
 
 ## Discussion
 
-*Populated during implementation.*
+Implemented in four phased commits on `sow-033-zone-retheme` (submodule +
+parent per phase). Final state: `cargo build` and `cargo test` both green
+with **zero warnings**; **256 tests pass** (1 pre-existing ignored). The game
+loads all validators clean and a fresh empire starts in Trailer Park.
+
+### Shipped economy
+
+**Unlock ladder:** Trailer Park $0 (start, unlocked) → Suburbia $1,200 →
+Red Light District $2,500 (top). Array order in `shop_locations.ron` is
+`[trailer_park, suburbia, red_light_district]` (= rung order).
+
+**Product ladder** (shop price / cred required):
+
+| Zone | Product | Card stats | Shop price | Cred |
+|---|---|---|---|---|
+| Trailer Park | Weed | price 30 / heat 5 | $0 (starting) | 0 |
+| Trailer Park | Shrooms | 40 / 8 | $100 | 1 |
+| Suburbia | Codeine | 50 / 10 | $400 | 1 |
+| Suburbia | **Xanax** (new) | 55 / 12 | $800 | 2 |
+| Red Light | Ecstasy | 80 / 25 | $1,600 | 1 |
+| Red Light | Coke (rehomed) | 120 / 35 | $2,800 (was $5,000) | 3 |
+
+`test_shipped_demands_attainable_on_ladder` reports **zero** warnings.
+
+**Shelved** (definitions kept, shop hooks removed): products Acid, Ice,
+Heroin, Fentanyl. Wall Street Wolf removed from the active roster (its 7
+reaction cards orphan harmlessly; definition in git history).
+
+**Rosters (9 personas, 3/zone):** Trailer Park — Biker, Tweaker, Deadbeat;
+Suburbia — Frat Bro (re-homed), Desperate Housewife, Widow; Red Light —
+Pimp, Working Girl, Club Kid.
+
+**Narc difficulty** climbs trailer_park < suburbia < red_light_district
+(the two override blocks were swapped so Red Light carries the old
+task-force ladder and Suburbia the lighter vice-sweep ladder). Guarded by
+`test_shipped_narc_difficulty_climbs_with_the_ladder`.
+
+**Actor art:** portraits authored in RON (`buyers.ron` `portrait`,
+`shop_locations.ron` `narc_portrait`); the hard-coded map in `loader.rs` is
+deleted. 20 portraits load; a missing mapped file is a LOUD panic (verified
+live). All three zones ship distinct narc art. `SAVE_VERSION` 6→7.
+
+**Other content decisions:** Storage Unit → Suburbia; Clean Money → Red
+Light; Plea Bargain (insurance) re-homed to Suburbia, kept at $4,000/cred 3
+(premium safety net, no attainability impact); supplier The Broker → Deb.
+
+### Deviations from the phased plan (all to keep each commit green)
+
+1. **Phase 1 kept Frat Bro in Trailer Park** (naive rename); his re-home to
+   Suburbia landed in Phase 2 with the three new Trailer buyers, so Trailer
+   Park never had a zero-clientele moment. The `validate_persona_areas`
+   load check (every area needs ≥1 clientele) forced this ordering.
+2. **Zone theming, supplier Deb, product re-ladder, and the narc swap were
+   done in Phase 1**, not Phase 2. `narc_deck.ron`'s override area KEYS are
+   validated against loaded areas at load (panic on unknown area), so that
+   file had to change in Phase 1 regardless — the correct difficulty swap
+   was done immediately rather than shipping a transient inverted state.
+3. **Wolf was removed** (not commented in-place): its Adrenaline Junkie
+   scenario ([Ice, Coke], both unattainable at Suburbia's rung) would have
+   tripped an attainability warning, and the SOW anticipated its cards
+   orphaning. Definition preserved in git history.
+4. Added two durable content tests beyond the touchpoint list: exactly 3
+   buyers/zone, and the narc difficulty-order guard (§6 flag 11).
+
+### Flags for the coordinator
+
+- **`dealer-roxanne.png` carries Reed's pre-existing local modification** to
+  `roxanne.png` (it was `M` in the submodule before this SOW; the `git mv`
+  renamed it in place, so that WIP content ships under the new name).
+- **The interactive window-driver e2e walk was NOT run.** Per the SOW's
+  guidance that the loud load validators + unit tests are the real safety
+  net, verification was done via three real `cargo run` launches: happy-path
+  load (3 areas), full 9-persona load, and a deliberate missing-portrait
+  launch that panicked loud with the E3 message. The fresh-empire
+  click-through (unlock Suburbia → Red Light, screenshots to `out\sweep33\`)
+  was skipped — flagging so the coordinator can drive it or accept the
+  automated coverage.
 
 ---
 

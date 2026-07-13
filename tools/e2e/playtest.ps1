@@ -23,7 +23,7 @@
 #     node action button (UNLOCK / SEND HERE): (450|960|1470, 887),
 #     first dealer chip on a node: x = 450|960|1470, y = 533 + 28 per
 #     clientele line beyond the first (chip row sits below the CLIENTELE
-#     list, so nodes with 2 personas - e.g. the Block - are at y ~561;
+#     list, so SOW-033 nodes with 3 personas each are at y ~589;
 #     verify against a fresh screenshot before scripting chip clicks)
 #   (zone unlocks moved to the map - the shop selector row lists unlocked
 #   areas only)
@@ -33,7 +33,7 @@ param(
   [int]$Hands = 2,
   [int]$SelectDealer = -1,
   [switch]$Hire,
-  [string]$BuyArea = "",   # SOW-024: buy this area in the shop before the run (e.g. the_block)
+  [string]$BuyArea = "",   # SOW-024: buy this area in the shop before the run (e.g. suburbia)
   [string]$OutDir = "$env:TEMP\ddd-playtest",
   # SOW-026 pacing runs: share one save across multiple sessions
   [string]$SaveDir = "",   # override the save location (default: OutDir\save)
@@ -81,8 +81,10 @@ function Outcome-Count {
 # 3a. SOW-024/SOW-029: optional territory purchase (city map -> node UNLOCK)
 if ($BuyArea -ne "") {
   # Node index follows shop_locations.ron definition order
+  # SOW-033: node order = shop_locations.ron order [trailer_park, suburbia,
+  # red_light_district]. X must track the new order, not just the renamed key.
   $nodeX = switch ($BuyArea) {
-    "the_corner" { 450 } "the_strip" { 960 } "the_block" { 1470 }
+    "trailer_park" { 450 } "suburbia" { 960 } "red_light_district" { 1470 }
     default { throw "unknown area '$BuyArea'" }
   }
   & $drv -Action click -X 415 -Y 40 | Out-Null   # CITY MAP tab
