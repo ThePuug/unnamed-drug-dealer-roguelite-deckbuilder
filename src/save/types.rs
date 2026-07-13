@@ -1106,12 +1106,12 @@ pub const DEALER_NAME_POOL: [&str; 12] = [
 /// Excludes the narc and every buyer persona - a hire must never wear a
 /// buyer's face. SOW-033 repurposed the old character faces (Hells Angel,
 /// Hippie, Flower Child, Pretty Woman, Street Walker, Widow, Displaced
-/// Patriot) as BUYER portraits, so they left the pool; six dedicated dealer
-/// faces remain. Fewer faces than names (6 < 12) means hires past the sixth
+/// Patriot) as BUYER portraits, so they left the pool; four dedicated dealer
+/// faces remain. Fewer faces than names (4 < 12) means hires past the fourth
 /// reuse a face until Reed drops more dealer art (art-backlog). Appended, not
 /// reordered: recruit() is deterministic by pool order.
-pub const DEALER_PORTRAIT_POOL: [&str; 6] = [
-    "Barista", "Julie", "Marcus", "Gladys", "Bubba", "Roxanne",
+pub const DEALER_PORTRAIT_POOL: [&str; 4] = [
+    "Marcus", "Gladys", "Bubba", "Roxanne",
 ];
 
 /// Whether a dealer can be sent out on a run
@@ -1186,8 +1186,8 @@ impl DealerState {
     /// The boss themselves - every fresh empire starts with the kingpin
     /// dealing in person.
     /// SOW-031: wears "Silhouette" - the generic no-chosen-face-yet
-    /// placeholder - until character customization ships. Barista goes
-    /// back to being a normal hire face.
+    /// placeholder - until character customization ships, so the kingpin
+    /// never borrows a hire's face.
     pub fn kingpin() -> Self {
         Self {
             name: "The Kingpin".to_string(),
@@ -1691,13 +1691,13 @@ mod tests {
     }
 
     #[test]
-    fn test_first_hire_now_gets_barista() {
-        // With the kingpin off "Barista", recruit()'s skip-used scan finds
+    fn test_first_hire_gets_first_pool_face() {
+        // The kingpin wears "Silhouette", so recruit()'s skip-used scan finds
         // the pool's first face free for the first hire
         let mut data = SaveData::new();
         data.account.cash_on_hand = 500;
         assert!(data.hire_dealer());
-        assert_eq!(data.dealers[1].portrait, "Barista");
+        assert_eq!(data.dealers[1].portrait, DEALER_PORTRAIT_POOL[0]);
     }
 
     // ------------------------------------------------------------------

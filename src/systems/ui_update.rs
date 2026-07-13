@@ -1124,12 +1124,13 @@ pub fn update_actor_portraits_system(
     }
 
     // SOW-033: narc portrait follows the current run area (keyed by area id
-    // in actor_portraits), falling back to the shared default face.
+    // in actor_portraits). Every area is mapped at load, so the run-area
+    // lookup resolves; the fallback is defensive.
     if let Ok(mut narc_image) = narc_portrait_query.single_mut() {
         let portrait_handle = game_assets
             .actor_portraits
             .get(&hand_state.run_area)
-            .or_else(|| game_assets.actor_portraits.get("narc-default.png"));
+            .or_else(|| game_assets.actor_portraits.get("red_light_district"));
         if let Some(portrait_handle) = portrait_handle {
             if narc_image.image != *portrait_handle {
                 narc_image.image = portrait_handle.clone();

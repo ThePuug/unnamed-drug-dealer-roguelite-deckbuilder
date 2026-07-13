@@ -36,7 +36,7 @@ pub struct ShopLocationDef {
     #[serde(default)]
     pub supplier: Option<SupplierDef>,
     /// SOW-033: per-area narc portrait filename under assets/art/actors/
-    /// ("narc-<slug>.png"). None falls back to "narc-default.png" at load.
+    /// ("narc-<slug>.png"). None falls back to the "narc-<area>.png" template.
     #[serde(default)]
     pub narc_portrait: Option<String>,
     /// SOW-034: the zone's restock margin - the fraction of a product's BASE

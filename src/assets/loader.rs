@@ -725,9 +725,6 @@ fn load_background_images(asset_server: &AssetServer, game_assets: &mut GameAsse
 /// LOUD load error - Bevy's async asset_server.load would otherwise fail
 /// silently. Must be called AFTER buyers + shop_locations are loaded.
 fn load_actor_portraits(asset_server: &AssetServer, game_assets: &mut GameAssets) {
-    // Runtime fallback narc face (also the Red Light District's authored art)
-    const NARC_DEFAULT: &str = "narc-default.png";
-
     // (portrait-key, filename) pairs from every source; loaded through one
     // path with a loud file-existence check.
     let mut mapped: Vec<(String, String)> = Vec::new();
@@ -743,14 +740,13 @@ fn load_actor_portraits(asset_server: &AssetServer, game_assets: &mut GameAssets
     }
 
     // Narcs: keyed by area id (ui_update looks up by the current run area),
-    // file from RON narc_portrait, else the shared default. A dedicated
-    // NARC_DEFAULT key backs the runtime fallback for any future area.
-    mapped.push((NARC_DEFAULT.to_string(), NARC_DEFAULT.to_string()));
+    // file from RON narc_portrait, else the `narc-<area>.png` template
+    // (so a new zone gets a loud "author its narc art" error, not a shared
+    // fallback face).
     for area in &game_assets.shop_locations {
-        let file = area
-            .narc_portrait
-            .clone()
-            .unwrap_or_else(|| NARC_DEFAULT.to_string());
+        let file = area.narc_portrait.clone().unwrap_or_else(|| {
+            format!("narc-{}.png", area.id.replace('_', "-"))
+        });
         mapped.push((area.id.clone(), file));
     }
 
