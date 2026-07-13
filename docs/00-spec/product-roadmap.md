@@ -53,12 +53,18 @@ period when busted. **Cash is global.** The product needs:
    Wolf shelved; actor-art moved to RON with per-area narc art (E3 paid
    down); SAVE_VERSION 6 → 7.
 
-**Next seeds (Reed, 2026-07-13, in priority):** (1) **Limited-use cards**
-— product as consumable stock (unlock = permanent access, stock = batches
-bought/fronted, each play burns a charge); services the "nothing wagered"
-pillar, reframes fronts as batch-fronting (design: studio
-`2026-07-13-limited-use-cards.md`). (2) **Unlockable dealers per area**.
-(3) Utility-card consumables. (4) SOW-032 Tutorial Arc.
+12. ✅ **SOW-034 Limited-Use Cards** — merged 2026-07-13. Products are
+   consumable stock: unlock = permanent access, stock = batches
+   bought/fronted, each play burns a charge (fold-free, bust loses it).
+   The "nothing wagered" fix; fronts reframed as batch-fronting.
+   SAVE_VERSION 7 → 8.
+
+**Next seeds (Reed, 2026-07-13, in priority):** (1) **Art polish batch** —
+wire the new Tweaker/Deadbeat/John faces + escort rename (queued), then the
+**background pass** (watermark strip, gibberish fixes, Red Light
+backgrounds — studio art-backlog). (2) **Unlockable dealers per area**.
+(3) Utility-card consumables. (4) **"Widen the margins" mechanic** (the
+limited-use progression reward). (5) SOW-032 Tutorial Arc.
 
 **Closed threads (Reed, 2026-07-12):** dev save wipes are a non-concern for
 the leaderboard; Lay Low stays committed (no cancel); heat stays global per
@@ -66,6 +72,32 @@ dealer. Original debt list fully absorbed: jail-as-wager shipped (023),
 RFC-019 resolved (027), harness isolation/outcome-awareness shipped (023/024).
 
 ## Iteration Log
+
+### Iteration 12 — 2026-07-13
+
+- **SOW-034 Limited-Use Cards merged** (273 tests, zero warnings): the
+  "nothing wagered" fix. Products became **consumable stock** — unlock is
+  permanent access (`unlocked_cards` untouched), stock is a new
+  `AccountState.stock` ledger of charges bought or fronted in batches of 4.
+  Each product play burns one charge at the commit edge (fold-before-play
+  free; a bust loses that one charge, not the batch); 0 charges = out of
+  stock, inert but the deck stays legal. **Fronts reframed** to batch-
+  fronting — `take_front` requires access + grants a batch, souring seizes
+  unsold charges instead of revoking access (reusing ~90% of SOW-031).
+  Per-zone `restock_margin` (0.35/0.50/0.65) prices restock off base sale
+  price; economy above water (Weed batch $44 → Coke $312). SAVE_VERSION
+  7 → 8.
+- Architecture nailed by a 5-agent code-map sweep first (deck rep = one
+  card + save-side ledger; commit-time burn; fronts reuse; the
+  `shop_price`-isn't-restock economy correction).
+- Adversarial review (28 agents): **0 sustained**, but I applied one
+  dismissed footgun (`restock_unit` could round to 0 → free product +
+  access; floored at 1) and documented the accepted flat-ledger souring
+  simplification + the ECS-wiring coverage gap (rests on playtest). Merged
+  `--no-ff`, pushed assets → game → studio.
+- **Open for Reed:** the art-face batch is queued (Tweaker/Deadbeat/John +
+  escort rename) as the immediate next commit; then the background art
+  pass; and **watch a charge burn** on playtest to confirm the ECS wiring.
 
 ### Iteration 11 — 2026-07-13
 

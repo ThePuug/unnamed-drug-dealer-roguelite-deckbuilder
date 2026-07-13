@@ -115,7 +115,10 @@ pub fn unlocked_area_ids<'a>(
 /// sale that a restock charge costs, so restock_unit stays below the sale it
 /// enables and no product runs underwater. Rounded to whole dollars.
 pub fn restock_unit(product_price: u32, margin: f32) -> u32 {
-    (product_price as f32 * margin).round() as u32
+    // SOW-034 review: floor at 1. A cheap product in a low-margin zone could
+    // otherwise round to 0 (e.g. base 1 x 0.35 -> round(0.35) = 0), and a $0
+    // batch_cost would hand out the batch AND permanent access for free.
+    ((product_price as f32 * margin).round() as u32).max(1)
 }
 
 /// SOW-034: cash to buy or restock one full batch (BATCH_SIZE charges) of a
@@ -215,6 +218,8 @@ mod tests {
         for (price, margin) in [(30, 0.35), (40, 0.35), (120, 0.65)] {
             assert!(restock_unit(price, margin) < price, "margin<1 must stay under sale");
         }
+        // SOW-034 review: floored at 1 so a cheap product can never restock free
+        assert_eq!(restock_unit(1, 0.35), 1, "round(0.35)=0 must floor to 1, never free");
     }
 
     #[test]

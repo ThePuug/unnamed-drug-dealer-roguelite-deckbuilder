@@ -2,9 +2,9 @@
 
 ## Status
 
-**In Review** - implementation complete 2026-07-13 (the "nothing wagered" fix;
-next after SOW-033). All 6 phases landed on `sow-034-limited-use-cards`; see §7
-Discussion for shipped economy + deviations.
+**Accepted** - 2026-07-13 (the "nothing wagered" fix; next after SOW-033).
+All 6 phases landed on `sow-034-limited-use-cards`; adversarial review passed
+(§8); merged `--no-ff` to `main`. 273 tests, zero warnings.
 
 ## References
 
@@ -289,4 +289,41 @@ sales (margin < 1.0 guarantees it; pinned by
 
 ## 8. Acceptance Review
 
-*Populated after implementation.*
+**Reviewed 2026-07-13 (coordinator).** Adversarial review — 28 agents, 4
+dimensions (consume-hook / fronts-reframe / stock-economy-save /
+integration-softlock-tests), each finding hit by 3 refutation skeptics:
+**8 candidates → 0 sustained.** The review positively confirmed the key
+safety property (an all-out-of-stock hand is never a dead state; the front
+floor is always reachable) plus the shop label, hand badge, and resync
+behaviors.
+
+**Applied anyway (coordinator judgment, `restock_unit` floor):** a dismissed
+finding noted `restock_unit = round(base × margin)` can round to **0** for a
+cheap product in a low-margin zone → a $0 batch that hands out the product
+AND permanent access for free. Doesn't touch the shipped 6, but it's a
+latent footgun, so floored `restock_unit` at 1 (`shop_location.rs:117`) +
+pinned it (`restock_unit(1, 0.35) == 1`).
+
+**Accepted as designed / documented (not blocking):**
+- **Souring seizes pooled stock, not provenance-tracked fronted units.** The
+  `stock` ledger is a flat per-id count, so `min(front.charges, on-hand)` on
+  souring can seize cash-bought charges once fronted and bought stock mix.
+  This is the deliberate §2.1 simplification (flat ledger; per-batch
+  provenance was rejected as extra state). Narratively coherent — the muscle
+  takes a batch's worth of product from your stash when you default. Revisit
+  only if it feels unfair in playtest.
+- **Margin near 1.0 is break-even, not "comfortably below."** The `(0,1)`
+  bound + shipped margins (0.35/0.50/0.65) are fine; a future author picking
+  ~0.99 gets break-even restock. Soft economy concern, caught by any
+  attainability/feel playtest, not a correctness bug.
+- **ECS-wiring coverage gap.** The three seams SOW-034 adds (burn in
+  `card_click_system`, `buy_batch` in `shop_purchase_system`, `take_front` in
+  `front_take_system`) rest on tested *pure helpers* (`resolve_slot_click`,
+  `restock_unit`, `buy_batch`) — the thin ECS wiring itself has no driven
+  test (per DEVELOPER role: pure logic tested, systems kept thin). The
+  natural verification is a **playtest** — watching a charge burn and the
+  badge tick down. Flagged for Reed.
+
+**Verdict: ACCEPT.** Zero warnings on build + test, 273 green, forge
+scenarios round-trip at `SAVE_VERSION 8`, no soft-lock, economy above water
+with the free-product footgun now guarded.
