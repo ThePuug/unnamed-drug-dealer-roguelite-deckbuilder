@@ -2,8 +2,9 @@
 
 ## Status
 
-**Planned** - 2026-07-13 (jumps ahead of SOW-032; foundational content
-that every future zone/buyer/narc inherits)
+**Accepted** - 2026-07-13 (jumped ahead of SOW-032; foundational content
+that every future zone/buyer/narc inherits). Merged `--no-ff` to `main`
+after adversarial review; 256 tests, zero warnings.
 
 ## References
 
@@ -504,4 +505,36 @@ Light; Plea Bargain (insurance) re-homed to Suburbia, kept at $4,000/cred 3
 
 ## Acceptance Review
 
-*Populated after implementation.*
+**Reviewed 2026-07-13 (coordinator).** Adversarial review — 25 agents, 4
+dimensions (rename-correctness / content-load-validity / actor-art /
+economy-test-quality), each finding then hit by 3 refutation skeptics
+(majority sustains): **7 candidates → 1 sustained, 6 refuted.** One
+reviewer (actor-art) died on a connection error; that dimension was
+re-verified by hand — RON-driven portrait map, loud `assert!` disk-
+existence check (`loader.rs:765`), dealer pool derives `dealer-<slug>.png`,
+zero dangling old filenames. Clean.
+
+**Sustained (fixed, `01583ec`):** the "exactly 2 products per zone"
+invariant had no test guard (its sibling "3 buyers per zone" did).
+`test_shipped_three_zone_coherence` now asserts 2 shop products per zone
+and 6 stocked total — a re-hooked shelved product can no longer pass
+silently.
+
+**Refuted, carried as known limitations / tuning notes (not blocking):**
+- Narc-difficulty guard checks only the Cold tier + evidence dimension;
+  at the Inferno tier Suburbia inherits the default ladder and is
+  byte-identical to Trailer Park. Shipped content is fine early (high
+  tiers are late-game) but the monotonic claim is weaker than the test
+  name — a target for the narc-balance tuning pass.
+- Attainability warnings are rung-only (ignore cred/price); the shelved-
+  product demand guard only fires when a shelved product is a scenario's
+  sole demand. Both pre-existing check limitations, not SOW-033 regressions.
+- The loud missing-portrait assert has no unit test (needs a Bevy
+  AssetServer harness); verified live via a deliberate missing-file panic.
+
+**e2e:** interactive window walk not run (driver finicky); coverage is the
+loud validators + 256 unit tests + three live `cargo run` launches. Fresh-
+empire screenshot pass left for playtest.
+
+**Verdict: ACCEPT.** Zero warnings on build + test, 256 green, all loud
+validators pass, fresh empire starts in Trailer Park, save clean at v7.
