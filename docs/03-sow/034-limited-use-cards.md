@@ -2,7 +2,9 @@
 
 ## Status
 
-**Planned** - 2026-07-13 (the "nothing wagered" fix; next after SOW-033)
+**In Review** - implementation complete 2026-07-13 (the "nothing wagered" fix;
+next after SOW-033). All 6 phases landed on `sow-034-limited-use-cards`; see §7
+Discussion for shipped economy + deviations.
 
 ## References
 
@@ -208,7 +210,80 @@ unit-tested; view logic pure in `_view` modules.
 
 ## 7. Discussion
 
-*Populated during implementation.*
+*Populated during implementation (2026-07-13).*
+
+### Shipped economy (per-zone restock unit / batch cost)
+
+`restock_unit = round(Product.base_price × zone.restock_margin)`,
+`batch_cost = restock_unit × BATCH_SIZE (4)`. Restock is priced off the
+Product card's **base sale price** (its `CardType` price), NOT `shop_price`
+(the one-time unlock, ~10× payout base — using it per-unit runs every product
+underwater). Margins shipped: trailer_park **0.35**, suburbia **0.50**,
+red_light_district **0.65** (tuning starting-points, flagged for playtest).
+
+| Product | Zone | Base | Margin | restock_unit | batch_cost | 4 base sales | Batch profit |
+|---|---|---|---|---|---|---|---|
+| Weed | trailer_park | 30 | 0.35 | 11 | **44** | 120 | +76 |
+| Shrooms | trailer_park | 40 | 0.35 | 14 | **56** | 160 | +104 |
+| Codeine | suburbia | 50 | 0.50 | 25 | **100** | 200 | +100 |
+| Xanax | suburbia | 55 | 0.50 | 28 | **112** | 220 | +108 |
+| Ecstasy | red_light_district | 80 | 0.65 | 52 | **208** | 320 | +112 |
+| Coke | red_light_district | 120 | 0.65 | 78 | **312** | 480 | +168 |
+
+**No product runs underwater** — every batch_cost is below four base-price
+sales (margin < 1.0 guarantees it; pinned by
+`shipped_zone_economy_is_positive_and_laddered`). Trailer Park is forgiving
+(batch ≈ 35% of four sales); Red Light is thin but positive (≈ 65%).
+
+### Deviations / decisions
+
+- **Phase commits merged 0+1 and 2+3.** The zero-warning gate (a *binary*
+  crate flags any `pub` method unused in the non-test build) means a stock
+  method must land in the same commit as its consumer. Phase 0's
+  `charges_in`/`has_stock`/`burn_charge` are consumed by Phase 1's hook, so
+  they committed together; `buy_batch` moved to its Phase 2 consumer. Phases 2
+  and 3 are functionally coupled — the shop's FRONT button needs the reframed
+  `take_front` (grants a batch, not an unlock), so shipping Phase 2 alone would
+  ship a broken FRONT. Committed as Phase 0+1, Phase 2+3, Phase 4, Phase 5.
+- **Fronting requires ACCESS now.** SOW-031 fronted an *unlock*; SOW-034 fronts
+  a *batch of an already-unlocked product* (`take_front` precondition flipped
+  from "reject if owned" to "require access", new error `"no access yet"`).
+  First acquisition of a product is the cash+cred ladder (`buy_batch` grants
+  access); fronting is the repeatable out-of-stock floor. The shop's FRONT
+  offer is gated to accessed products you can't afford to restock in cash.
+- **Souring seizes stock, not access.** `tick_fronts` on the second blown
+  window seizes `min(front.charges, on-hand stock)` unsold charges and never
+  touches `unlocked_cards`. The go-home post-tick re-snapshot of `unlocked_cards`
+  (a SOW-031 defense against repossessed *access*) was dropped as dead — access
+  is stable across the tick now.
+- **Consume-hook timing tested via a pure function, not ECS.** `resolve_slot_click`
+  (Inert / Commit{burn}) captures the rule and is unit-tested across all
+  branches; the burn lives at the single `card_click_system` commit edge (never
+  resolution, never the Safe-gated `increment_play_count` loop), so a bust or a
+  fold-after-play structurally keeps the spent charge. Per DEVELOPER role this
+  is preferred over a brittle full-hand ECS integration test.
+- **Hand stock badge is a plain overlay** ("`k LEFT`" green / greyed "OUT OF
+  STOCK") added to the fan wrapper, plus `CardDisplayState::Inactive` greying at
+  0 charges. It does not add cards to the 3-slot hand; an out-of-stock product
+  stays drawable but inert, so `validate_deck` and the `deck.len() < 3`
+  exhaustion guard never see a product-less or short deck.
+- **Shop stock line reads "IN STOCK: k"** (not the `STOCK: k/N` sketched in §4)
+  — once you can stack batches, `k` can exceed `N`, so a `/N` denominator
+  misreads. Same OUT-OF-STOCK wording as the hand badge.
+- **Zero-total-stock run start warns via log** (`start_run_button_system`), not
+  a UI element — non-blocking per §2.4. A visible hub hint is deferred (cheap
+  follow-up).
+
+### Verification
+
+- `cargo build` + `cargo test` green, **zero warnings** on both; 273 tests
+  pass (up from 263 pre-SOW).
+- Forge smoke: `fresh`/`funded`/`fronted`/`strapped` all validate and
+  round-trip under `SAVE_VERSION 8`.
+- App launch smoke (isolated `DDD_SAVE_DIR`): no panic; `shop_locations.ron`
+  with `restock_margin` loaded and passed `validate_shop_locations` ("Loaded 3
+  areas"). The interactive window flow (clicking through a hand to watch a
+  charge burn and the badge tick) was NOT driven — flagged for the coordinator.
 
 ---
 

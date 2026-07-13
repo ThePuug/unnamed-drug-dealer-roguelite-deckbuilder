@@ -436,6 +436,21 @@ pub fn start_run_button_system(
                 continue;
             }
 
+            // SOW-034 §2.4: a run whose deck has no product in stock is legal
+            // but unwinnable (every product is inert). Warn, don't block - let
+            // the player proceed (they may intend to fold their way to cash).
+            if let Some(ref save) = save_data {
+                let has_playable_product = deck_builder.selected_cards.iter().any(|c| {
+                    matches!(c.card_type, CardType::Product { .. }) && save.account.has_stock(&c.id)
+                });
+                if !has_playable_product {
+                    bevy::log::warn!(
+                        "Starting a run with no product in stock - restock or front a batch, \
+                         or this run can't close a deal"
+                    );
+                }
+            }
+
             // Despawn any existing HandState
             for entity in hand_state_query.iter() {
                 commands.entity(entity).despawn();

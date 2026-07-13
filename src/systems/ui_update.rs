@@ -13,6 +13,36 @@ use crate::ui::view;
 use crate::ui;
 use crate::data::validate_deck;
 
+/// SOW-034: the hand-card stock badge - "3 LEFT" (green) or a greyed "OUT OF
+/// STOCK". A plain Node (FocusPolicy::Pass) sat at the card's top-left, so it
+/// never blocks the click that plays the card.
+fn spawn_hand_stock_badge(parent: &mut ChildSpawnerCommands, label: &str, in_stock: bool) {
+    parent
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(6.0),
+                top: Val::Px(6.0),
+                padding: UiRect::axes(Val::Px(5.0), Val::Px(2.0)),
+                border_radius: BorderRadius::all(Val::Px(4.0)),
+                ..default()
+            },
+            BackgroundColor(Color::srgba(0.05, 0.05, 0.05, 0.85)),
+            ZIndex(40),
+        ))
+        .with_children(|badge| {
+            badge.spawn((
+                Text::new(label.to_string()),
+                TextFont::from_font_size(11.0),
+                TextColor(if in_stock {
+                    Color::srgb(0.4, 0.85, 0.4)
+                } else {
+                    Color::srgb(0.85, 0.35, 0.35)
+                }),
+            ));
+        });
+}
+
 /// SOW-022: Rebuild the fanned player hand (bottom arc)
 pub fn recreate_hand_display_system(
     hand_state_query: Query<&HandState, Changed<HandState>>,
@@ -21,6 +51,7 @@ pub fn recreate_hand_display_system(
     children_query: Query<&Children>,
     game_assets: Res<crate::assets::GameAssets>,
     emoji_font: Res<crate::EmojiFont>,
+    save_data: Option<Res<crate::save::SaveData>>, // SOW-034: product stock for the badge
 ) {
     let Ok(hand_state) = hand_state_query.single() else {
         return;
@@ -83,17 +114,39 @@ pub fn recreate_hand_display_system(
                             is_foil: tier.is_foil(),
                         };
 
+                        // SOW-034: a product's remaining charges drive a
+                        // "[k left]" badge; an out-of-stock product is greyed
+                        // (Inactive) - still drawable but inert, so the deck
+                        // stays legal. Non-products carry no stock (None).
+                        let product_charges = matches!(card.card_type, CardType::Product { .. })
+                            .then(|| {
+                                save_data
+                                    .as_ref()
+                                    .map(|s| s.account.charges_in(&card.id))
+                                    .unwrap_or(0)
+                            });
+                        let display_state = match product_charges {
+                            Some(0) => ui::CardDisplayState::Inactive,
+                            _ => ui::CardDisplayState::Active,
+                        };
+
                         ui::spawn_card_button_with_upgrade(
                             parent,
                             &card.name,
                             &card.card_type,
                             ui::CardSize::Hand,
-                            ui::CardDisplayState::Active,
+                            display_state,
                             CardButton { card_index: slot_index },
                             game_assets.card_template.clone(),
                             &emoji_font,
                             Some(upgrade_info),
                         );
+
+                        // SOW-034: stock badge over the card (products only)
+                        if let Some(charges) = product_charges {
+                            let (label, in_stock) = ui::stock_view::hand_badge(charges);
+                            spawn_hand_stock_badge(parent, &label, in_stock);
+                        }
                     } else {
                         ui::spawn_placeholder(
                             parent,
