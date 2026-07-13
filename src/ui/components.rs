@@ -421,7 +421,7 @@ pub struct ShopAreaUnlockButton {
     pub price: u32,
 }
 
-/// SOW-024: One-line expansion feedback ("New turf: The Block")
+/// SOW-024: One-line expansion feedback ("New turf: Suburbia")
 #[derive(Component)]
 pub struct ShopFeedbackText;
 

@@ -1,7 +1,7 @@
 # Product Roadmap — Path to Playable
 
 **Owner:** Claude (lead), directed by Reed
-**Last Updated:** 2026-07-12
+**Last Updated:** 2026-07-13
 **Cadence:** playtest (e2e driver) → design update → SOW → implement + tests → repeat.
 Each iteration appends to the Iteration Log below.
 
@@ -44,9 +44,21 @@ period when busted. **Cash is global.** The product needs:
    muscle → soured, surfaces on shop/hub/map/ledger; zone strings moved
    to RON; SAVE_VERSION 6.
 10. **SOW-032 Starter/Tutorial Arc — "Road to Your First Dealer"** —
-   OPTIONAL at empire start; skipping confers NO benefit (the arc earns
-   exactly what ordinary play would); beats: first front → first payback →
-   graduation at the first $500 hire.
+   authored, NOT started; DEFERRED behind the higher-value seeds below.
+   OPTIONAL at empire start; skipping confers NO benefit.
+11. ✅ **SOW-033 Zone Re-Theme** — merged 2026-07-13 (jumped the queue).
+   Three tier-labels → three low-heat neighborhoods (Trailer Park →
+   Suburbia → Red Light District), themed across clientele/narcs/supplier/
+   unlockables; 2 products & 3 buyers per zone; premium tier + Wall Street
+   Wolf shelved; actor-art moved to RON with per-area narc art (E3 paid
+   down); SAVE_VERSION 6 → 7.
+
+**Next seeds (Reed, 2026-07-13, in priority):** (1) **Limited-use cards**
+— product as consumable stock (unlock = permanent access, stock = batches
+bought/fronted, each play burns a charge); services the "nothing wagered"
+pillar, reframes fronts as batch-fronting (design: studio
+`2026-07-13-limited-use-cards.md`). (2) **Unlockable dealers per area**.
+(3) Utility-card consumables. (4) SOW-032 Tutorial Arc.
 
 **Closed threads (Reed, 2026-07-12):** dev save wipes are a non-concern for
 the leaderboard; Lay Low stays committed (no cancel); heat stays global per
@@ -54,6 +66,42 @@ dealer. Original debt list fully absorbed: jail-as-wager shipped (023),
 RFC-019 resolved (027), harness isolation/outcome-awareness shipped (023/024).
 
 ## Iteration Log
+
+### Iteration 11 — 2026-07-13
+
+- **SOW-033 Zone Re-Theme merged** (256 tests, zero warnings): the three
+  tier-named areas became three low-heat neighborhoods —
+  **Trailer Park → Suburbia → Red Light District** — each themed across
+  clientele, narcs, supplier, and unlockables. Area IDs renamed
+  (`the_corner`/`the_strip`/`the_block` → `trailer_park`/`suburbia`/
+  `red_light_district`), the RON array reordered (Red Light is now the
+  TOP rung), unlock ladder $0 → $1,200 → $2,500. Shop stock cut to exactly
+  **2 products/zone** (Weed/Shrooms · Codeine/**Xanax**[new] ·
+  Ecstasy/Coke), clientele grown to **3 buyers/zone** — 9 personas:
+  Biker/Tweaker/Deadbeat, Frat Bro[re-homed]/Housewife/Widow,
+  Pimp/Working Girl/Club Kid. Premium tier (Acid/Ice/Heroin/Fentanyl) +
+  Wall Street Wolf **shelved** for a future Business District arc.
+  SAVE_VERSION 6 → 7 (live save resets).
+- **Actor-art system (E3 paid down):** portrait mappings moved from
+  hard-coded `loader.rs` into RON (`portrait` per buyer, `narc_portrait`
+  per area) with a LOUD missing-file panic; `<role>-<slug>.png` naming
+  template; **per-area narc art** — Reed dropped Trailer Park + Suburbia
+  narc faces mid-flight, Red Light uses the original as `narc-default`.
+  Art→persona assignments are shuffleable RON one-liners.
+- Adversarial review (25 agents, 4 dims × find→3-skeptic-refute):
+  1 sustained (2-products/zone had no test guard — fixed `01583ec`),
+  6 refuted. One reviewer died on a connection error; that dimension
+  re-verified by hand. Merged `--no-ff`, pushed assets → game → studio.
+- **New design captured (next SOWs):** limited-use cards (product as
+  consumable stock — the "nothing wagered" fix; design doc written),
+  unlockable dealers per area, utility consumables; SOW-032 Tutorial Arc
+  deferred behind them.
+- **Open for Reed:** art-face reassignment batch (Bubba → a Trailer
+  buyer; dedupe the two redundant hippie faces; rework barista/julie —
+  all shuffleable RON); limited-use forks (fixed batch vs variable qty;
+  broke-with-no-stock as a fail-state); narc-difficulty tuning (Suburbia
+  under-differentiated from Trailer at high tiers); the fresh-empire e2e
+  screenshot walk.
 
 ### Iteration 10 — 2026-07-13
 

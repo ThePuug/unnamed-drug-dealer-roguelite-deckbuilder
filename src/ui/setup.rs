@@ -195,7 +195,7 @@ pub fn setup_deck_builder(
                 .as_ref()
                 .map(|d| &d.account.unlocked_locations)
                 .cloned()
-                .unwrap_or_else(|| std::collections::HashSet::from(["the_corner".to_string()]));
+                .unwrap_or_else(|| std::collections::HashSet::from(["trailer_park".to_string()]));
 
             tabs.spawn((
                 Node {
@@ -208,8 +208,8 @@ pub fn setup_deck_builder(
                 ShopLocationSelector,
             ))
             .with_children(|locs| {
-                // SOW-024: data-driven from shop_locations.ron; locked areas
-                // render as purchase buttons ("THE BLOCK — $2,000")
+                // SOW-024: data-driven from shop_locations.ron; unlocked areas
+                // render as select buttons (locked-area unlocks live on the map)
                 spawn_area_selector_buttons(locs, &game_assets.shop_locations, &unlocked_locations);
             });
 

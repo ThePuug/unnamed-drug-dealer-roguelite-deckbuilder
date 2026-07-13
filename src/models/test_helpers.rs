@@ -15,7 +15,7 @@ pub fn create_product(name: &str, price: u32, heat: i32) -> Card {
         name: name.to_string(),
         card_type: CardType::Product { price, heat },
         narrative_fragments: None,
-        shop_location: Some("the_corner".to_string()),
+        shop_location: Some("trailer_park".to_string()),
         shop_price: Some(0),
         shop_cred_required: None,
     }
@@ -28,7 +28,7 @@ pub fn create_location(name: &str, evidence: u32, cover: u32, heat: i32) -> Card
         name: name.to_string(),
         card_type: CardType::Location { evidence, cover, heat },
         narrative_fragments: None,
-        shop_location: Some("the_corner".to_string()),
+        shop_location: Some("trailer_park".to_string()),
         shop_price: Some(0),
         shop_cred_required: None,
     }
@@ -54,7 +54,7 @@ pub fn create_cover(name: &str, cover: u32, heat: i32) -> Card {
         name: name.to_string(),
         card_type: CardType::Cover { cover, heat },
         narrative_fragments: None,
-        shop_location: Some("the_corner".to_string()),
+        shop_location: Some("trailer_park".to_string()),
         shop_price: Some(0),
         shop_cred_required: None,
     }
@@ -67,7 +67,7 @@ pub fn create_deal_modifier(name: &str, price_multiplier: f32, evidence: i32, co
         name: name.to_string(),
         card_type: CardType::DealModifier { price_multiplier, evidence, cover, heat },
         narrative_fragments: None,
-        shop_location: Some("the_corner".to_string()),
+        shop_location: Some("trailer_park".to_string()),
         shop_price: Some(0),
         shop_cred_required: None,
     }
@@ -80,7 +80,7 @@ pub fn create_insurance(name: &str, cover: u32, cost: u32, heat_penalty: i32) ->
         name: name.to_string(),
         card_type: CardType::Insurance { cover, cost, heat_penalty },
         narrative_fragments: None,
-        shop_location: Some("the_corner".to_string()),
+        shop_location: Some("trailer_park".to_string()),
         shop_price: Some(0),
         shop_cred_required: None,
     }
@@ -163,7 +163,7 @@ pub fn create_mock_game_assets() -> GameAssets {
         create_evidence("Patrol", 5, 5),
         create_conviction("Warrant", 10),
     ];
-    for area in ["the_corner", "the_block"] {
+    for area in ["trailer_park", "suburbia"] {
         let mut tiers = std::collections::HashMap::new();
         for tier in ["Cold", "Warm", "Hot", "Blazing", "Scorching", "Inferno"] {
             tiers.insert(tier.to_string(), mock_narc_deck.clone());
@@ -207,7 +207,8 @@ fn create_mock_buyer_persona() -> BuyerPersona {
     use super::buyer::{BuyerDemand, BuyerScenario};
 
     BuyerPersona {
-        area: "the_corner".to_string(),
+        area: "trailer_park".to_string(),
+        portrait: String::new(),
         display_name: "Test Buyer".to_string(),
         demand: BuyerDemand {
             products: vec!["Weed".to_string()],

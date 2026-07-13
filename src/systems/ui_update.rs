@@ -1070,9 +1070,14 @@ pub fn update_actor_portraits_system(
         }
     }
 
-    // Update narc portrait (always "Narc")
+    // SOW-033: narc portrait follows the current run area (keyed by area id
+    // in actor_portraits), falling back to the shared default face.
     if let Ok(mut narc_image) = narc_portrait_query.single_mut() {
-        if let Some(portrait_handle) = game_assets.actor_portraits.get("Narc") {
+        let portrait_handle = game_assets
+            .actor_portraits
+            .get(&hand_state.run_area)
+            .or_else(|| game_assets.actor_portraits.get("narc-default.png"));
+        if let Some(portrait_handle) = portrait_handle {
             if narc_image.image != *portrait_handle {
                 narc_image.image = portrait_handle.clone();
             }

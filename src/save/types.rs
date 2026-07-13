@@ -12,7 +12,11 @@ use std::time::{SystemTime, UNIX_EPOCH};
 /// pre-release wipe convention - older saves start fresh)
 // SOW-025: v4 adds dealer stations + street cred (pre-release wipe convention)
 // SOW-031: v6 adds fronts + supplier standings (pre-release wipe convention)
-pub const SAVE_VERSION: u32 = 6;
+// SOW-033: v7 re-themes the three zones (the_corner/the_strip/the_block ->
+// trailer_park/suburbia/red_light_district). Area ids are stored raw in save
+// fields, so the bump forces a clean wipe of any dead-id save (io.rs rejects
+// version mismatch -> fresh account).
+pub const SAVE_VERSION: u32 = 7;
 
 /// Maximum sanity values for validation
 const MAX_HEAT: u32 = 10_000;
@@ -1057,7 +1061,7 @@ pub fn front_owed(shop_price: u32) -> u64 {
 
 /// SOW-025: where every fresh dealer starts (the home turf; matches the
 /// area flagged `unlocked: true` in shop_locations.ron)
-pub const DEFAULT_STATION: &str = "the_corner";
+pub const DEFAULT_STATION: &str = "trailer_park";
 
 fn default_station() -> String {
     DEFAULT_STATION.to_string()
@@ -1070,16 +1074,16 @@ pub const DEALER_NAME_POOL: [&str; 12] = [
 ];
 
 /// Actor portraits available as dealer faces (keys into
-/// GameAssets.actor_portraits). Excludes the narc and every buyer persona -
-/// SOW-028 promoted the Pimp to the Strip's clientele, so his face left the
-/// pool (E1, art-backlog): a hire must never wear a buyer's face.
-/// SOW-031 (Reed art drop): five new faces appended - 13 faces >= 12 names,
-/// so hires no longer wrap/duplicate faces until roster 14. Appended, not
+/// GameAssets.actor_portraits; the loader loads each as "dealer-<key>.png").
+/// Excludes the narc and every buyer persona - a hire must never wear a
+/// buyer's face. SOW-033 repurposed the old character faces (Hells Angel,
+/// Hippie, Flower Child, Pretty Woman, Street Walker, Widow, Displaced
+/// Patriot) as BUYER portraits, so they left the pool; six dedicated dealer
+/// faces remain. Fewer faces than names (6 < 12) means hires past the sixth
+/// reuse a face until Reed drops more dealer art (art-backlog). Appended, not
 /// reordered: recruit() is deterministic by pool order.
-pub const DEALER_PORTRAIT_POOL: [&str; 13] = [
-    "Barista", "Displaced Patriot", "Flower Child", "Hells Angel", "Hippie",
-    "Pretty Woman", "Street Walker", "Widow",
-    "Julie", "Marcus", "Gladys", "Bubba", "Roxanne",
+pub const DEALER_PORTRAIT_POOL: [&str; 6] = [
+    "Barista", "Julie", "Marcus", "Gladys", "Bubba", "Roxanne",
 ];
 
 /// Whether a dealer can be sent out on a run
@@ -1349,7 +1353,7 @@ impl AccountState {
             lifetime_revenue: 0,
             hands_completed: 0,
             unlocked_cards: Self::starting_collection(),
-            unlocked_locations: HashSet::from(["the_corner".to_string()]),
+            unlocked_locations: HashSet::from(["trailer_park".to_string()]),
         }
     }
 
@@ -1613,9 +1617,9 @@ mod tests {
     #[test]
     fn test_take_front_makes_card_playable_and_books_the_debt() {
         let mut data = SaveData::new();
-        assert!(data.take_front("shrooms", "the_corner", 100).is_ok());
+        assert!(data.take_front("shrooms", "trailer_park", 100).is_ok());
         assert!(data.account.unlocked_cards.contains("shrooms"));
-        let front = data.front_in("the_corner").expect("front live");
+        let front = data.front_in("trailer_park").expect("front live");
         assert_eq!(front.owed, 125);
         assert_eq!(front.runs_remaining, FRONT_WINDOW_RUNS);
         assert_eq!(data.total_debt(), 125);
@@ -1624,30 +1628,30 @@ mod tests {
     #[test]
     fn test_take_front_guards() {
         let mut data = SaveData::new();
-        assert!(data.take_front("shrooms", "the_corner", 100).is_ok());
+        assert!(data.take_front("shrooms", "trailer_park", 100).is_ok());
         // One front per supplier
         assert_eq!(
-            data.take_front("codeine", "the_corner", 250),
+            data.take_front("codeine", "trailer_park", 250),
             Err("one front at a time")
         );
         // A different zone's supplier is a different account
-        assert!(data.take_front("ecstasy", "the_strip", 1600).is_ok());
+        assert!(data.take_front("ecstasy", "red_light_district", 1600).is_ok());
         // Already-owned cards can't be fronted
         assert_eq!(
-            data.take_front("weed", "the_block", 100),
+            data.take_front("weed", "suburbia", 100),
             Err("already owned")
         );
         // Standing gates
         data.supplier_standing
-            .insert("the_block".to_string(), SupplierStanding::CutOff);
+            .insert("suburbia".to_string(), SupplierStanding::CutOff);
         assert_eq!(
-            data.take_front("coke", "the_block", 5000),
+            data.take_front("coke", "suburbia", 5000),
             Err("settle your debt first")
         );
         data.supplier_standing
-            .insert("the_block".to_string(), SupplierStanding::Soured);
+            .insert("suburbia".to_string(), SupplierStanding::Soured);
         assert_eq!(
-            data.take_front("coke", "the_block", 5000),
+            data.take_front("coke", "suburbia", 5000),
             Err("this bridge is burned")
         );
     }
@@ -1656,44 +1660,44 @@ mod tests {
     fn test_pay_front_owns_the_card_and_clears_cutoff() {
         let mut data = SaveData::new();
         data.account.cash_on_hand = 1000;
-        data.take_front("shrooms", "the_corner", 100).unwrap();
+        data.take_front("shrooms", "trailer_park", 100).unwrap();
         data.supplier_standing
-            .insert("the_corner".to_string(), SupplierStanding::CutOff);
+            .insert("trailer_park".to_string(), SupplierStanding::CutOff);
 
         // Too broke first: no mutation
         data.account.cash_on_hand = 50;
-        assert!(!data.pay_front("the_corner"));
-        assert!(data.front_in("the_corner").is_some());
+        assert!(!data.pay_front("trailer_park"));
+        assert!(data.front_in("trailer_park").is_some());
 
         data.account.cash_on_hand = 200;
-        assert!(data.pay_front("the_corner"));
+        assert!(data.pay_front("trailer_park"));
         assert_eq!(data.account.cash_on_hand, 75);
-        assert!(data.front_in("the_corner").is_none());
+        assert!(data.front_in("trailer_park").is_none());
         assert!(data.account.unlocked_cards.contains("shrooms"));
-        assert_eq!(data.standing_with("the_corner"), SupplierStanding::Good);
+        assert_eq!(data.standing_with("trailer_park"), SupplierStanding::Good);
         // No front, nothing to pay
-        assert!(!data.pay_front("the_corner"));
+        assert!(!data.pay_front("trailer_park"));
     }
 
     #[test]
     fn test_front_tick_counts_every_run_and_escalates_to_cutoff() {
         let mut data = SaveData::new();
-        data.take_front("shrooms", "the_corner", 100).unwrap();
+        data.take_front("shrooms", "trailer_park", 100).unwrap();
 
         // Window runs down one per completed run - the runner's own included
         for expected in (1..FRONT_WINDOW_RUNS).rev() {
             assert!(data.tick_fronts().is_empty());
-            assert_eq!(data.front_in("the_corner").unwrap().runs_remaining, expected);
+            assert_eq!(data.front_in("trailer_park").unwrap().runs_remaining, expected);
         }
 
         // Due date crossed: CutOff, debt stands, one more window granted
         let events = data.tick_fronts();
         assert_eq!(
             events,
-            vec![FrontEvent::CutOff { area_id: "the_corner".to_string() }]
+            vec![FrontEvent::CutOff { area_id: "trailer_park".to_string() }]
         );
-        assert_eq!(data.standing_with("the_corner"), SupplierStanding::CutOff);
-        let front = data.front_in("the_corner").expect("debt still on the books");
+        assert_eq!(data.standing_with("trailer_park"), SupplierStanding::CutOff);
+        let front = data.front_in("trailer_park").expect("debt still on the books");
         assert_eq!(front.runs_remaining, FRONT_WINDOW_RUNS);
         assert!(data.account.unlocked_cards.contains("shrooms"), "card still playable");
     }
@@ -1702,29 +1706,29 @@ mod tests {
     fn test_second_blown_window_muscle_seizes_and_sours() {
         let mut data = SaveData::new();
         data.account.cash_on_hand = 500;
-        data.take_front("shrooms", "the_corner", 100).unwrap();
+        data.take_front("shrooms", "trailer_park", 100).unwrap();
         data.supplier_standing
-            .insert("the_corner".to_string(), SupplierStanding::CutOff);
+            .insert("trailer_park".to_string(), SupplierStanding::CutOff);
         data.fronts[0].runs_remaining = 1;
 
         let events = data.tick_fronts();
         assert_eq!(
             events,
             vec![
-                FrontEvent::MuscleSeized { area_id: "the_corner".to_string(), amount: 100 },
+                FrontEvent::MuscleSeized { area_id: "trailer_park".to_string(), amount: 100 },
                 FrontEvent::Soured {
-                    area_id: "the_corner".to_string(),
+                    area_id: "trailer_park".to_string(),
                     card_id: "shrooms".to_string()
                 },
             ]
         );
         assert_eq!(data.account.cash_on_hand, 400); // 20% of 500
         assert!(!data.account.unlocked_cards.contains("shrooms"), "repossessed");
-        assert!(data.front_in("the_corner").is_none());
-        assert_eq!(data.standing_with("the_corner"), SupplierStanding::Soured);
+        assert!(data.front_in("trailer_park").is_none());
+        assert_eq!(data.standing_with("trailer_park"), SupplierStanding::Soured);
         // Soured is permanent - paying can't fix what muscle settled
         assert_eq!(
-            data.take_front("shrooms", "the_corner", 100),
+            data.take_front("shrooms", "trailer_park", 100),
             Err("this bridge is burned")
         );
     }
@@ -1735,9 +1739,9 @@ mod tests {
         data.account.cash_on_hand = 500;
         assert!(data.hire_dealer());
         data.account.cash_on_hand = 4; // 20% rounds to 0 - nothing worth taking
-        data.take_front("shrooms", "the_corner", 100).unwrap();
+        data.take_front("shrooms", "trailer_park", 100).unwrap();
         data.supplier_standing
-            .insert("the_corner".to_string(), SupplierStanding::CutOff);
+            .insert("trailer_park".to_string(), SupplierStanding::CutOff);
         data.fronts[0].runs_remaining = 1;
 
         let events = data.tick_fronts();
@@ -1747,7 +1751,7 @@ mod tests {
         ));
         assert!(!data.dealers[0].is_available(), "benched one run");
         assert_eq!(data.dealers[0].relocating_remaining(), Some(1));
-        assert_eq!(data.standing_with("the_corner"), SupplierStanding::Soured);
+        assert_eq!(data.standing_with("trailer_park"), SupplierStanding::Soured);
         // The beating is downtime, not jail - the kingpin invariant holds
         assert!(data.dealers[0].jail_remaining().is_none());
         // The hire keeps the empire runnable - no softlock
@@ -1762,16 +1766,16 @@ mod tests {
         // repossession and the souring still land.
         let mut data = SaveData::new();
         data.account.cash_on_hand = 4;
-        data.take_front("shrooms", "the_corner", 100).unwrap();
+        data.take_front("shrooms", "trailer_park", 100).unwrap();
         data.supplier_standing
-            .insert("the_corner".to_string(), SupplierStanding::CutOff);
+            .insert("trailer_park".to_string(), SupplierStanding::CutOff);
         data.fronts[0].runs_remaining = 1;
 
         let events = data.tick_fronts();
         assert_eq!(events.len(), 1, "no bench event - only the souring");
         assert!(matches!(events[0], FrontEvent::Soured { .. }));
         assert!(data.dealers[0].is_available(), "the only runner keeps running");
-        assert_eq!(data.standing_with("the_corner"), SupplierStanding::Soured);
+        assert_eq!(data.standing_with("trailer_park"), SupplierStanding::Soured);
         assert!(!data.account.unlocked_cards.contains("shrooms"), "repossession lands");
     }
 
@@ -1780,40 +1784,40 @@ mod tests {
         let mut data = SaveData::new();
         data.account.cash_on_hand = 0;
         data.dealers[0].status = DealerStatus::LayingLow { runs_remaining: 2 };
-        data.take_front("shrooms", "the_corner", 100).unwrap();
+        data.take_front("shrooms", "trailer_park", 100).unwrap();
         data.supplier_standing
-            .insert("the_corner".to_string(), SupplierStanding::CutOff);
+            .insert("trailer_park".to_string(), SupplierStanding::CutOff);
         data.fronts[0].runs_remaining = 1;
 
         let events = data.tick_fronts();
         // No seizure, no bench - just the repossession and the scar
         assert_eq!(events.len(), 1);
         assert!(matches!(events[0], FrontEvent::Soured { .. }));
-        assert_eq!(data.standing_with("the_corner"), SupplierStanding::Soured);
+        assert_eq!(data.standing_with("trailer_park"), SupplierStanding::Soured);
     }
 
     #[test]
     fn test_fresh_save_has_no_fronts_and_clean_standings() {
         // Old-save handling is the SOW-021 policy: bincode carries no
-        // field-level migration, so SAVE_VERSION was bumped (5 -> 6) and
+        // field-level migration, so SAVE_VERSION was bumped (6 -> 7) and
         // version-mismatched saves fall back to fresh (pinned by
         // io::test_old_version_rejected). What must hold here: a fresh
         // empire starts clean.
         let data = SaveData::new();
         assert!(data.fronts.is_empty());
-        assert_eq!(data.standing_with("the_corner"), SupplierStanding::Good);
+        assert_eq!(data.standing_with("trailer_park"), SupplierStanding::Good);
         assert_eq!(data.total_debt(), 0);
     }
 
     #[test]
     fn test_reset_empire_clears_fronts_and_standings() {
         let mut data = SaveData::new();
-        data.take_front("shrooms", "the_corner", 100).unwrap();
+        data.take_front("shrooms", "trailer_park", 100).unwrap();
         data.supplier_standing
-            .insert("the_strip".to_string(), SupplierStanding::Soured);
+            .insert("red_light_district".to_string(), SupplierStanding::Soured);
         data.reset_empire();
         assert!(data.fronts.is_empty(), "debts die with the empire");
-        assert_eq!(data.standing_with("the_strip"), SupplierStanding::Good);
+        assert_eq!(data.standing_with("red_light_district"), SupplierStanding::Good);
         assert_eq!(data.fallen_empires.len(), 1);
     }
 
@@ -1946,13 +1950,13 @@ mod tests {
         let mut account = AccountState::new();
         account.cash_on_hand = 2500;
 
-        assert!(!account.is_location_unlocked("the_block"));
-        assert_eq!(account.purchase_location("the_block", 2000), Ok(()));
-        assert!(account.is_location_unlocked("the_block"));
+        assert!(!account.is_location_unlocked("suburbia"));
+        assert_eq!(account.purchase_location("suburbia", 2000), Ok(()));
+        assert!(account.is_location_unlocked("suburbia"));
         assert_eq!(account.cash_on_hand, 500);
 
         // Double purchase: rejected, cash untouched
-        assert_eq!(account.purchase_location("the_block", 2000), Err("already unlocked"));
+        assert_eq!(account.purchase_location("suburbia", 2000), Err("already unlocked"));
         assert_eq!(account.cash_on_hand, 500);
 
         // Unaffordable: rejected, nothing unlocked
@@ -1966,12 +1970,12 @@ mod tests {
         // SOW-024: a fallen empire re-expands - unlocks die with the account
         let mut save = SaveData::new();
         save.account.cash_on_hand = 5000;
-        save.account.purchase_location("the_block", 2000).unwrap();
-        assert!(save.account.is_location_unlocked("the_block"));
+        save.account.purchase_location("suburbia", 2000).unwrap();
+        assert!(save.account.is_location_unlocked("suburbia"));
 
         save.reset_empire();
-        assert!(!save.account.is_location_unlocked("the_block"));
-        assert!(save.account.is_location_unlocked("the_corner")); // fresh default
+        assert!(!save.account.is_location_unlocked("suburbia"));
+        assert!(save.account.is_location_unlocked("trailer_park")); // fresh default
     }
 
     #[test]
@@ -1980,31 +1984,31 @@ mod tests {
         let mut save = SaveData::new();
         save.account.cash_on_hand = 1000;
 
-        assert!(save.move_dealer(0, "the_block"));
+        assert!(save.move_dealer(0, "suburbia"));
         assert_eq!(save.account.cash_on_hand, 750); // $250 fee
-        assert_eq!(save.dealers[0].station, "the_block"); // station changes immediately
+        assert_eq!(save.dealers[0].station, "suburbia"); // station changes immediately
         assert_eq!(save.dealers[0].relocating_remaining(), Some(1));
         assert!(!save.dealers[0].is_available()); // can't be sent out mid-move
 
         // One completed run elsewhere -> arrived
         assert!(save.dealers[0].tick_sentence());
         assert!(save.dealers[0].is_available());
-        assert_eq!(save.dealers[0].station, "the_block");
+        assert_eq!(save.dealers[0].station, "suburbia");
     }
 
     #[test]
     fn test_move_dealer_rejections() {
         let mut save = SaveData::new();
         save.account.cash_on_hand = 100; // can't afford the $250 fee
-        assert!(!save.move_dealer(0, "the_block"));
+        assert!(!save.move_dealer(0, "suburbia"));
         assert_eq!(save.dealers[0].station, DEFAULT_STATION);
 
         save.account.cash_on_hand = 1000;
         assert!(!save.move_dealer(0, DEFAULT_STATION)); // already stationed there
-        assert!(!save.move_dealer(9, "the_block")); // out of range
+        assert!(!save.move_dealer(9, "suburbia")); // out of range
 
-        assert!(save.move_dealer(0, "the_block"));
-        assert!(!save.move_dealer(0, "the_corner")); // mid-relocation = unavailable
+        assert!(save.move_dealer(0, "suburbia"));
+        assert!(!save.move_dealer(0, "trailer_park")); // mid-relocation = unavailable
         assert_eq!(save.account.cash_on_hand, 750); // only one fee charged
     }
 
@@ -2105,38 +2109,38 @@ mod tests {
     fn test_street_cred_accrues_and_never_decays() {
         // SOW-025: +1 per successful deal; nothing (jail, moves) erases it
         let mut dealer = DealerState::recruit(&[]);
-        dealer.add_cred("the_block");
-        dealer.add_cred("the_block");
-        dealer.add_cred("the_corner");
-        assert_eq!(dealer.cred_in("the_block"), 2);
-        assert_eq!(dealer.cred_in("the_corner"), 1);
+        dealer.add_cred("suburbia");
+        dealer.add_cred("suburbia");
+        dealer.add_cred("trailer_park");
+        assert_eq!(dealer.cred_in("suburbia"), 2);
+        assert_eq!(dealer.cred_in("trailer_park"), 1);
         assert_eq!(dealer.cred_in("nowhere"), 0);
 
         // Jail round-trip: cred untouched
         dealer.character.heat = 50;
         dealer.jail();
         dealer.release();
-        assert_eq!(dealer.cred_in("the_block"), 2);
+        assert_eq!(dealer.cred_in("suburbia"), 2);
 
         // Move: cred untouched (reputation, not presence)
         let mut save = SaveData::new();
         save.account.cash_on_hand = 1000;
         save.dealers.push(dealer);
-        assert!(save.move_dealer(1, "the_block"));
-        assert_eq!(save.dealers[1].cred_in("the_block"), 2);
+        assert!(save.move_dealer(1, "suburbia"));
+        assert_eq!(save.dealers[1].cred_in("suburbia"), 2);
     }
 
     #[test]
     fn test_best_cred_names_the_unlocking_dealer() {
         // SOW-025: any dealer's cred opens the door; the highest is credited
         let mut save = SaveData::new();
-        assert!(save.best_cred("the_block").is_none()); // nobody known yet
+        assert!(save.best_cred("suburbia").is_none()); // nobody known yet
 
         save.dealers.push(DealerState::recruit(&save.dealers));
-        save.dealers[0].add_cred("the_block");
-        save.dealers[1].add_cred("the_block");
-        save.dealers[1].add_cred("the_block");
-        let (idx, cred) = save.best_cred("the_block").unwrap();
+        save.dealers[0].add_cred("suburbia");
+        save.dealers[1].add_cred("suburbia");
+        save.dealers[1].add_cred("suburbia");
+        let (idx, cred) = save.best_cred("suburbia").unwrap();
         assert_eq!((idx, cred), (1, 2));
     }
 
@@ -2144,7 +2148,7 @@ mod tests {
     fn test_kingpin_can_relocate_but_never_jail() {
         let mut save = SaveData::new();
         save.account.cash_on_hand = 1000;
-        assert!(save.move_dealer(0, "the_block"));
+        assert!(save.move_dealer(0, "suburbia"));
         assert!(save.validate().is_ok()); // relocating kingpin is legal
 
         let mut jailed_kingpin = DealerState::kingpin();
@@ -2160,12 +2164,12 @@ mod tests {
     fn test_empire_reset_returns_stations_and_wipes_cred() {
         let mut save = SaveData::new();
         save.account.cash_on_hand = 1000;
-        save.dealers[0].add_cred("the_block");
-        assert!(save.move_dealer(0, "the_block"));
+        save.dealers[0].add_cred("suburbia");
+        assert!(save.move_dealer(0, "suburbia"));
 
         save.reset_empire();
         assert_eq!(save.dealers[0].station, DEFAULT_STATION);
-        assert_eq!(save.dealers[0].cred_in("the_block"), 0);
+        assert_eq!(save.dealers[0].cred_in("suburbia"), 0);
         assert!(save.dealers[0].is_available());
     }
 

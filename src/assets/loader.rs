@@ -76,8 +76,8 @@ fn load_game_assets(mut commands: Commands, asset_server: Res<AssetServer>, mut 
     // Load background images for locations
     load_background_images(&asset_server, &mut game_assets);
 
-    // Load actor portraits
-    load_actor_portraits(&asset_server, &mut game_assets);
+    // SOW-033: actor portraits load AFTER buyers + shop_locations (their
+    // `portrait` / `narc_portrait` RON fields drive the map) - see below.
 
     // Load card template
     game_assets.card_template = asset_server.load("art/card-template.png");
@@ -362,6 +362,11 @@ fn load_game_assets(mut commands: Commands, asset_server: Res<AssetServer>, mut 
             panic!("Critical asset loading failure - fix buyers.ron");
         }
     }
+
+    // SOW-033: portrait map is built from the loaded buyers' `portrait` and
+    // the areas' `narc_portrait` RON fields (plus the dealer pool). Runs here
+    // so both are populated; a missing mapped file panics loud.
+    load_actor_portraits(&asset_server, &mut game_assets);
 
     // SOW-026: the lean starting collection must still build a legal deck
     // (>=1 Product, >=1 Location) - fail loudly in debug, error in release.
@@ -711,44 +716,65 @@ fn load_background_images(asset_server: &AssetServer, game_assets: &mut GameAsse
     info!("Initiated loading of {} background images", count);
 }
 
-/// Load actor portrait images
+/// SOW-033: build the actor portrait map from RON (buyers.ron `portrait`,
+/// shop_locations.ron `narc_portrait`) plus the code-owned dealer hire pool.
+/// The hard-coded name->file HashMap is gone (art-backlog E3: new personas
+/// silently got no art). A mapped portrait whose file is missing on disk is a
+/// LOUD load error - Bevy's async asset_server.load would otherwise fail
+/// silently. Must be called AFTER buyers + shop_locations are loaded.
 fn load_actor_portraits(asset_server: &AssetServer, game_assets: &mut GameAssets) {
-    // Map of actor names to their portrait filenames
-    let portrait_files = HashMap::from([
-        ("Frat Bro", "frat-bro.png"),
-        ("Desperate Housewife", "desperate-housewife.png"),
-        ("Wall Street Wolf", "wall-street-wolf.png"),
-        ("Narc", "narc.png"),
-        ("Barista", "barista.png"),
-        ("Displaced Patriot", "displaced-patriot.png"),
-        ("Flower Child", "flower-child.png"),
-        ("Hells Angel", "hells-angel.png"),
-        ("Hippie", "hippie.png"),
-        ("Pimp", "pimp.png"),
-        ("Pretty Woman", "pretty-woman.png"),
-        ("Street Walker", "street-walker.png"),
-        ("Widow", "widow.png"),
-        // SOW-031 (Reed art drop): five dealer faces for the hire pool
-        ("Julie", "julie.png"),
-        ("Marcus", "marcus.png"),
-        ("Gladys", "gladys.png"),
-        ("Bubba", "bubba.png"),
-        ("Roxanne", "roxanne.png"),
-        // SOW-031: the no-chosen-face-yet placeholder (worn by the kingpin
-        // until character customization ships; generic by design)
-        ("Silhouette", "silhouette.png"),
-    ]);
+    // Runtime fallback narc face (also the Red Light District's authored art)
+    const NARC_DEFAULT: &str = "narc-default.png";
 
-    let mut count = 0;
-    for (actor_name, filename) in portrait_files.iter() {
-        count += 1;
-        let path = format!("art/actors/{}", filename);
-        let handle = asset_server.load(&path);
-        game_assets.actor_portraits.insert(actor_name.to_string(), handle);
-        info!("Loading actor portrait: {} -> {}", actor_name, path);
+    // (portrait-key, filename) pairs from every source; loaded through one
+    // path with a loud file-existence check.
+    let mut mapped: Vec<(String, String)> = Vec::new();
+
+    // Buyers: keyed by display_name (the render lookup), file from RON
+    for buyer in &game_assets.buyers {
+        assert!(
+            !buyer.portrait.trim().is_empty(),
+            "buyer '{}' has no portrait in buyers.ron (SOW-033/E3 requires one)",
+            buyer.display_name
+        );
+        mapped.push((buyer.display_name.clone(), buyer.portrait.clone()));
     }
 
-    info!("Initiated loading of {} actor portraits", count);
+    // Narcs: keyed by area id (ui_update looks up by the current run area),
+    // file from RON narc_portrait, else the shared default. A dedicated
+    // NARC_DEFAULT key backs the runtime fallback for any future area.
+    mapped.push((NARC_DEFAULT.to_string(), NARC_DEFAULT.to_string()));
+    for area in &game_assets.shop_locations {
+        let file = area
+            .narc_portrait
+            .clone()
+            .unwrap_or_else(|| NARC_DEFAULT.to_string());
+        mapped.push((area.id.clone(), file));
+    }
+
+    // Dealer hire-pool faces + the kingpin placeholder. Code-owned pool;
+    // filenames track the SOW-033 dealer-<slug>.png renames.
+    mapped.push(("Silhouette".to_string(), "silhouette.png".to_string()));
+    for key in crate::save::DEALER_PORTRAIT_POOL {
+        let slug = key.to_lowercase().replace(' ', "-");
+        mapped.push((key.to_string(), format!("dealer-{slug}.png")));
+    }
+
+    for (key, filename) in mapped {
+        let disk_path = format!("assets/art/actors/{filename}");
+        assert!(
+            std::path::Path::new(&disk_path).exists(),
+            "actor portrait '{key}' -> '{filename}' not found at {disk_path} \
+             (SOW-033/E3: a mapped portrait must exist on disk)"
+        );
+        let handle = asset_server.load(format!("art/actors/{filename}"));
+        game_assets.actor_portraits.insert(key, handle);
+    }
+
+    info!(
+        "Loaded {} actor portraits (RON-mapped buyers/narcs + dealer pool)",
+        game_assets.actor_portraits.len()
+    );
 }
 
 #[cfg(test)]
@@ -758,7 +784,8 @@ mod tests {
 
     fn test_buyer(scenario_products: Vec<&str>, scenario_locations: Vec<&str>) -> BuyerPersona {
         BuyerPersona {
-            area: "the_corner".to_string(),
+            area: "trailer_park".to_string(),
+            portrait: String::new(),
             display_name: "Test Buyer".to_string(),
             demand: BuyerDemand {
                 products: vec!["Weed".to_string()],
@@ -826,10 +853,11 @@ mod tests {
             identity: "CRAFT".to_string(),
             narc_hint: "eyes".to_string(),
             supplier: None,
+            narc_portrait: None,
         };
 
-        // OK: one area, one persona living there (test_buyer defaults to the_corner)
-        let corner_only = vec![area("the_corner", true)];
+        // OK: one area, one persona living there (test_buyer defaults to trailer_park)
+        let corner_only = vec![area("trailer_park", true)];
         let buyer = test_buyer(vec!["Weed"], vec!["Safe House"]);
         assert!(validate_persona_areas(&[buyer.clone()], &corner_only).is_ok());
 
@@ -841,7 +869,7 @@ mod tests {
             .contains("unknown area"));
 
         // Area without clientele rejected
-        let with_block = vec![area("the_corner", true), area("the_block", false)];
+        let with_block = vec![area("trailer_park", true), area("suburbia", false)];
         assert!(validate_persona_areas(&[buyer], &with_block)
             .unwrap_err()
             .contains("no clientele"));
@@ -855,60 +883,93 @@ mod tests {
         crate::models::shop_location::validate_shop_locations(&areas).expect("areas valid");
         let buyers = load_and_validate_buyers("assets/buyers.ron").expect("buyers load");
         validate_persona_areas(&buyers, &areas).expect("shipped persona areas resolve");
-        // And the reframe's headline: the Wolf is Block clientele
-        let wolf = buyers.iter().find(|b| b.display_name == "Wall Street Wolf").unwrap();
-        assert_eq!(wolf.area, "the_block");
+        // SOW-033: the Wall Street Wolf is shelved - no longer active clientele
+        assert!(
+            buyers.iter().all(|b| b.display_name != "Wall Street Wolf"),
+            "Wolf should be shelved from the active roster"
+        );
     }
 
     #[test]
     fn test_shipped_three_zone_coherence() {
-        // SOW-028: the city is Corner -> Strip -> Block, each with clientele
+        // SOW-033: the city is trailer_park -> suburbia -> red_light_district,
+        // each with clientele; Red Light is the top (priciest) rung.
         let areas = load_shop_locations("assets/data/shop_locations.ron").expect("areas load");
         let ids: Vec<&str> = areas.iter().map(|a| a.id.as_str()).collect();
-        assert_eq!(ids, vec!["the_corner", "the_strip", "the_block"]);
-        let strip = areas.iter().find(|a| a.id == "the_strip").unwrap();
-        assert_eq!(strip.price, 1200); // between free Corner and $2,000 Block
+        assert_eq!(ids, vec!["trailer_park", "suburbia", "red_light_district"]);
+        let suburbia = areas.iter().find(|a| a.id == "suburbia").unwrap();
+        let red_light = areas.iter().find(|a| a.id == "red_light_district").unwrap();
+        assert_eq!(suburbia.price, 1200);
+        assert_eq!(red_light.price, 2500);
+        assert!(red_light.price > suburbia.price, "top rung must out-price the middle");
 
-        // SOW-031: every shipped zone carries its authored flavor + a named
-        // supplier (validate_shop_locations enforces it; this pins the
-        // shipped names so a content edit that renames one is deliberate)
+        // SOW-031/033: every shipped zone carries its authored flavor + a named
+        // supplier (validate_shop_locations enforces it; this pins the shipped
+        // names so a content edit that renames one is deliberate)
         let suppliers: Vec<&str> = areas
             .iter()
             .map(|a| a.supplier.as_ref().expect("supplier").name.as_str())
             .collect();
-        assert_eq!(suppliers, vec!["Lil Smoke", "Miss Velvet", "The Broker"]);
+        assert_eq!(suppliers, vec!["Lil Smoke", "Deb", "Miss Velvet"]);
         assert!(areas.iter().all(|a| !a.identity.is_empty() && !a.narc_hint.is_empty()));
 
         let buyers = load_and_validate_buyers("assets/buyers.ron").expect("buyers load");
+        // SOW-033 headline: exactly 3 clientele per zone (9 personas total)
+        assert_eq!(buyers.len(), 9);
+        for id in ["trailer_park", "suburbia", "red_light_district"] {
+            let count = buyers.iter().filter(|b| b.area == id).count();
+            assert_eq!(count, 3, "zone {id} should have 3 buyers, has {count}");
+        }
         let pimp = buyers.iter().find(|b| b.display_name == "Pimp").unwrap();
-        assert_eq!(pimp.area, "the_strip");
-        // Zone coherence: the Housewife is now the Block's first rung
+        assert_eq!(pimp.area, "red_light_district");
+        // Zone coherence: the Housewife is Suburbia's clientele
         let housewife = buyers
             .iter()
             .find(|b| b.display_name == "Desperate Housewife")
             .unwrap();
-        assert_eq!(housewife.area, "the_block");
+        assert_eq!(housewife.area, "suburbia");
         assert_eq!(housewife.base_multiplier, 1.5);
+        // SOW-033: the Frat Bro re-homed from the start to Suburbia
+        let frat = buyers.iter().find(|b| b.display_name == "Frat Bro").unwrap();
+        assert_eq!(frat.area, "suburbia");
 
-        // Party economy lives on the Strip now
+        // Party economy lives in the Red Light District now
         let products =
             load_and_validate_cards("assets/cards/products.ron", "Product").expect("products");
-        for name in ["Ecstasy", "Ice"] {
+        for name in ["Ecstasy", "Coke"] {
             let card = products.iter().find(|c| c.name == name).unwrap();
             assert_eq!(
                 card.shop_location.as_deref(),
-                Some("the_strip"),
-                "{name} should be Strip stock"
+                Some("red_light_district"),
+                "{name} should be Red Light stock"
             );
         }
+
+        // SOW-033 headline: EXACTLY 2 shop products per zone (6 total). The
+        // shelved premium tier (Acid/Ice/Heroin/Fentanyl) must carry no
+        // shop_location - re-hooking one would otherwise silently break the
+        // "2 products/zone" invariant while every other test stayed green.
+        // (Guards the gap the SOW-033 adversarial review caught: the 3-buyers
+        // /zone invariant was pinned above, the 2-products/zone one was not.)
+        for id in ["trailer_park", "suburbia", "red_light_district"] {
+            let count = products
+                .iter()
+                .filter(|c| c.shop_location.as_deref() == Some(id))
+                .count();
+            assert_eq!(count, 2, "zone {id} should stock exactly 2 products, has {count}");
+        }
+        let stocked = products.iter().filter(|c| c.shop_location.is_some()).count();
+        assert_eq!(
+            stocked, 6,
+            "only the 6 zone products should have a shop_location; a shelved product got re-hooked"
+        );
     }
 
     #[test]
-    fn test_shipped_block_first_rung_pays_without_coke() {
-        // SOW-027 flagged that the Block's x2.8 headline was unreachable
-        // before a $5,000 Coke. SOW-028's answer: the Housewife (Block, x1.5)
+    fn test_shipped_suburbia_first_rung_pays_without_coke() {
+        // SOW-033 (carries SOW-028's reasoning): the Housewife (Suburbia, x1.5)
         // is satisfiable with STARTING-collection Weed once she brings her
-        // own location - Block expansion pays before any Block product buy.
+        // own location - Suburbia expansion pays before any Suburbia product buy.
         let buyers = load_and_validate_buyers("assets/buyers.ron").expect("buyers load");
         let mut housewife = buyers
             .iter()
@@ -1013,27 +1074,29 @@ mod tests {
     fn test_ladder_warning_when_all_demands_gated_above() {
         use crate::models::test_helpers::create_product;
         let mut premium = create_product("Fentanyl", 200, 50);
-        premium.shop_location = Some("the_block".to_string());
+        premium.shop_location = Some("suburbia".to_string());
         let areas = vec![
             crate::models::shop_location::ShopLocationDef {
-                id: "the_corner".to_string(),
-                name: "The Corner".to_string(),
+                id: "trailer_park".to_string(),
+                name: "Trailer Park".to_string(),
                 description: "test".to_string(),
                 unlocked: true,
                 price: 0,
                 identity: "CRAFT".to_string(),
                 narc_hint: "eyes".to_string(),
                 supplier: None,
+                narc_portrait: None,
             },
             crate::models::shop_location::ShopLocationDef {
-                id: "the_block".to_string(),
-                name: "The Block".to_string(),
+                id: "suburbia".to_string(),
+                name: "Suburbia".to_string(),
                 description: "test".to_string(),
                 unlocked: false,
                 price: 2000,
                 identity: "CRAFT".to_string(),
                 narc_hint: "eyes".to_string(),
                 supplier: None,
+                narc_portrait: None,
             },
         ];
         // Corner buyer demanding a Block-gated product = dead payout -> warn
@@ -1043,7 +1106,7 @@ mod tests {
 
         // The same demand from a Block buyer is fine
         let mut block_buyer = test_buyer(vec!["Fentanyl"], vec![]);
-        block_buyer.area = "the_block".to_string();
+        block_buyer.area = "suburbia".to_string();
         let warnings = ladder_attainability_warnings(&[block_buyer], &[premium], &areas);
         assert!(warnings.is_empty());
     }
@@ -1117,9 +1180,9 @@ mod tests {
     }
 
     #[test]
-    fn test_shipped_corner_cold_composition_is_gentle() {
-        // SOW-027: the fresh-run floor fix. A fresh kingpin on the Corner at
-        // Cold must face a mostly-donut deck (avg heat/card well under the
+    fn test_shipped_trailer_park_cold_composition_is_gentle() {
+        // SOW-027/033: the fresh-run floor fix. A fresh kingpin in Trailer Park
+        // at Cold must face a mostly-donut deck (avg heat/card well under the
         // old flat deck) or the 3-blind-session floor regresses to Inferno.
         let file = load_narc_compositions("assets/narc_deck.ron")
             .expect("narc_deck.ron should parse");
@@ -1133,7 +1196,7 @@ mod tests {
             })
             .collect();
 
-        // the_corner inherits default entirely, so Cold == default Cold
+        // trailer_park inherits default entirely, so Cold == default Cold
         let cold = file.default.get("Cold").expect("default has Cold");
         let total_heat: i32 = cold
             .iter()
@@ -1142,8 +1205,55 @@ mod tests {
         let avg = total_heat as f32 / cold.len() as f32;
         assert!(
             avg <= 3.0,
-            "Corner/Cold composition too hot: avg {:.1} heat/card (want <= 3.0)",
+            "Trailer Park/Cold composition too hot: avg {:.1} heat/card (want <= 3.0)",
             avg
+        );
+    }
+
+    #[test]
+    fn test_shipped_narc_difficulty_climbs_with_the_ladder() {
+        // SOW-033 (silent-risk flag 11): the narc override blocks were swapped
+        // so difficulty climbs trailer_park < suburbia < red_light_district.
+        // A find/replace that renamed keys without swapping contents would
+        // leave suburbia harder than red_light - caught here by comparing
+        // total Cold-tier evidence pressure (all three define Cold).
+        let file = load_narc_compositions("assets/narc_deck.ron")
+            .expect("narc_deck.ron should parse");
+        let evidence = load_and_validate_cards("assets/cards/evidence.ron", "Evidence")
+            .expect("evidence.ron should load");
+        let evidence_by_id: HashMap<&str, u32> = evidence
+            .iter()
+            .filter_map(|c| match c.card_type {
+                CardType::Evidence { evidence, .. } => Some((c.id.as_str(), evidence)),
+                _ => None,
+            })
+            .collect();
+
+        let cold_pressure = |ids: &[String]| -> u32 {
+            ids.iter()
+                .map(|id| evidence_by_id.get(id.as_str()).copied().unwrap_or(0))
+                .sum()
+        };
+
+        // trailer_park inherits the default Cold; suburbia and red_light both
+        // override it
+        let trailer = cold_pressure(file.default.get("Cold").expect("default Cold"));
+        let suburbia = cold_pressure(
+            file.areas
+                .get("suburbia")
+                .and_then(|o| o.get("Cold"))
+                .expect("suburbia Cold override"),
+        );
+        let red_light = cold_pressure(
+            file.areas
+                .get("red_light_district")
+                .and_then(|o| o.get("Cold"))
+                .expect("red_light_district Cold override"),
+        );
+
+        assert!(
+            trailer < suburbia && suburbia < red_light,
+            "narc Cold-tier evidence must climb with the ladder: trailer {trailer} < suburbia {suburbia} < red_light {red_light}"
         );
     }
 }

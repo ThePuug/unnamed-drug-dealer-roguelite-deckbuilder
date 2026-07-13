@@ -607,7 +607,8 @@ mod tests {
         use crate::models::buyer::{BuyerDemand, BuyerPersona, BuyerScenario};
         let mut hs = HandState::default();
         hs.buyer_persona = Some(BuyerPersona {
-            area: "the_corner".to_string(),
+            area: "trailer_park".to_string(),
+            portrait: String::new(),
             display_name: "Test Buyer".to_string(),
             demand: BuyerDemand {
                 products: vec![],

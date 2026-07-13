@@ -135,9 +135,9 @@ mod tests {
     fn narc_card_pool(assets: &GameAssets) -> &Vec<Card> {
         assets
             .narc_compositions
-            .get("the_corner")
+            .get("trailer_park")
             .and_then(|tiers| tiers.get("Cold"))
-            .expect("test assets ship a the_corner/Cold composition")
+            .expect("test assets ship a trailer_park/Cold composition")
     }
 
     fn load_test_assets() -> GameAssets {
@@ -173,7 +173,7 @@ mod tests {
         match load_cards("assets/cards/evidence.ron") {
             Ok(cards) => {
                 assets.narc_compositions.insert(
-                    "the_corner".to_string(),
+                    "trailer_park".to_string(),
                     std::collections::HashMap::from([("Cold".to_string(), cards)]),
                 );
             }
