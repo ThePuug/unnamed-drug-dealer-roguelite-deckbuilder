@@ -1,8 +1,10 @@
 # Progression & Meta-Game - Feature Matrix
 
 **Spec:** [progression-meta.md](progression-meta.md)
-**Last Updated:** 2026-07-13
+**Last Updated:** 2026-07-14
 **Overall Status:** 41/49 features complete (84%)
+
+> ⚠️ **Reconciliation note (2026-07-14):** rows below corrected for the SOW-033 zone renames + price ladder and the SOW-034 fronting reframe. Two shipped systems are **not yet represented** as feature rows (they would grow the denominator once folded into the spec): **SOW-034 consumable product stock** (charges/batches) and **SOW-036 per-zone signature hiring**. Tracked as pending spec+matrix work.
 
 ---
 
@@ -41,9 +43,9 @@ SOW-030 but was missing from this table.)
 
 | Feature | Status | Notes |
 |---------|:------:|-------|
-| Starting location (The Corner) | ✅ | SOW-020 |
+| Starting location (Trailer Park) | ✅ | SOW-020; renamed from The Corner in SOW-033 |
 | Location as card shops | ✅ | SOW-020 |
-| Area (territory) purchase unlocks | ✅ | SOW-024: cash purchase supersedes the achievement placeholder (RFC-024); buyers area-gated, two-stage run selection. SOW-028: three-zone city — The Strip $1,200 spliced between the free Corner and the $2,000 Block |
+| Area (territory) purchase unlocks | ✅ | SOW-024: cash purchase supersedes the achievement placeholder (RFC-024); buyers area-gated, two-stage run selection. SOW-033: three neighborhoods — Trailer Park (free start) → Suburbia $1,200 → Red Light District $2,500 (top rung; prices swapped vs the earlier SOW-028 layout) |
 | Location permanence | ✅ | SOW-020 |
 | Multi-location shopping | ✅ | SOW-020 |
 | Location UI (shop interface) | ✅ | SOW-020 |
@@ -71,8 +73,8 @@ SOW-030 but was missing from this table.)
 
 | Feature | Status | Notes |
 |---------|:------:|-------|
-| Named supplier per zone | ✅ | SOW-031: authored in shop_locations.ron with voice (Lil Smoke / Miss Velvet / The Broker); header on each zone's shop tab |
-| Fronts against product cards | ✅ | SOW-031: take now at 25% vig, lump due in 4 runs on the run ticker (runner's own run counts); card playable while fronted, owned forever on payoff |
+| Named supplier per zone | ✅ | SOW-031: authored in shop_locations.ron with voice (Lil Smoke / Deb / Miss Velvet — trailer_park / suburbia / red_light_district); header on each zone's shop tab |
+| Fronts against product cards | ✅ | SOW-031: take now at 25% vig, lump due in 4 runs on the run ticker (runner's own run counts). SOW-034 reframed this as fronting a BATCH of an already-owned product (access is a precondition): take_front grants BATCH_SIZE charges, and souring seizes unsold charges, not access |
 | Escalation ladder | ✅ | SOW-031: CutOff (stock locked, one final window) → muscle (20% cash seizure, or active dealer benched 1 run when broke) + repossession → Soured (permanent, cash only) |
 | Front visibility surfaces | ✅ | SOW-031: hub clock next to START RUN, PAY on the shop header, supplier line on map nodes, OWED TO SUPPLIERS on the ledger strip |
 | Zone flavor authored in content | ✅ | SOW-031 (SOW-029 carry): identity + narc_hint moved from code into shop_locations.ron, required at load |
@@ -151,7 +153,7 @@ SOW-030 but was missing from this table.)
 ## Remaining Work for Launch
 
 **Priority 1 - Core Meta Loop:**
-- ~~Location System~~ ✅ (9/9 complete - SOW-024 areas + SOW-025 stationing/cred)
+- ~~Location System~~ ✅ (10/10 complete - SOW-024 areas + SOW-025 stationing/cred + SOW-029 city map)
 - ~~Card Unlock System~~ ✅ (6/6 complete)
 - Achievements (4 features)
 
