@@ -66,6 +66,13 @@ backgrounds — studio art-backlog). (2) **Unlockable dealers per area**.
 (3) Utility-card consumables. (4) **"Widen the margins" mechanic** (the
 limited-use progression reward). (5) SOW-032 Tutorial Arc.
 
+**Update (2026-07-14, autonomous run):** delivering (2) unlockable dealers
+[SOW-038], the generic-hire retirement [SOW-039], and (5) the tutorial
+[SOW-032] this evening. **(3) Utility-card consumables is REVERSED** — Reed
+decided only PRODUCTS are consumable stock; utility cards (cover/insurance/
+modifier/location) stay free-infinite, so SOW-040 is dropped. Next mechanic
+seed after the batch: (4) "widen the margins."
+
 **Roadmap adds (Reed, 2026-07-13):**
 - **Retire the generic hire pool** — DECIDED. Signature-per-zone hiring
   (SOW-036) becomes the ONLY way to hire a dealer. Remove the generic
