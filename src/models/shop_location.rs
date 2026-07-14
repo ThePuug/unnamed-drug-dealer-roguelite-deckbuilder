@@ -17,9 +17,9 @@ pub struct SupplierDef {
 /// SOW-036: the zone's SIGNATURE dealer - one themed named face you hire AT
 /// this zone (you don't hire generically from anywhere; you hire at a
 /// location, and the hire lands stationed there). Pure fiction: `portrait`
-/// is a KEY into GameAssets.actor_portraits ("Bubba" -> "dealer-bubba.png"),
-/// consistent with DEALER_PORTRAIT_POOL. The hire MECHANICS live in save
-/// state (SaveData::hire_signature_dealer + DealerState.signature_of).
+/// is a KEY into GameAssets.actor_portraits ("Bubba" -> "dealer-bubba.png").
+/// The hire MECHANICS live in save state (SaveData::hire_signature_dealer +
+/// DealerState.signature_of).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SignatureDealerDef {
     pub name: String,

@@ -548,9 +548,10 @@ pub fn update_spotlights_system(
 }
 
 /// SOW-023: Operations roster - one card per dealer (portrait, name,
-/// tier, scars, status), plus a HIRE card. Rebuilt when the save changes or
-/// the panel is freshly (re)spawned. Card width is FIXED at 250px so the e2e
-/// harness can target rows deterministically.
+/// tier, scars, status). SOW-039: the trailing HIRE card is retired (hiring
+/// moved to the CITY MAP); a static "hire on the map" hint stands in its place.
+/// Rebuilt when the save changes or the panel is freshly (re)spawned. Card
+/// width is FIXED at 250px so the e2e harness can target rows deterministically.
 pub fn populate_roster_panel_system(
     mut commands: Commands,
     save_data: Option<Res<crate::save::SaveData>>,
@@ -577,7 +578,6 @@ pub fn populate_roster_panel_system(
     }
 
     let cash = save_data.account.cash_on_hand;
-    let hire_cost = save_data.next_hire_cost();
 
     commands.entity(panel).with_children(|parent| {
         for (index, dealer) in save_data.dealers.iter().enumerate() {
@@ -920,32 +920,27 @@ pub fn populate_roster_panel_system(
                 });
         }
 
-        // HIRE card
-        let affordable = cash >= hire_cost;
+        // SOW-039: the roster-panel HIRE card is retired - the roster grows on
+        // the CITY MAP now (signature + cred-gated unlockable dealers, hired AT
+        // the zone). A static, non-interactive hint stands where the card was.
         parent
             .spawn((
-                Button,
                 Node {
                     width: Val::Px(140.0),
                     justify_content: JustifyContent::Center,
                     align_items: AlignItems::Center,
+                    padding: UiRect::all(Val::Px(8.0)),
                     border: UiRect::all(Val::Px(2.0)),
                     border_radius: BorderRadius::all(Val::Px(8.0)),
                     ..default()
                 },
-                BackgroundColor(if affordable {
-                    theme::ROSTER_HIRE_BG
-                } else {
-                    theme::BUTTON_DISABLED_BG
-                }),
                 BorderColor::all(theme::ROSTER_CARD_BORDER),
-                RosterHireButton,
             ))
             .with_children(|parent| {
                 parent.spawn((
-                    Text::new(format!("HIRE\n${hire_cost}")),
-                    TextFont::from_font_size(14.0),
-                    TextColor(Color::WHITE),
+                    Text::new("Hire dealers on the\nCITY MAP"),
+                    TextFont::from_font_size(12.0),
+                    TextColor(theme::ROSTER_STATION_TEXT),
                     TextLayout::new_with_justify(bevy::text::Justify::Center),
                 ));
             });

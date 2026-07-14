@@ -363,7 +363,9 @@ mod tests {
         let mut save = SaveData::new();
         save.account.cash_on_hand = 10_000;
         save.account.lifetime_revenue = 2_000;
-        save.hire_dealer();
+        // SOW-039: roster grows via authored zone dealers now (named "Slim" to
+        // preserve the identity the zone-history tests below assert against)
+        save.dealers.push(DealerState::zone_dealer("trailer_park", "Slim", "Gladys"));
         save
     }
 
@@ -533,8 +535,10 @@ mod tests {
     fn roster_view_caps_with_tail_and_kingpin_stays_first() {
         let mut save = roster_save();
         save.account.cash_on_hand = 10_000_000;
+        // SOW-039: fill the roster with authored zone dealers (distinct names)
         while save.dealers.len() < 10 {
-            save.hire_dealer();
+            let n = save.dealers.len();
+            save.dealers.push(DealerState::zone_dealer("trailer_park", &format!("Hire {n}"), "Gladys"));
         }
         let rows = dossier_rows(&save, &city());
         let (v, tail) = roster_view(rows, 8);
