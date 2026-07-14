@@ -118,9 +118,13 @@ RFC-019 resolved (027), harness isolation/outcome-awareness shipped (023/024).
   patterns, fixed `docs/adr` → `docs/02-adr` links), the progression-meta matrix
   (zone renames, Broker → Deb, ladder, SOW-034 fronting), and a full README
   rewrite (was frozen at SOW-014). Docs now track current `main`.
-- **In flight:** SOW-038 Unlockable Dealers — cred-gated additional dealers per
-  zone (additive over signatures); rehomes Gladys to Trailer Park, pre-clearing
-  the generic-hire retirement (SOW-039).
+- **SOW-038 Unlockable Dealers — MERGED** (a8447f8): cred-gated additional
+  dealers per zone (additive over signatures via `unlockable_dealers` +
+  `hire_zone_dealer`); Gladys rehomed to Trailer Park (cred 5), pre-clearing the
+  generic-hire retirement. SAVE_VERSION stays 9. 299 tests, zero warnings; 3-lens
+  adversarial review + live e2e (city map renders HIRE BUBBA + GLADYS·NEEDS CRED
+  5). Assets committed as ec2ae09 (LOCAL — needs push to the assets remote).
+  Suburbia/Red Light author empty unlockable lists pending new faces.
 
 ### Iteration 13 — 2026-07-13
 
