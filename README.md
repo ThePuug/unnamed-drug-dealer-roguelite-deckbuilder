@@ -1,195 +1,99 @@
 # Drug Dealer Roguelite Deckbuilder
 
-**Status:** SOW-014 Complete - Dynamic Narrative Construction System
+**Status:** actively developed through **SOW-036** (the "kingpin era"). See [`docs/00-spec/product-roadmap.md`](docs/00-spec/product-roadmap.md) for the live status and iteration log.
 
-An unnamed drug dealer roguelite deckbuilder game built with Rust and Bevy. Features sequential turn-based play with Buyer personas, scenario-driven deals, active slot system, hand resolution overlay, and dynamic narrative generation with 666K+ unique story variations.
+An unnamed drug-dealer roguelite deckbuilder built in **Rust** with the **Bevy** engine. You play the **kingpin**: hire dealers who run deals on your behalf across a city of unlockable neighborhoods, juggle heat, cash, and supply, and build a legacy that outlives any single bust.
 
 ## Quick Start
 
 ### Prerequisites
-
-- Rust (nightly toolchain configured via `rust-toolchain.toml`)
+- Rust toolchain (pinned via `rust-toolchain.toml`)
 - Cargo
 
-### Run the Game
-
+### Build / Run / Test
 ```bash
-cargo run
+cargo run                 # play
+cargo test                # unit suite (280+ tests, zero-warnings baseline)
+cargo build --release     # optimized build
 ```
 
-**What to expect:**
-1. **Deck Builder:** Choose 10-20 cards from 20-card pool (or use preset)
-2. **Start Run:** Click START RUN to begin with selected Buyer persona
-3. **Sequential Play:** Narc → Player turn order, cards played face-up one at a time
-4. **3 Rounds:** Each hand has 3 rounds (Draw → PlayerPhase → BuyerReveal)
-5. **Active Slots:** Product, Location, Conviction, Insurance slots show what's in play
-6. **Pass/Bail Out:** Check to skip playing a card, or fold to exit hand
-7. **Buyer Scenarios:** 2 scenarios per Buyer with different product demands
-8. **Hand Resolution:** Overlay shows outcome (Safe/Busted/BuyerBailed/etc.)
-9. **Multi-Hand Runs:** NEW DEAL continues with same buyer, GO HOME returns to deck builder
-
-### Run Tests
-
+Dev tool — forge a signed save into a known state for playtesting, then exit:
 ```bash
-cargo test
+cargo run -- forge <scenario> [--dir <path>]
 ```
 
-**60+ unit tests** covering:
-- Card mechanics (override rules, additive stacking)
-- Multi-round state machine and betting system
-- AI decision making and initiative
-- Insurance activation and affordability
-- Conviction threshold checks and overrides
-- Cash/heat accumulation across hands
-- Face-down card handling in multi-round play
+## The Game
 
-### Build
+You're not the dealer on the corner — you're the **kingpin**. The loop:
 
-```bash
-cargo build
-```
+- **Hire dealers.** Each neighborhood offers a named **signature dealer** you hire on the city map; they run deals **stationed** in that zone, carrying their own deck, heat, and story.
+- **Cash is global; jail replaces permadeath.** A busted dealer goes to **jail** for a sentence (post bail to spring them early); only a busted *kingpin* ends the empire. Cash pools across the whole roster.
+- **Unlock the city.** Three neighborhoods — **Trailer Park** (free start) → **Suburbia** ($1,200) → **Red Light District** ($2,500) — each with its own clientele, narcs, supplier, and shop ladder.
+- **Buy or front your stock.** Products are **limited-use consumable stock**: unlocking grants permanent access, but each is bought — or **fronted** on supplier credit — in batches, and every deal burns a charge. Run dry and you're out until you restock.
+- **Heat scales the danger.** The more heat a dealer carries, the tougher the narcs they draw; **Lay Low** and a **Crooked Lawyer** are your release valves.
+- **Build a legacy.** The **Kingpin Ledger** collects roster dossiers and stories; fallen empires land on a browsable arcade board.
 
-## Current Features
+### Clientele (9 buyer personas, 3 per neighborhood)
+- **Trailer Park:** Biker, Tweaker, Deadbeat
+- **Suburbia:** Frat Bro, Desperate Housewife, Widow
+- **Red Light District:** Pimp, Working Girl, John
 
-### Card Collection (SOW-010)
-- **Player Deck Pool (20 cards - choose 10-20):**
-  - Products (9): Weed, Ice (Meth), Heroin, Coke, Fentanyl, Codeine, Ecstasy, Shrooms, Acid
-  - Locations (4): Safe House, Abandoned Warehouse, Storage Unit, Dead Drop
-  - Cover (2): Alibi, Fake Receipts
-  - Insurance (2): Bribed Witness, Clean Money
-  - Deal Modifiers (3): Disguise, Lookout, etc.
-- **Narc Deck (25 cards):** Evidence and Conviction cards
-- **Buyer Deck (7 per persona):** 2 Locations + 5 Deal Modifiers (3 visible, random selection)
+### Products
+Six products stock the shops across the three zones — **Weed, Shrooms** (Trailer Park), **Codeine, Xanax** (Suburbia), **Ecstasy, Coke** (Red Light District) — with a premium tier (Acid, Ice, Heroin, Fentanyl) shelved for a future arc.
 
-### Sequential Turn-Based Play (SOW-008, SOW-009)
-- **3 Rounds per hand:** PlayerPhase (Narc → Player turns) → BuyerReveal
-- **Player Actions:** Play card face-up, Pass (check), or Bail Out (fold)
-- **Fixed Turn Order:** Narc always goes first, then Player
-- **Buyer System:** 3 personas (Frat Bro, Desperate Housewife, Wall Street Wolf)
-- **2 Scenarios per Buyer:** Different product demands, heat thresholds, multipliers
+## A Deal (the hand)
 
-### Insurance & Conviction System (SOW-003)
-- **Insurance Cards:** Save you from bust if you have cash
-  - Act as Cover during hand (+15 to +20)
-  - Activate on bust if affordable (pay cost, gain heat penalty)
-  - Single-use (burn after activation)
-- **Conviction Cards:** Override insurance at high heat
-  - No effect on totals (only affects bust resolution)
-  - Check heat threshold (40 for Warrant, 60 for DA Approval)
-  - Block insurance if heat ≥ threshold
-- **Multi-Hand Runs:** Cash and heat persist across hands until bust
+Each deal is a sequential, turn-based hand against the **narc**:
+- Cards play face-up one at a time; the narc acts, then you, across the rounds of a hand.
+- You stack **Evidence** against **Cover** — if Evidence ≤ Cover the deal is **Safe**, otherwise you risk a **Bust**.
+- **Insurance** can save you from a bust if you can pay the cost; **Conviction** cards override insurance once heat clears their threshold.
+- Outcomes (Safe / Busted / Buyer Bailed / …) resolve in an overlay with a **dynamically generated narrative** — grammar-aware composition from card fragments, hundreds of thousands of variations.
 
-### Card Mechanics
-- **Override Rules:** Last Product/Location/Insurance/Conviction played = active
-- **Additive Rules:** Evidence, Cover, and Deal Modifiers stack
-- **Heat Calculation:** Sum all heat modifiers, accumulates across hands
-- **Bust Resolution:**
-  1. Evidence ≤ Cover → Safe
-  2. Conviction active + heat ≥ threshold → Busted (overrides insurance)
-  3. Insurance active + affordable → Pay cost, gain heat → Safe
-  4. Otherwise → Busted
+## Controls (mouse-driven)
 
-### UI (SOW-011)
-- **16:9 Optimized Layout:** Active slots + scenario card + heat bar (top), played pool + player hand (bottom)
-- **Active Slot System:** Visual Product/Location/Conviction/Insurance slots
-- **Vertical Heat Bar:** Dynamic fill, color transitions (green/yellow/red)
-- **Hand Resolution Overlay:** Modal with outcome-specific results and narrative story
-- **Totals Bar:** Evidence, Cover, Multiplier displayed prominently
-- **Discard Pile:** Vertical list of replaced cards
-- **Buyer Scenario Card:** Shows scenario, demands, multipliers, heat limit
-- **Two-tier Card Sizing:** Small (110x140) for visible hands/pool, Medium (120x152) for player hand/slots
+- **Hub:** manage your roster, open the **City Map** or **Kingpin Ledger**, and **START RUN**.
+- **City Map:** **UNLOCK** a new zone, **HIRE** a zone's dealer, or **SEND** a stationed dealer to another zone.
+- **Shop (per zone):** **BUY BATCH / RESTOCK** stock, **FRONT** on supplier credit, **PAY** down what you owe; cred-gated items show their requirement.
+- **In a deal:** click a card to play it, **PASS** to check, **BAIL OUT** to fold; on resolution, **NEW DEAL** to continue or **GO HOME** to return to the hub.
 
-### Dynamic Narrative System (SOW-012, SOW-014)
-- **666K+ Unique Stories:** Grammatically-aware composition from card fragments
-- **20+ Sentence Patterns:** Simple, compound, complex, multi-sentence structures
-- **Element Reordering:** Location, evidence, and other elements vary in position
-- **Context-Aware Conjunctions:** Positive outcomes use "and", negative use "but"
-- **Grammatical Structure Filtering:** Full clauses vs. prepositional phrases
-- **Card-Based Fragments:** Products, buyers, locations, and evidence provide narrative clauses
-- **Optional Clauses:** Cards only specify relevant narrative elements (no empty arrays)
-- **Zero Fallback Text:** All test variations produce grammatically correct stories
+## Content (RON-authored)
 
-## Controls
-
-- **Deck Builder:**
-  - Click cards to select/deselect for your deck
-  - Click preset buttons (Default/Aggro/Control) to load presets
-  - Click START RUN when deck is valid (10-20 cards)
-- **During Play:**
-  - Click card in your hand to play it face-up
-  - Click PASS to skip playing a card
-  - Click BAIL OUT to fold and exit hand
-- **Hand Resolution:**
-  - Overlay appears automatically when hand completes
-  - Click NEW DEAL to continue run with same deck
-  - Click GO HOME to return to deck builder
-
-## Asset System
-
-**Asset Externalization (SOW-013):** All cards, buyers, and narrative content are defined in external RON files under `assets/`:
-- `assets/cards/*.ron` - Card definitions (products, locations, evidence, modifiers, etc.)
-- `assets/buyers.ron` - Buyer personas with scenarios and reaction decks
-- `assets/narc_deck.ron` - Narc deck composition (references cards by ID)
-- `assets/narrative_defaults.ron` - Default narrative fragments
-
-**Card ID System:** Cards use semantic string IDs (`"weed"`, `"safe_house"`, `"patrol"`) for readability and maintainability.
-
-**Deduplication:** Cards are defined once and referenced by ID in deck compositions, eliminating duplicates.
+All content is defined in human-readable **RON** files under `assets/` and validated at load:
+- `assets/cards/*.ron` — products, locations, cover, insurance, modifiers, convictions, evidence
+- `assets/buyers.ron` — buyer personas (area-gated), scenarios, reaction decks
+- `assets/data/shop_locations.ron` — zones: unlock ladder, shop stock, signature dealer, supplier, narc mix
+- `assets/narc_deck.ron`, `assets/narrative_defaults.ron` — narc composition & default narrative fragments
 
 ## Project Structure
 
 ```
-.
-├── src/
-│   ├── main.rs           # Core game logic (~5600 lines)
-│   └── ui/               # Modular UI system (SOW-011-A)
-│       ├── mod.rs        # UI module entry point
-│       ├── theme.rs      # Color palette and sizing constants
-│       ├── components.rs # UI component markers
-│       ├── helpers.rs    # Card display helpers
-│       └── systems.rs    # UI update systems
-├── docs/                 # Game design specs, RFCs, ADRs, SOWs
-├── ROLES/                # Role-based development guidelines
-├── Cargo.toml            # Rust dependencies
-├── rust-toolchain.toml   # Rust nightly toolchain
-└── README.md             # This file
+src/
+├── main.rs         # App bootstrap: Bevy plugin/state wiring + `forge` CLI
+├── game_state.rs   # GameState (Bevy states) + shared resources
+├── models/         # Pure, unit-tested domain logic (cards, hand state machine,
+│                   # buyer, deck_builder, shop_location, narrative engine)
+├── systems/        # Bevy ECS systems (game_loop, input, shop, city_map,
+│                   # kingpin_ledger, save_integration, ui_update, upgrade_choice)
+├── ui/             # View layer: pure *_view.rs render fns + setup/components/theme
+├── data/           # Built-in preset content
+├── save/           # Versioned, HMAC-signed saves (types w/ SAVE_VERSION, crypto, io, forge)
+└── assets/         # Runtime RON asset loading (loader, registry)
 ```
+Top-level `assets/` holds the RON content, fonts, shaders, and generated art.
 
 ## Development
 
-- **TDD:** Unit tests written for all core mechanics
-- **Bevy ECS:** Game state managed through Entity-Component-System architecture
-- **Pure Functions:** Card logic extracted into testable pure functions
-
-## Implementation Status
-
-- ✅ **SOW-001:** Minimal playable hand (single round, basic mechanics)
-- ✅ **SOW-002:** Betting system and AI opponents (3 rounds, sequential play)
-- ✅ **SOW-003:** Insurance and conviction system (bust survival, heat management)
-- ✅ **SOW-004:** Card retention between hands (persistent hands)
-- ✅ **SOW-005:** Deck balance and card distribution (20-card pool)
-- ✅ **SOW-006:** Run progression and deck building (meta systems)
-- ✅ **SOW-008:** Sequential play with progressive reveals (turn-based)
-- ✅ **SOW-009:** Buyer system (merged Dealer + Customer into Buyer personas)
-- ✅ **SOW-010:** Buyer scenarios and product expansion (9 products, 2 scenarios/buyer)
-- ✅ **SOW-011-A:** UI refactor - Core layout & foundation (modular UI, 16:9 layout)
-- ✅ **SOW-011-B:** UI refactor - Hand resolution & polish (overlay, consistent sizing)
-- ✅ **SOW-012:** Narrative generation system (phrasal fragments, pattern composition)
-- ✅ **SOW-013:** Asset externalization (RON files, string IDs, card deduplication)
-- ✅ **SOW-014:** Dynamic narrative construction (666K+ variations, grammatical awareness)
-
-## Next Steps
-
-See `docs/01-rfc/` for planned features and design documents.
+- **Bevy ECS**, state-driven; domain logic lives in `models/` as **pure functions**, `systems/` only orchestrate.
+- **TDD**; view logic is tested as pure `*_view.rs` functions; **zero warnings** required on both build and test.
+- **Versioned saves:** HMAC-signed with serde-default migration (`SAVE_VERSION` currently 9); a schema bump wipes old saves (pre-release convention).
+- End-to-end playtests drive the real window via `tools/e2e/game-drive.ps1`.
 
 ## Documentation
 
-- **SOWs:** `docs/03-sow/` - 14 statements of work (all complete and merged to main)
-- **RFCs:** `docs/01-rfc/` - 14 feature requests (13 implemented, 1 rejected)
-- **ADRs:** `docs/02-adr/` - 6 architectural decision records
-- **Specs:** `docs/00-spec/` - Game design specifications with feature matrices
-- **CLAUDE.md:** Instructions for Claude Code sessions
-- **ROLES/:** Role-based development guidelines (DEVELOPER, ARCHITECT, PLAYER, DEBUGGER)
+The repo uses a numbered documentation system under `docs/` — see [`docs/README.md`](docs/README.md):
+- **Specs & feature matrices:** `docs/00-spec/` (start with `product-roadmap.md`)
+- **RFCs:** `docs/01-rfc/` · **ADRs:** `docs/02-adr/` · **SOWs:** `docs/03-sow/` (each folder has a `README.md` index)
+- **CLAUDE.md** — guidance for Claude Code sessions · **ROLES/** — role playbooks (DEVELOPER, ARCHITECT, DEBUGGER, PLAYER)
 
 ## License
 
