@@ -90,6 +90,31 @@ RFC-019 resolved (027), harness isolation/outcome-awareness shipped (023/024).
 
 ## Iteration Log
 
+### Iteration 14 — 2026-07-14
+
+- **Autonomous delivery campaign started** (Reed: deliver seeds #2/#3/#5 + the
+  two small SOWs; work async in isolated worktrees, main session does doc
+  housekeeping; I self-verify via adversarial review + the e2e driver and merge
+  autonomously — Reed reviews outcomes). Sequence (save-version bumps force it
+  sequential): SOW-037 → 038 → 039 → 040 → 032.
+- **SOW-037 `back_of_the_club` guard — MERGED** (2177bf5): the "orphaned" premise
+  was stale — the alley is already a Red Light shop card ($800 / cred 1), dropped
+  only from the Pimp reaction deck by the SOW-036 boot fix. Added the missing
+  regression guard test (the old orphan test passed vacuously) + SOW doc; no RON
+  change, no save bump. 286 tests, zero warnings; adversarial verify confirmed the
+  guard bites.
+- **Build reliability fix** (5deaa30): `Cargo.lock` is gitignored and `hmac = "0"`
+  floated to a breaking 0.13 in fresh worktrees — pinned `hmac` to 0.12.
+  (Open recommendation: commit `Cargo.lock` for full reproducibility.)
+- **Doc housekeeping pass:** reconciled the SOW index (033/034/036), CLAUDE.md
+  (retired the "early development" scaffold — real commands / module map /
+  patterns, fixed `docs/adr` → `docs/02-adr` links), the progression-meta matrix
+  (zone renames, Broker → Deb, ladder, SOW-034 fronting), and a full README
+  rewrite (was frozen at SOW-014). Docs now track current `main`.
+- **In flight:** SOW-038 Unlockable Dealers — cred-gated additional dealers per
+  zone (additive over signatures); rehomes Gladys to Trailer Park, pre-clearing
+  the generic-hire retirement (SOW-039).
+
 ### Iteration 13 — 2026-07-13
 
 - **SOW-036 Signature Dealers merged** (284 tests, zero warnings): hiring is
