@@ -1073,6 +1073,39 @@ mod tests {
     }
 
     #[test]
+    fn test_shipped_back_of_the_club_is_buyable() {
+        // SOW-037 regression guard: back_of_the_club must stay a purchasable
+        // Red Light shop location. The orphan test above only checks
+        // price-IF-located, so it passes vacuously if the shop hook is stripped.
+        // The SOW-036 boot fix dropped this id from the Pimp reaction deck only;
+        // this test pins the shop pool so that drop can never silently follow.
+        let all = load_all_shipped_player_cards();
+        let card = all
+            .iter()
+            .find(|c| c.id == "back_of_the_club")
+            .expect("back_of_the_club must ship as a player card");
+        assert_eq!(
+            card.shop_location.as_deref(),
+            Some("red_light_district"),
+            "back_of_the_club must be stocked in the Red Light shop"
+        );
+        assert_eq!(card.shop_price, Some(800), "back_of_the_club shop price drifted");
+        assert!(
+            card.shop_price.unwrap_or(0) > 0,
+            "back_of_the_club must carry a real (non-zero) price"
+        );
+        assert_eq!(
+            card.shop_cred_required,
+            Some(1),
+            "back_of_the_club must stay cred-gated at 1"
+        );
+        assert!(
+            matches!(card.card_type, CardType::Location { .. }),
+            "back_of_the_club must be a Location card"
+        );
+    }
+
+    #[test]
     fn test_shipped_demands_attainable_on_ladder() {
         // SOW-026: zero dead payouts - every scenario can demand SOMETHING
         // attainable at-or-before its buyer's area
