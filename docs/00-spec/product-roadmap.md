@@ -74,11 +74,14 @@ limited-use progression reward). (5) SOW-032 Tutorial Arc.
   shipped goes away with it. This resolves SOW-036's open
   generic-hiring-fate question. (Small SOW; touches save/types.rs +
   roster UI; likely SAVE_VERSION bump.)
-- **`back_of_the_club` → shop-buyable location** — the alley was dropped
-  from the Pimp's reaction deck (boot fix on the SOW-036 branch), so it's
-  now only referenced by demand flavor. Make it a player-purchasable
-  location card in the Red Light shop pool so the scene is obtainable
-  rather than orphaned.
+- **`back_of_the_club` → shop-buyable location** — ✅ PREMISE ALREADY MET
+  (verified 2026-07-14). The alley was dropped only from the Pimp's
+  *reaction deck* (SOW-036 boot fix), NOT from the shop pool: it is still a
+  purchasable Red Light District location card (`locations.ron`:
+  `shop_location: red_light_district`, $800, cred 1) and its id appears in
+  no reaction deck. Remaining work (SOW-037) is small: a regression guard
+  test so the shop hook can't be silently dropped again, plus a live
+  buy→play e2e proof (it panicked on boot before the SOW-036 fix).
 
 **Closed threads (Reed, 2026-07-12):** dev save wipes are a non-concern for
 the leaderboard; Lay Low stays committed (no cancel); heat stays global per
