@@ -23,7 +23,12 @@ use std::time::{SystemTime, UNIX_EPOCH};
 // SOW-036: v9 adds DealerState.signature_of (the zone a signature dealer is
 // the face of). serde-default keeps it back-compat, but per the SOW-021
 // version-bump policy the mismatch wipes old saves to a fresh account.
-pub const SAVE_VERSION: u32 = 9;
+// SOW-039: v10 retires the generic hire pool - no serialized field changes,
+// but a v9 save could hold a GENERICALLY-hired "Gladys" (the old pool's last
+// face, now an authored UNLOCKABLE with signature_of set). Per the SOW-021
+// version-bump policy the mismatch wipes such saves to a fresh account, so no
+// pool-hired ghost survives the retirement (io.rs rejects the mismatch).
+pub const SAVE_VERSION: u32 = 10;
 
 /// Maximum sanity values for validation
 const MAX_HEAT: u32 = 10_000;
@@ -233,20 +238,12 @@ impl SaveData {
         &mut self.active_dealer_state_mut().character
     }
 
-    /// Cost to hire the next dealer at the current roster size
+    /// Cost to hire the next dealer at the current roster size. Shared by
+    /// every hire path (SOW-039: the generic pool hire is retired; the roster
+    /// now grows ONLY through hire_signature_dealer / hire_zone_dealer, both of
+    /// which spend this same ladder).
     pub fn next_hire_cost(&self) -> u64 {
         hire_cost(self.dealers.len())
-    }
-
-    /// Hire a new dealer, spending from the kingpin's account.
-    /// Returns false (no mutation) if the account can't afford it.
-    pub fn hire_dealer(&mut self) -> bool {
-        let cost = self.next_hire_cost();
-        if !self.account.spend(cost) {
-            return false;
-        }
-        self.dealers.push(DealerState::recruit(&self.dealers));
-        true
     }
 
     /// SOW-038 (was `has_signature_dealer`): whether a specific zone dealer -
@@ -1169,23 +1166,12 @@ fn default_station() -> String {
     DEFAULT_STATION.to_string()
 }
 
-/// Street names for recruited dealers
-pub const DEALER_NAME_POOL: [&str; 12] = [
-    "Slim", "Mouse", "Ghost", "Dice", "Rico", "Tex",
-    "Lucky", "Smokes", "Blade", "Ace", "Vega", "Halo",
-];
-
-/// Actor portraits available as GENERIC dealer faces (keys into
-/// GameAssets.actor_portraits; the loader loads each as "dealer-<key>.png").
-/// Excludes the narc and every buyer persona - a hire must never wear a
-/// buyer's face. SOW-033 repurposed the old character faces as BUYER
-/// portraits, leaving four dedicated dealer faces. SOW-036 RESERVES three of
-/// them (Bubba/Roxanne/Marcus) as zone SIGNATURE faces, authored in
-/// shop_locations.ron and loaded from there - so a generic recruit() can
-/// never grab a signature face. Gladys is the only generic face left; the
-/// signature hire is now the way to grow the roster with a distinct face.
-/// recruit() is deterministic by pool order.
-pub const DEALER_PORTRAIT_POOL: [&str; 1] = ["Gladys"];
+// SOW-039: DEALER_NAME_POOL and DEALER_PORTRAIT_POOL retired. The generic
+// hire drew a random name + face from these pools; the roster now grows ONLY
+// through authored zone dealers (SOW-036 signatures + SOW-038 cred-gated
+// unlockables), whose names and faces live in shop_locations.ron. Gladys - the
+// pool's last surviving face - is now the trailer_park unlockable, so every
+// dealer face is authored content, not a code-owned pool.
 
 /// Whether a dealer can be sent out on a run
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
@@ -1299,33 +1285,10 @@ impl DealerState {
         }
     }
 
-    /// Recruit a new dealer, picking the first name/portrait not already on
-    /// the roster. Deterministic (pool order) so hiring is unit-testable;
-    /// pools cycle if ever exhausted.
-    pub fn recruit(existing: &[DealerState]) -> Self {
-        let name = DEALER_NAME_POOL
-            .iter()
-            .find(|n| !existing.iter().any(|d| d.name == **n))
-            .copied()
-            .unwrap_or(DEALER_NAME_POOL[existing.len() % DEALER_NAME_POOL.len()]);
-        let portrait = DEALER_PORTRAIT_POOL
-            .iter()
-            .find(|p| !existing.iter().any(|d| d.portrait == **p))
-            .copied()
-            .unwrap_or(DEALER_PORTRAIT_POOL[existing.len() % DEALER_PORTRAIT_POOL.len()]);
-
-        Self {
-            name: name.to_string(),
-            portrait: portrait.to_string(),
-            status: DealerStatus::Available,
-            is_kingpin: false,
-            prior_convictions: 0,
-            station: default_station(),
-            street_cred: HashMap::new(),
-            signature_of: None,
-            character: CharacterState::new(),
-        }
-    }
+    // SOW-039: DealerState::recruit() retired alongside the generic hire
+    // pools. Every hired dealer is now an authored zone dealer built via
+    // DealerState::zone_dealer(area, name, portrait) - see hire_signature_dealer
+    // / hire_zone_dealer.
 
     /// SOW-025: +1 street cred in an area (one successful deal there)
     pub fn add_cred(&mut self, area: &str) {
@@ -1701,7 +1664,7 @@ mod tests {
 
     #[test]
     fn test_full_sentence_zeroes_heat_and_scars_the_record() {
-        let mut dealer = DealerState::recruit(&[]);
+        let mut dealer = DealerState::zone_dealer("trailer_park", "Gladys", "Gladys");
         dealer.character.heat = 50; // sentence: 1 + 50/25 = 3 runs
 
         dealer.jail();
@@ -1721,7 +1684,7 @@ mod tests {
     fn test_bail_reduction_is_proportional_to_time_served() {
         let mut data = SaveData::new();
         data.account.cash_on_hand = 10_000;
-        assert!(data.hire_dealer());
+        assert!(data.hire_signature_dealer("trailer_park", &sig("Bubba")));
         data.dealers[1].character.heat = 100; // sentence: 5 runs
         data.dealers[1].jail();
 
@@ -1747,7 +1710,7 @@ mod tests {
     fn test_run_tick_excludes_the_runner_and_releases_at_zero() {
         let mut data = SaveData::new();
         data.account.cash_on_hand = 10_000;
-        assert!(data.hire_dealer());
+        assert!(data.hire_signature_dealer("trailer_park", &sig("Bubba")));
         data.dealers[1].character.heat = 10; // sentence: 1 run
         data.dealers[1].jail();
 
@@ -1778,25 +1741,15 @@ mod tests {
         assert_eq!(data.dealers[0].portrait, "Silhouette");
 
         // Legacy save state (kingpin persisted as "Barista") normalizes;
-        // hires keep whatever face they were recruited with
+        // hires keep whatever authored face they were hired with
         let mut legacy = SaveData::new();
         legacy.account.cash_on_hand = 1000;
-        assert!(legacy.hire_dealer());
+        assert!(legacy.hire_signature_dealer("trailer_park", &sig("Bubba")));
         legacy.dealers[0].portrait = "Barista".to_string();
         let hire_face = legacy.dealers[1].portrait.clone();
         legacy.normalize();
         assert_eq!(legacy.dealers[0].portrait, "Silhouette");
         assert_eq!(legacy.dealers[1].portrait, hire_face);
-    }
-
-    #[test]
-    fn test_first_hire_gets_first_pool_face() {
-        // The kingpin wears "Silhouette", so recruit()'s skip-used scan finds
-        // the pool's first face free for the first hire
-        let mut data = SaveData::new();
-        data.account.cash_on_hand = 500;
-        assert!(data.hire_dealer());
-        assert_eq!(data.dealers[1].portrait, DEALER_PORTRAIT_POOL[0]);
     }
 
     // ------------------------------------------------------------------
@@ -1872,16 +1825,31 @@ mod tests {
     }
 
     #[test]
-    fn generic_pool_reserves_signature_faces() {
-        // SOW-036: the three signature faces must not be reachable by a
-        // generic recruit - only Gladys remains in the pool.
-        for face in ["Bubba", "Roxanne", "Marcus"] {
-            assert!(
-                !DEALER_PORTRAIT_POOL.contains(&face),
-                "{face} is a signature-only face and must not be in the generic pool"
-            );
+    fn roster_grows_only_through_authored_zone_hires() {
+        // SOW-039: the generic hire pool is retired. A funded empire cannot
+        // grow the roster by cash alone - the ONLY growth vectors are the
+        // authored zone hires (signature + cred-gated unlockable), each of
+        // which stamps signature_of, so every hire is an authored zone dealer.
+        let mut save = SaveData::new();
+        save.account.cash_on_hand = 100_000;
+        grant_cred(&mut save, "trailer_park", 5); // clears the unlockable gate
+        assert_eq!(save.dealers.len(), 1, "cash alone hires nobody");
+
+        // Signature hire grows the roster and marks the zone
+        assert!(save.hire_signature_dealer("trailer_park", &sig("Bubba")));
+        assert_eq!(save.dealers.len(), 2);
+        assert_eq!(save.dealers[1].signature_of.as_deref(), Some("trailer_park"));
+
+        // Cred-gated unlockable hire is the other (and only other) growth vector
+        assert!(save.hire_zone_dealer("trailer_park", &unlockable("Gladys", 5)));
+        assert_eq!(save.dealers.len(), 3);
+        assert_eq!(save.dealers[2].signature_of.as_deref(), Some("trailer_park"));
+
+        // Every non-kingpin on the roster is an authored zone dealer (never a
+        // faceless generic recruit) - the SOW-039 invariant.
+        for hire in save.dealers.iter().filter(|d| !d.is_kingpin) {
+            assert!(hire.signature_of.is_some(), "{} is not an authored zone dealer", hire.name);
         }
-        assert_eq!(DEALER_PORTRAIT_POOL, ["Gladys"]);
     }
 
     // ------------------------------------------------------------------
@@ -2244,7 +2212,7 @@ mod tests {
     fn test_broke_muscle_benches_the_active_dealer_when_backup_exists() {
         let mut data = SaveData::new();
         data.account.cash_on_hand = 500;
-        assert!(data.hire_dealer());
+        assert!(data.hire_signature_dealer("trailer_park", &sig("Bubba")));
         data.account.cash_on_hand = 4; // 20% rounds to 0 - nothing worth taking
         data.account.unlocked_cards.insert("shrooms".to_string());
         data.take_front("shrooms", "trailer_park", 100).unwrap();
@@ -2335,29 +2303,10 @@ mod tests {
     }
 
     #[test]
-    fn test_hire_dealer_spends_and_recruits_unique_identity() {
-        let mut data = SaveData::new();
-        data.account.cash_on_hand = 1400;
-
-        // First hire: $500
-        assert!(data.hire_dealer());
-        assert_eq!(data.dealers.len(), 2);
-        assert_eq!(data.account.cash_on_hand, 900);
-        assert!(!data.dealers[1].is_kingpin);
-        assert_ne!(data.dealers[0].name, data.dealers[1].name);
-        assert_ne!(data.dealers[0].portrait, data.dealers[1].portrait);
-
-        // Second hire: $1000 > $900 - refused, no mutation
-        assert!(!data.hire_dealer());
-        assert_eq!(data.dealers.len(), 2);
-        assert_eq!(data.account.cash_on_hand, 900);
-    }
-
-    #[test]
     fn test_kingpin_bust_resets_the_empire() {
         let mut data = SaveData::new();
         data.account.cash_on_hand = 50_000;
-        assert!(data.hire_dealer());
+        assert!(data.hire_signature_dealer("trailer_park", &sig("Bubba")));
         data.active_character_mut().heat = 90;
 
         data.reset_empire();
@@ -2371,7 +2320,7 @@ mod tests {
     fn test_roster_roundtrip_with_jailed_dealer() {
         let mut data = SaveData::new();
         data.account.cash_on_hand = 500;
-        assert!(data.hire_dealer());
+        assert!(data.hire_signature_dealer("trailer_park", &sig("Bubba")));
         data.dealers[1].character.heat = 40;
         data.dealers[1].jail();
         data.active_dealer = 0;
@@ -2409,7 +2358,7 @@ mod tests {
         save.account.cash_on_hand = 900;
         save.dealers[0].character.decks_played = 5;
         save.dealers[0].character.story_history.push("The boss's tale".into());
-        let mut hired = DealerState::recruit(&save.dealers);
+        let mut hired = DealerState::zone_dealer("trailer_park", "Slim", "Gladys");
         hired.prior_convictions = 2;
         hired.character.decks_played = 4;
         hired.character.story_history.push("Slim's tale".into());
@@ -2560,7 +2509,7 @@ mod tests {
     #[test]
     fn test_lay_low_rejections() {
         let mut save = SaveData::new();
-        save.dealers.push(DealerState::recruit(&save.dealers));
+        save.dealers.push(DealerState::zone_dealer("trailer_park", "Gladys", "Gladys"));
         save.account.cash_on_hand = 1000;
 
         assert!(!save.lay_low(0)); // no heat to shed
@@ -2621,7 +2570,7 @@ mod tests {
     #[test]
     fn test_street_cred_accrues_and_never_decays() {
         // SOW-025: +1 per successful deal; nothing (jail, moves) erases it
-        let mut dealer = DealerState::recruit(&[]);
+        let mut dealer = DealerState::zone_dealer("trailer_park", "Gladys", "Gladys");
         dealer.add_cred("suburbia");
         dealer.add_cred("suburbia");
         dealer.add_cred("trailer_park");
@@ -2649,7 +2598,7 @@ mod tests {
         let mut save = SaveData::new();
         assert!(save.best_cred("suburbia").is_none()); // nobody known yet
 
-        save.dealers.push(DealerState::recruit(&save.dealers));
+        save.dealers.push(DealerState::zone_dealer("trailer_park", "Gladys", "Gladys"));
         save.dealers[0].add_cred("suburbia");
         save.dealers[1].add_cred("suburbia");
         save.dealers[1].add_cred("suburbia");

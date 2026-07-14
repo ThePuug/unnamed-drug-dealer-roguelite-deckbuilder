@@ -8,11 +8,11 @@
 # Usage:
 #   ./tools/e2e/playtest.ps1 -Scenario roster -Hands 2 -OutDir out\pt
 #   -SelectDealer 1   click roster row N (0-based) before START RUN
-#   -Hire             click the HIRE card before START RUN
+#   (SOW-039: the roster-panel HIRE card is retired - hire dealers on the CITY
+#    MAP via the signature / cred-gated unlockable buttons instead)
 #
 # Reference clicks (1920x1080 design space):
 #   roster row i center: x = 30 + i*260 + 125, y = 120   (250px cards, 10px gap)
-#   HIRE card (after n dealers): x = 30 + n*260 + 70, y = 120
 #   START RUN (856,987 is NEW DEAL; START RUN bottom-right): (1798, 987)
 #   hand fan slots: (822|960|1098, 950)   PASS: (1565, 930)
 #   overlay: NEW DEAL (856, 694), GO HOME / END RUN / NEW EMPIRE (1056, 694)
@@ -32,7 +32,6 @@ param(
   [string]$Scenario = "fresh",
   [int]$Hands = 2,
   [int]$SelectDealer = -1,
-  [switch]$Hire,
   [string]$BuyArea = "",   # SOW-024: buy this area in the shop before the run (e.g. suburbia)
   [string]$OutDir = "$env:TEMP\ddd-playtest",
   # SOW-026 pacing runs: share one save across multiple sessions
@@ -98,14 +97,7 @@ if ($BuyArea -ne "") {
 }
 
 # 3. Optional roster actions before the run
-if ($Hire) {
-  # HIRE card sits after the dealer cards; count dealers from the forge scenario
-  $dealerCount = switch ($Scenario) { "roster" { 3 } "hustler" { 2 } "legacy" { 2 } default { 1 } }
-  $hireX = 30 + $dealerCount * 260 + 70
-  & $drv -Action click -X $hireX -Y 120 | Out-Null
-  Start-Sleep -Milliseconds 800
-  & $drv -Action shot -OutFile (Join-Path $OutDir "01-after-hire.png") | Out-Null
-}
+# (SOW-039: the roster-panel HIRE card is retired - hiring moved to the CITY MAP)
 if ($SelectDealer -ge 0) {
   $selX = 30 + $SelectDealer * 260 + 125
   & $drv -Action click -X $selX -Y 120 | Out-Null

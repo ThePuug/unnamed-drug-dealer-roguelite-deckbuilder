@@ -177,10 +177,11 @@ mod tests {
     fn test_reset_empire_persists_a_fresh_roster() {
         let (manager, _dir) = test_save_manager();
 
-        // Build up an empire, then lose it all
+        // Build up an empire, then lose it all. SOW-039: the roster grows
+        // through authored zone hires now, so add a zone dealer directly.
         let mut data = SaveData::new();
         data.account.cash_on_hand = 5000;
-        assert!(data.hire_dealer());
+        data.dealers.push(DealerState::zone_dealer("trailer_park", "Bubba", "Bubba"));
         data.active_character_mut().heat = 75;
         manager.save(&data).unwrap();
 

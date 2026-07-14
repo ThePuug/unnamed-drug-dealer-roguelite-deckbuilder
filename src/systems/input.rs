@@ -635,7 +635,6 @@ pub fn card_click_system(
 pub fn roster_button_system(
     dealer_query: Query<(&Interaction, &RosterDealerButton), Changed<Interaction>>,
     bail_query: Query<(&Interaction, &RosterBailButton), Changed<Interaction>>,
-    hire_query: Query<&Interaction, (Changed<Interaction>, With<RosterHireButton>)>,
     move_query: Query<(&Interaction, &RosterMoveButton), Changed<Interaction>>,
     lay_low_query: Query<(&Interaction, &RosterLayLowButton), Changed<Interaction>>,
     lawyer_query: Query<(&Interaction, &RosterLawyerButton), Changed<Interaction>>,
@@ -672,12 +671,9 @@ pub fn roster_button_system(
         }
     }
 
-    // Hire the next recruit (hire_dealer no-ops when unaffordable)
-    for interaction in hire_query.iter() {
-        if *interaction == Interaction::Pressed {
-            dirty |= save_data.hire_dealer();
-        }
-    }
+    // SOW-039: the generic roster-panel HIRE arm is retired. The roster grows
+    // only through the map's signature (SOW-036) and cred-gated unlockable
+    // (SOW-038) hires handled below.
 
     // SOW-025: relocate a dealer (move_dealer no-ops when unavailable,
     // already there, or the fee is unaffordable)

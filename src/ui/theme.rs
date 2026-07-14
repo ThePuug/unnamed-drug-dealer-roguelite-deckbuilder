@@ -275,7 +275,7 @@ pub const ROSTER_STATUS_READY: Color = Color::srgb(0.5, 0.9, 0.6);
 pub const ROSTER_STATUS_JAILED: Color = Color::srgb(1.0, 0.45, 0.45);
 pub const ROSTER_KINGPIN_BADGE: Color = Color::srgb(1.0, 0.85, 0.3);        // "BOSS"
 pub const ROSTER_SCAR_TEXT: Color = Color::srgb(0.75, 0.65, 0.5);           // prior convictions "⚖ n"
-pub const ROSTER_HIRE_BG: Color = Color::srgb(0.25, 0.45, 0.65);
+// SOW-039: ROSTER_HIRE_BG retired with the roster-panel HIRE card.
 pub const ROSTER_BAIL_BG: Color = Color::srgb(0.55, 0.35, 0.2);
 
 // SOW-025: stationing + street cred

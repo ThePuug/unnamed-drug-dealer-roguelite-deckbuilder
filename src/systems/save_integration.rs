@@ -80,19 +80,21 @@ pub fn apply_decay_system(
 }
 
 /// RFC-023: Defensive roster guard at run start. The roster invariant says
-/// this never fires (a fresh save recruits one dealer), but a run must
-/// always have someone to send out.
+/// this never fires (a fresh save starts with the kingpin), but a run must
+/// always have someone to send out. SOW-039: the generic recruit is retired,
+/// so the empty-roster recovery restores the KINGPIN (the guaranteed starter
+/// dealer) rather than fabricating a faceless pool hire.
 pub fn ensure_roster_on_run_start(
     mut save_data: ResMut<SaveData>,
     save_manager: Res<SaveManager>,
 ) {
     if save_data.dealers.is_empty() {
-        warn!("Roster empty at run start - recruiting a replacement");
-        save_data.dealers.push(crate::save::DealerState::recruit(&[]));
+        warn!("Roster empty at run start - restoring the kingpin");
+        save_data.dealers.push(crate::save::DealerState::kingpin());
         save_data.active_dealer = 0;
 
         if let Err(e) = save_manager.save(&save_data) {
-            warn!("Failed to save new recruit: {:?}", e);
+            warn!("Failed to save restored kingpin: {:?}", e);
         }
     }
 }

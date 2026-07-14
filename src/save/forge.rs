@@ -28,12 +28,13 @@ pub fn scenario(name: &str) -> Option<SaveData> {
             save.account.cash_on_hand = 1200;
             save.dealers[0].character.heat = 20;
 
-            let mut ray = DealerState::recruit(&save.dealers);
-            ray.name = "Ray".to_string();
+            // SOW-039: authored zone dealers (faces loaded via the signature +
+            // unlockable loops) instead of the retired generic recruit pool.
+            let mut ray = DealerState::zone_dealer(DEFAULT_STATION, "Ray", "Bubba");
             ray.character.heat = 45;
             save.dealers.push(ray);
 
-            let mut jailed = DealerState::recruit(&save.dealers);
+            let mut jailed = DealerState::zone_dealer(DEFAULT_STATION, "Tex", "Gladys");
             jailed.character.heat = 75;
             jailed.status = DealerStatus::Jailed {
                 runs_remaining: 2,
@@ -65,9 +66,9 @@ pub fn scenario(name: &str) -> Option<SaveData> {
                 save.dealers[0].add_cred(DEFAULT_STATION);
             }
 
-            let mut ray = DealerState::recruit(&save.dealers);
-            ray.name = "Ray".to_string();
-            ray.station = "suburbia".to_string();
+            // SOW-039: Suburbia's authored signature face (Roxanne), stationed
+            // there by zone_dealer - replaces the retired generic recruit.
+            let mut ray = DealerState::zone_dealer("suburbia", "Ray", "Roxanne");
             ray.character.heat = 30;
             for _ in 0..2 {
                 ray.add_cred("suburbia");
@@ -104,9 +105,9 @@ pub fn scenario(name: &str) -> Option<SaveData> {
                 "A noise complaint nearly ended the night early.".to_string(),
             ]);
 
-            let mut ray = DealerState::recruit(&save.dealers);
-            ray.name = "Ray".to_string();
-            ray.station = "red_light_district".to_string();
+            // SOW-039: Red Light's authored signature face (Marcus), stationed
+            // there by zone_dealer - replaces the retired generic recruit.
+            let mut ray = DealerState::zone_dealer("red_light_district", "Ray", "Marcus");
             ray.character.heat = 55;
             ray.character.decks_played = 3;
             ray.prior_convictions = 1;

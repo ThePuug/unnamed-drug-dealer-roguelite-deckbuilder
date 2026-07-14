@@ -513,7 +513,7 @@ mod tests {
     #[test]
     fn chips_only_for_dealers_stationed_in_area() {
         let mut save = save_with_cash(10_000);
-        save.hire_dealer();
+        save.dealers.push(DealerState::zone_dealer("trailer_park", "Ray", "Gladys"));
         save.dealers[1].station = "suburbia".to_string();
         let corner = dealer_chips(&save, "trailer_park");
         assert_eq!(corner.len(), 1);
@@ -524,7 +524,7 @@ mod tests {
     #[test]
     fn best_cred_marker_matches_roster_best() {
         let mut save = save_with_cash(10_000);
-        save.hire_dealer();
+        save.dealers.push(DealerState::zone_dealer("trailer_park", "Ray", "Gladys"));
         save.dealers[0].add_cred("trailer_park");
         save.dealers[1].add_cred("trailer_park");
         save.dealers[1].add_cred("trailer_park");

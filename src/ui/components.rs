@@ -348,9 +348,9 @@ pub struct RosterBailButton {
     pub dealer_index: usize,
 }
 
-/// Hire the next recruit
-#[derive(Component)]
-pub struct RosterHireButton;
+// SOW-039: RosterHireButton retired with the generic roster-panel HIRE card.
+// Roster growth is the map's signature (MapSignatureHireButton) and unlockable
+// (MapAreaDealerHireButton) hires.
 
 /// SOW-025: relocate a dealer to another unlocked area (cash + downtime)
 #[derive(Component)]
