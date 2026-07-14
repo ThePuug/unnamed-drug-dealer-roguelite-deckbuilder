@@ -10,7 +10,7 @@ ron = "0"
 rand = "0"
 # Save system
 bincode = "1"
-hmac = "0"
+hmac = "0.12"
 sha2 = "0"
 dirs = "5"
 
