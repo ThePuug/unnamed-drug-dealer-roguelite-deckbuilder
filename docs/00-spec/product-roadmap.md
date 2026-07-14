@@ -125,6 +125,16 @@ RFC-019 resolved (027), harness isolation/outcome-awareness shipped (023/024).
   adversarial review + live e2e (city map renders HIRE BUBBA + GLADYS·NEEDS CRED
   5). Assets committed as ec2ae09 (LOCAL — needs push to the assets remote).
   Suburbia/Red Light author empty unlockable lists pending new faces.
+- **SOW-039 Retire Generic Hire Pool — MERGED** (118c2ad): removed the generic
+  hire path (`hire_dealer`/`recruit`/`DEALER_PORTRAIT_POOL`/`DEALER_NAME_POOL` + the
+  roster HIRE card → a static "Hire dealers on the CITY MAP" hint); signature (036)
+  + unlockable (038) map hiring is now the ONLY path. SAVE_VERSION 9→10 (the batch's
+  first save bump; the tutorial takes it to 11). 298 tests, zero warnings; e2e
+  confirmed the roster HIRE card is gone. NOTE: attempt 1 branched from a stale base
+  (pre-038) and would have reverted SOW-038 — caught before merge, re-run on the
+  correct base (decision D9).
+- **In flight:** SOW-032 Tutorial Arc — one-time offer + hub goal strip, graduation
+  at first map-hire; reconciled to map-only hiring + products-only stock.
 
 ### Iteration 13 — 2026-07-13
 
