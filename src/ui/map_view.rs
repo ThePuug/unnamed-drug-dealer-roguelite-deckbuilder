@@ -38,6 +38,9 @@ pub struct ZoneNodeView {
     /// SOW-036: the zone's signature-dealer hire offer (resting-state action
     /// on an unlocked node; the move flow takes precedence when armed)
     pub signature: SignatureStatus,
+    /// SOW-038: the zone's cred-gated unlockable-dealer hire offers, in authored
+    /// order (additive over `signature`; empty on a locked zone)
+    pub unlockable_dealers: Vec<AreaDealerOffer>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -64,6 +67,30 @@ pub enum SignatureStatus {
     Hired { name: String },
     /// Zone still locked, or no signature authored: no offer
     Unavailable,
+}
+
+/// SOW-038: one of the zone's UNLOCKABLE (cred-gated) dealer hire offers.
+/// Additive over `SignatureStatus`: a zone may list several. Produced only on an
+/// UNLOCKED zone (empty otherwise), in authored order. Mirrors
+/// `SaveData::hire_zone_dealer`'s guards so a button never promises a hire the
+/// model would refuse.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AreaDealerOffer {
+    pub name: String,
+    /// Portrait key (for the hire button to rebuild the def on click)
+    pub portrait: String,
+    pub cred_required: u32,
+    pub state: AreaDealerOfferState,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum AreaDealerOfferState {
+    /// Cred met and the (area, name) slot open: the hire cost and affordability
+    Available { cost: u64, affordable: bool },
+    /// Best cred in the zone is below the threshold: how much you have now
+    Locked { cred_have: u32 },
+    /// Already on the roster (the (area, name) slot is filled)
+    Hired,
 }
 
 /// One stationed-dealer chip on a node
@@ -166,7 +193,7 @@ pub fn signature_status(area: &ShopLocationDef, save: &SaveData) -> SignatureSta
     if !unlocked {
         return SignatureStatus::Unavailable;
     }
-    if save.has_signature_dealer(&area.id) {
+    if save.has_zone_dealer(&area.id, &sig.name) {
         return SignatureStatus::Hired { name: sig.name.clone() };
     }
     let cost = save.next_hire_cost();
@@ -176,6 +203,42 @@ pub fn signature_status(area: &ShopLocationDef, save: &SaveData) -> SignatureSta
         cost,
         affordable: save.account.cash_on_hand >= cost,
     }
+}
+
+/// SOW-038: the zone's unlockable-dealer hire offers for a node, in authored
+/// order. Mirrors `SaveData::hire_zone_dealer`'s guards so a button never
+/// promises a hire the model would refuse. Empty on a locked zone (you hire AT a
+/// zone you already operate - the same rule as the signature offer). Per dealer:
+/// already on the roster -> Hired; best zone cred below the threshold ->
+/// Locked{cred_have}; else Available with the shared hire-ladder cost and
+/// current affordability.
+pub fn area_dealer_offers(area: &ShopLocationDef, save: &SaveData) -> Vec<AreaDealerOffer> {
+    if !save.account.unlocked_locations.contains(&area.id) {
+        return Vec::new();
+    }
+    let cred_have = save.best_cred(&area.id).map(|(_, c)| c).unwrap_or(0);
+    let cost = save.next_hire_cost();
+    area.unlockable_dealers
+        .iter()
+        .map(|def| {
+            let state = if save.has_zone_dealer(&area.id, &def.name) {
+                AreaDealerOfferState::Hired
+            } else if cred_have < def.cred_required {
+                AreaDealerOfferState::Locked { cred_have }
+            } else {
+                AreaDealerOfferState::Available {
+                    cost,
+                    affordable: save.account.cash_on_hand >= cost,
+                }
+            };
+            AreaDealerOffer {
+                name: def.name.clone(),
+                portrait: def.portrait.clone(),
+                cred_required: def.cred_required,
+                state,
+            }
+        })
+        .collect()
 }
 
 /// Status suffix shared by map chips and ledger dossiers (SOW-030)
@@ -235,6 +298,7 @@ pub fn zone_node_view<'a>(
         products: native_products(products, &area.id),
         dealers: dealer_chips(save, &area.id),
         signature: signature_status(area, save),
+        unlockable_dealers: area_dealer_offers(area, save),
     }
 }
 
@@ -346,6 +410,7 @@ mod tests {
                 name: "Bubba".to_string(),
                 portrait: "Bubba".to_string(),
             }),
+            unlockable_dealers: Vec::new(),
             narc_portrait: None,
             restock_margin: 0.5,
         }
@@ -656,6 +721,85 @@ mod tests {
         assert_eq!(
             signature_status(&tp, &save_with_cash(500)),
             SignatureStatus::Unavailable
+        );
+    }
+
+    // -- unlockable-dealer hire offers (SOW-038; mirrors hire_zone_dealer) --
+
+    fn gladys(cred: u32) -> crate::models::shop_location::AreaDealerDef {
+        crate::models::shop_location::AreaDealerDef {
+            name: "Gladys".to_string(),
+            portrait: "Gladys".to_string(),
+            cred_required: cred,
+        }
+    }
+
+    fn with_unlockables(
+        id: &str,
+        unlocked: bool,
+        dealers: Vec<crate::models::shop_location::AreaDealerDef>,
+    ) -> ShopLocationDef {
+        let mut a = area(id, unlocked, 0);
+        a.unlockable_dealers = dealers;
+        a
+    }
+
+    #[test]
+    fn area_dealer_offers_empty_on_locked_zone() {
+        // suburbia is locked in a fresh save: no offers even with an authored def
+        let sub = with_unlockables("suburbia", false, vec![gladys(0)]);
+        assert!(area_dealer_offers(&sub, &save_with_cash(100_000)).is_empty());
+    }
+
+    #[test]
+    fn area_dealer_offer_locked_below_threshold_reports_cred_have() {
+        let tp = with_unlockables("trailer_park", true, vec![gladys(5)]);
+        let mut save = save_with_cash(100_000);
+        save.dealers[0].add_cred("trailer_park");
+        save.dealers[0].add_cred("trailer_park"); // best cred = 2, below 5
+        let offers = area_dealer_offers(&tp, &save);
+        assert_eq!(offers.len(), 1);
+        assert_eq!(offers[0].name, "Gladys");
+        assert_eq!(offers[0].portrait, "Gladys");
+        assert_eq!(offers[0].cred_required, 5);
+        assert_eq!(offers[0].state, AreaDealerOfferState::Locked { cred_have: 2 });
+    }
+
+    #[test]
+    fn area_dealer_offer_available_when_cred_met_tracks_affordability() {
+        let tp = with_unlockables("trailer_park", true, vec![gladys(5)]);
+        // cred met; fresh single-kingpin roster => next hire == $500
+        let mut broke = save_with_cash(499);
+        for _ in 0..5 {
+            broke.dealers[0].add_cred("trailer_park");
+        }
+        assert_eq!(broke.next_hire_cost(), 500);
+        assert_eq!(
+            area_dealer_offers(&tp, &broke)[0].state,
+            AreaDealerOfferState::Available { cost: 500, affordable: false }
+        );
+
+        let mut flush = save_with_cash(500);
+        for _ in 0..5 {
+            flush.dealers[0].add_cred("trailer_park");
+        }
+        assert_eq!(
+            area_dealer_offers(&tp, &flush)[0].state,
+            AreaDealerOfferState::Available { cost: 500, affordable: true }
+        );
+    }
+
+    #[test]
+    fn area_dealer_offer_hired_after_hiring() {
+        let tp = with_unlockables("trailer_park", true, vec![gladys(5)]);
+        let mut save = save_with_cash(100_000);
+        for _ in 0..5 {
+            save.dealers[0].add_cred("trailer_park");
+        }
+        assert!(save.hire_zone_dealer("trailer_park", &gladys(5)));
+        assert_eq!(
+            area_dealer_offers(&tp, &save)[0].state,
+            AreaDealerOfferState::Hired
         );
     }
 }

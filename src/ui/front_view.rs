@@ -161,6 +161,7 @@ mod tests {
                 voice: "Trust me.".to_string(),
             }),
             signature_dealer: None,
+            unlockable_dealers: Vec::new(),
             narc_portrait: None,
             restock_margin: 0.5,
         }
