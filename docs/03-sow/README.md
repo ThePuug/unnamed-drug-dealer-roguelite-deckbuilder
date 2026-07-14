@@ -39,6 +39,9 @@ SOWs are work orders for developers. Each SOW defines what needs to be built, wh
 | 030 | Kingpin Ledger | 🎲 Roguelite | ✅ Merged | 2026-07-12 |
 | 031 | Suppliers & Fronts | 💰 Economy | ✅ Merged | 2026-07-13 |
 | 032 | Tutorial Arc: Road to Your First Dealer | 🎲 Roguelite | 📝 Planned | 2026-07-13 |
+| 033 | Zone Re-Theme | 🃏 Cards | ✅ Merged | 2026-07-13 |
+| 034 | Limited-Use Cards | 🃏 Cards | ✅ Merged | 2026-07-13 |
+| 036 | Signature Dealers | 🎲 Roguelite | ✅ Merged | 2026-07-13 |
 | AAA | Code Organization - main.rs Modularization | 🛠️ Dev Tools | ✅ Merged | 2025-11-15 |
 
 **Legend:**
