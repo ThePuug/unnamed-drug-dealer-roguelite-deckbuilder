@@ -39,6 +39,7 @@ SOWs are work orders for developers. Each SOW defines what needs to be built, wh
 | 030 | Kingpin Ledger | 🎲 Roguelite | ✅ Merged | 2026-07-12 |
 | 031 | Suppliers & Fronts | 💰 Economy | ✅ Merged | 2026-07-13 |
 | 032 | Tutorial Arc: Road to Your First Dealer | 🎲 Roguelite | 📝 Planned | 2026-07-13 |
+| 038 | Unlockable Dealers Per Area | 🎲 Roguelite | 🔄 Review | 2026-07-14 |
 | AAA | Code Organization - main.rs Modularization | 🛠️ Dev Tools | ✅ Merged | 2025-11-15 |
 
 **Legend:**

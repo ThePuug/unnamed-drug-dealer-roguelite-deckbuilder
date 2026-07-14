@@ -642,6 +642,8 @@ pub fn roster_button_system(
     // SOW-036: the map's signature-dealer hire (same commit path as the map's
     // SEND button, handled here so the roster save/rebuild flow is reused)
     signature_hire_query: Query<(&Interaction, &MapSignatureHireButton), Changed<Interaction>>,
+    // SOW-038: the map's cred-gated unlockable-dealer hire (same commit path)
+    area_dealer_hire_query: Query<(&Interaction, &MapAreaDealerHireButton), Changed<Interaction>>,
     save_data: Option<ResMut<crate::save::SaveData>>,
     save_manager: Option<Res<crate::save::SaveManager>>,
 ) {
@@ -720,6 +722,29 @@ pub fn roster_button_system(
             if hired {
                 bevy::log::info!(
                     "Hired signature dealer {} at {}",
+                    button.name,
+                    button.area_id
+                );
+            }
+            dirty |= hired;
+        }
+    }
+
+    // SOW-038: hire a zone's cred-gated unlockable dealer, stationed AT that
+    // zone (hire_zone_dealer no-ops when the zone is locked, the roster's best
+    // cred is short, the (area, name) slot is filled, or the cost is
+    // unaffordable - the cred_required payload lets the model re-check the gate)
+    for (interaction, button) in area_dealer_hire_query.iter() {
+        if *interaction == Interaction::Pressed {
+            let def = crate::models::shop_location::AreaDealerDef {
+                name: button.name.clone(),
+                portrait: button.portrait.clone(),
+                cred_required: button.cred_required,
+            };
+            let hired = save_data.hire_zone_dealer(&button.area_id, &def);
+            if hired {
+                bevy::log::info!(
+                    "Hired unlockable dealer {} at {}",
                     button.name,
                     button.area_id
                 );

@@ -771,6 +771,17 @@ fn load_actor_portraits(asset_server: &AssetServer, game_assets: &mut GameAssets
         }
     }
 
+    // SOW-038: unlockable-dealer faces, authored per zone in shop_locations.ron
+    // alongside the signature (portrait key -> "dealer-<slug>.png"). Parallel to
+    // the signature loop so the loud disk-existence check below covers the new
+    // faces too (e.g. trailer_park's Gladys pilot -> dealer-gladys.png).
+    for area in &game_assets.shop_locations {
+        for dealer in &area.unlockable_dealers {
+            let slug = dealer.portrait.to_lowercase().replace(' ', "-");
+            mapped.push((dealer.portrait.clone(), format!("dealer-{slug}.png")));
+        }
+    }
+
     for (key, filename) in mapped {
         let disk_path = format!("assets/art/actors/{filename}");
         assert!(
@@ -865,6 +876,7 @@ mod tests {
             narc_hint: "eyes".to_string(),
             supplier: None,
             signature_dealer: None,
+            unlockable_dealers: Vec::new(),
             narc_portrait: None,
             restock_margin: 0.5,
         };
@@ -976,6 +988,39 @@ mod tests {
             stocked, 6,
             "only the 6 zone products should have a shop_location; a shelved product got re-hooked"
         );
+    }
+
+    #[test]
+    fn test_shipped_unlockable_dealers_gladys_pilot() {
+        // SOW-038: the shipped content loads and validates with trailer_park's
+        // ONE unlockable pilot (Gladys, cred 5) and empty lists on the other two
+        // zones. Gladys' portrait key resolves to dealer-gladys.png by the same
+        // slug convention load_actor_portraits uses (the disk-existence assert
+        // there is exercised by the full app; here we pin the authored shape).
+        let areas = load_shop_locations("assets/data/shop_locations.ron").expect("areas load");
+        crate::models::shop_location::validate_shop_locations(&areas).expect("areas valid");
+
+        let tp = areas.iter().find(|a| a.id == "trailer_park").unwrap();
+        assert_eq!(tp.unlockable_dealers.len(), 1, "trailer_park pilots one unlockable");
+        let gladys = &tp.unlockable_dealers[0];
+        assert_eq!(gladys.name, "Gladys");
+        assert_eq!(gladys.portrait, "Gladys");
+        assert_eq!(gladys.cred_required, 5);
+        // The portrait maps to dealer-gladys.png (slug convention), which exists.
+        let slug = gladys.portrait.to_lowercase().replace(' ', "-");
+        assert_eq!(format!("dealer-{slug}.png"), "dealer-gladys.png");
+        assert!(
+            std::path::Path::new("assets/art/actors/dealer-gladys.png").exists(),
+            "SOW-038 pilot face dealer-gladys.png must exist on disk"
+        );
+
+        for id in ["suburbia", "red_light_district"] {
+            let zone = areas.iter().find(|a| a.id == id).unwrap();
+            assert!(
+                zone.unlockable_dealers.is_empty(),
+                "zone {id} authors no unlockables yet (pending new faces)"
+            );
+        }
     }
 
     #[test]
@@ -1099,6 +1144,7 @@ mod tests {
                 narc_hint: "eyes".to_string(),
                 supplier: None,
                 signature_dealer: None,
+                unlockable_dealers: Vec::new(),
                 narc_portrait: None,
                 restock_margin: 0.5,
             },
@@ -1112,6 +1158,7 @@ mod tests {
                 narc_hint: "eyes".to_string(),
                 supplier: None,
                 signature_dealer: None,
+                unlockable_dealers: Vec::new(),
                 narc_portrait: None,
                 restock_margin: 0.5,
             },

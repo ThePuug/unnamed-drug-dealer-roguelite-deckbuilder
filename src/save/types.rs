@@ -249,11 +249,46 @@ impl SaveData {
         true
     }
 
-    /// Whether a zone's signature dealer is already on the roster
-    pub fn has_signature_dealer(&self, area_id: &str) -> bool {
+    /// SOW-038 (was `has_signature_dealer`): whether a specific zone dealer -
+    /// identified by the (area, name) pair - is already on the roster. Matches
+    /// BOTH `signature_of == Some(area)` AND the name, so a hired UNLOCKABLE does
+    /// not block the zone's signature and vice-versa: each (area, name) is its
+    /// own hire-once slot.
+    pub fn has_zone_dealer(&self, area_id: &str, name: &str) -> bool {
         self.dealers
             .iter()
-            .any(|d| d.signature_of.as_deref() == Some(area_id))
+            .any(|d| d.signature_of.as_deref() == Some(area_id) && d.name == name)
+    }
+
+    /// SOW-038 core (shared by the signature + unlockable hires): take on a named
+    /// zone dealer stationed AT `area_id`. Guards: the zone must be unlocked, the
+    /// roster's best cred there must meet `cred_required`, the (area, name) slot
+    /// must be open, and the shared hire-ladder cost (`next_hire_cost`)
+    /// affordable. Returns false (no mutation) otherwise.
+    fn hire_zone_dealer_core(
+        &mut self,
+        area_id: &str,
+        name: &str,
+        portrait: &str,
+        cred_required: u32,
+    ) -> bool {
+        if !self.account.unlocked_locations.contains(area_id) {
+            return false;
+        }
+        let best = self.best_cred(area_id).map(|(_, c)| c).unwrap_or(0);
+        if best < cred_required {
+            return false;
+        }
+        if self.has_zone_dealer(area_id, name) {
+            return false;
+        }
+        let cost = self.next_hire_cost();
+        if !self.account.spend(cost) {
+            return false;
+        }
+        self.dealers
+            .push(DealerState::zone_dealer(area_id, name, portrait));
+        true
     }
 
     /// SOW-036: hire a zone's SIGNATURE dealer - the themed named face you can
@@ -261,24 +296,28 @@ impl SaveData {
     /// (not the default station: the point is you hire at a location). Costs
     /// the shared hire ladder (`next_hire_cost`), no cred gate. Guarded: the
     /// zone must be unlocked, its signature not already on the roster, and the
-    /// cost affordable. Returns false (no mutation) otherwise.
+    /// cost affordable. Returns false (no mutation) otherwise. SOW-038: routed
+    /// through the shared core with `cred_required` 0 (behavior unchanged).
     pub fn hire_signature_dealer(
         &mut self,
         area_id: &str,
         def: &crate::models::shop_location::SignatureDealerDef,
     ) -> bool {
-        if !self.account.unlocked_locations.contains(area_id) {
-            return false;
-        }
-        if self.has_signature_dealer(area_id) {
-            return false;
-        }
-        let cost = self.next_hire_cost();
-        if !self.account.spend(cost) {
-            return false;
-        }
-        self.dealers.push(DealerState::signature(area_id, def));
-        true
+        self.hire_zone_dealer_core(area_id, &def.name, &def.portrait, 0)
+    }
+
+    /// SOW-038: hire a zone's cred-gated UNLOCKABLE dealer - an additional named
+    /// face offered AT the zone once the roster's best cred there reaches
+    /// `def.cred_required`. Same station-at-the-zone landing and shared
+    /// hire-ladder cost as the signature; the (area, name) pair keeps it a
+    /// hire-once slot independent of the signature. Returns false (no mutation)
+    /// when any guard fails.
+    pub fn hire_zone_dealer(
+        &mut self,
+        area_id: &str,
+        def: &crate::models::shop_location::AreaDealerDef,
+    ) -> bool {
+        self.hire_zone_dealer_core(area_id, &def.name, &def.portrait, def.cred_required)
     }
 
     /// A run just completed somewhere in the empire: every jailed dealer's
@@ -1241,13 +1280,15 @@ impl DealerState {
         }
     }
 
-    /// SOW-036: a zone's SIGNATURE dealer - a themed named face, stationed AT
-    /// the zone you hired them in (that is the whole point; not the default
-    /// station). `signature_of` records which zone, enforcing one per zone.
-    pub fn signature(area_id: &str, def: &crate::models::shop_location::SignatureDealerDef) -> Self {
+    /// SOW-038: a ZONE dealer - a themed named face stationed AT the zone you
+    /// hired them in (that is the whole point; not the default station).
+    /// `signature_of` records which zone. Shared constructor for both the
+    /// signature hire and the cred-gated unlockable hires; the (area, name) pair
+    /// is the hire-once identity.
+    pub fn zone_dealer(area_id: &str, name: &str, portrait: &str) -> Self {
         Self {
-            name: def.name.clone(),
-            portrait: def.portrait.clone(),
+            name: name.to_string(),
+            portrait: portrait.to_string(),
             status: DealerStatus::Available,
             is_kingpin: false,
             prior_convictions: 0,
@@ -1827,7 +1868,7 @@ mod tests {
         assert!(!save.hire_signature_dealer("trailer_park", &sig("Bubba")));
         assert_eq!(save.dealers.len(), 2);
         assert_eq!(save.account.cash_on_hand, after_first);
-        assert!(save.has_signature_dealer("trailer_park"));
+        assert!(save.has_zone_dealer("trailer_park", "Bubba"));
     }
 
     #[test]
@@ -1841,6 +1882,108 @@ mod tests {
             );
         }
         assert_eq!(DEALER_PORTRAIT_POOL, ["Gladys"]);
+    }
+
+    // ------------------------------------------------------------------
+    // SOW-038: unlockable (cred-gated) zone dealers
+    // ------------------------------------------------------------------
+
+    fn unlockable(name: &str, cred: u32) -> crate::models::shop_location::AreaDealerDef {
+        crate::models::shop_location::AreaDealerDef {
+            name: name.to_string(),
+            portrait: name.to_string(),
+            cred_required: cred,
+        }
+    }
+
+    /// Give the kingpin (dealer 0) `n` cred in an area so best_cred clears a gate
+    fn grant_cred(save: &mut SaveData, area: &str, n: u32) {
+        for _ in 0..n {
+            save.dealers[0].add_cred(area);
+        }
+    }
+
+    #[test]
+    fn zone_dealer_hire_stations_marks_and_spends() {
+        // Fresh save: trailer_park unlocked, roster=[kingpin], next hire $500.
+        let mut save = SaveData::new();
+        save.account.cash_on_hand = 500;
+        grant_cred(&mut save, "trailer_park", 5); // best cred = 5, meets threshold
+        assert_eq!(save.next_hire_cost(), 500);
+
+        assert!(save.hire_zone_dealer("trailer_park", &unlockable("Gladys", 5)));
+        assert_eq!(save.dealers.len(), 2);
+        let hire = save.dealers.last().unwrap();
+        assert_eq!(hire.name, "Gladys");
+        assert_eq!(hire.portrait, "Gladys");
+        assert_eq!(hire.station, "trailer_park");
+        assert_eq!(hire.signature_of.as_deref(), Some("trailer_park"));
+        assert!(!hire.is_kingpin);
+        assert!(hire.is_available());
+        // Spent the shared ladder cost; ladder advanced with the roster
+        assert_eq!(save.account.cash_on_hand, 0);
+        assert_eq!(save.next_hire_cost(), 1000);
+    }
+
+    #[test]
+    fn zone_dealer_hire_refused_when_zone_locked() {
+        // cred_required 0 so ONLY the lock guard can refuse (suburbia is locked)
+        let mut save = SaveData::new();
+        save.account.cash_on_hand = 10_000;
+        assert!(!save.hire_zone_dealer("suburbia", &unlockable("Gladys", 0)));
+        assert_eq!(save.dealers.len(), 1);
+        assert_eq!(save.account.cash_on_hand, 10_000, "a refused hire never spends");
+    }
+
+    #[test]
+    fn zone_dealer_hire_refused_when_cred_short() {
+        let mut save = SaveData::new();
+        save.account.cash_on_hand = 10_000;
+        grant_cred(&mut save, "trailer_park", 4); // best cred = 4, below threshold 5
+        assert!(!save.hire_zone_dealer("trailer_park", &unlockable("Gladys", 5)));
+        assert_eq!(save.dealers.len(), 1);
+        assert_eq!(save.account.cash_on_hand, 10_000, "a refused hire never spends");
+    }
+
+    #[test]
+    fn zone_dealer_hire_refused_when_broke() {
+        let mut save = SaveData::new();
+        save.account.cash_on_hand = 0;
+        grant_cred(&mut save, "trailer_park", 5); // cred met, but no cash
+        assert!(!save.hire_zone_dealer("trailer_park", &unlockable("Gladys", 5)));
+        assert_eq!(save.dealers.len(), 1);
+    }
+
+    #[test]
+    fn zone_dealer_hire_is_one_per_area_name_slot() {
+        let mut save = SaveData::new();
+        save.account.cash_on_hand = 100_000;
+        grant_cred(&mut save, "trailer_park", 5);
+        assert!(save.hire_zone_dealer("trailer_park", &unlockable("Gladys", 5)));
+        let after_first = save.account.cash_on_hand;
+        // Second attempt at the same (area, name) slot is refused, no spend
+        assert!(!save.hire_zone_dealer("trailer_park", &unlockable("Gladys", 5)));
+        assert_eq!(save.dealers.len(), 2);
+        assert_eq!(save.account.cash_on_hand, after_first);
+    }
+
+    #[test]
+    fn has_zone_dealer_distinguishes_area_and_name() {
+        // SOW-038: has_zone_dealer keys on the (area, name) pair, so a hired
+        // UNLOCKABLE (Gladys) does not fill the signature's slot (Bubba) at the
+        // same zone - each stays independently hireable.
+        let mut save = SaveData::new();
+        save.account.cash_on_hand = 100_000;
+        grant_cred(&mut save, "trailer_park", 5);
+
+        assert!(save.hire_zone_dealer("trailer_park", &unlockable("Gladys", 5)));
+        assert!(save.has_zone_dealer("trailer_park", "Gladys"));
+        assert!(!save.has_zone_dealer("trailer_park", "Bubba"), "unlockable must not fill the signature slot");
+
+        // The signature is still hireable afterwards
+        assert!(save.hire_signature_dealer("trailer_park", &sig("Bubba")));
+        assert!(save.has_zone_dealer("trailer_park", "Bubba"));
+        assert_eq!(save.dealers.len(), 3);
     }
 
     // ------------------------------------------------------------------

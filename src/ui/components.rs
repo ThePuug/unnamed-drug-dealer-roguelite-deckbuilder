@@ -499,6 +499,19 @@ pub struct MapSignatureHireButton {
     pub portrait: String,
 }
 
+/// SOW-038: hire this zone's cred-gated UNLOCKABLE dealer, stationed AT the
+/// zone. Mirrors MapSignatureHireButton plus the `cred_required` payload so the
+/// commit path rebuilds the AreaDealerDef and the model re-checks the cred gate
+/// server-side at click time (hire_zone_dealer recomputes the cost from the
+/// shared hire ladder - the button's label showed it).
+#[derive(Component)]
+pub struct MapAreaDealerHireButton {
+    pub area_id: String,
+    pub name: String,
+    pub portrait: String,
+    pub cred_required: u32,
+}
+
 // ============================================================================
 // SOW-030: Kingpin Ledger overlay
 // ============================================================================

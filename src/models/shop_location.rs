@@ -27,6 +27,21 @@ pub struct SignatureDealerDef {
     pub portrait: String,
 }
 
+/// SOW-038: an UNLOCKABLE dealer offered AT a zone, gated by street cred. Purely
+/// additive over the signature model: a zone may list several of these, each a
+/// named face you hire once the roster's best cred there reaches
+/// `cred_required`. `portrait` is a KEY into GameAssets.actor_portraits, same
+/// convention as SignatureDealerDef. The hire MECHANICS live in save state
+/// (SaveData::hire_zone_dealer + DealerState.signature_of); NO new save field.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct AreaDealerDef {
+    pub name: String,
+    /// Portrait key into GameAssets.actor_portraits
+    pub portrait: String,
+    /// Best street cred in the zone required before this face can be hired
+    pub cred_required: u32,
+}
+
 /// An unlockable area: gates a card shop and (RFC-024) its buyer personas
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ShopLocationDef {
@@ -53,6 +68,13 @@ pub struct ShopLocationDef {
     /// keeps old-format tests compiling, but authored content must carry one.
     #[serde(default)]
     pub signature_dealer: Option<SignatureDealerDef>,
+    /// SOW-038: additional named dealers offered AT this zone, each unlocking at
+    /// a street-cred threshold. Additive over `signature_dealer`; empty by
+    /// default. Every dealer NAME in a zone (signature + all unlockables) must
+    /// be unique - the (area, name) pair is the hire-once identity, enforced at
+    /// load by validate_shop_locations.
+    #[serde(default)]
+    pub unlockable_dealers: Vec<AreaDealerDef>,
     /// SOW-033: per-area narc portrait filename under assets/art/actors/
     /// ("narc-<slug>.png"). None falls back to the "narc-<area>.png" template.
     #[serde(default)]
@@ -110,6 +132,29 @@ pub fn validate_shop_locations(areas: &[ShopLocationDef]) -> Result<(), String> 
                 ));
             }
             Some(_) => {}
+        }
+        // SOW-038: each unlockable dealer needs a non-empty name AND portrait
+        // (same authorability rule as the signature), and every dealer NAME in a
+        // zone (signature + all unlockables) must be UNIQUE - the (area, name)
+        // pair is the hire-once identity, so a collision must fail loud at load.
+        let mut names = std::collections::HashSet::new();
+        if let Some(s) = &area.signature_dealer {
+            names.insert(s.name.trim());
+        }
+        for dealer in &area.unlockable_dealers {
+            if dealer.name.trim().is_empty() || dealer.portrait.trim().is_empty() {
+                return Err(format!(
+                    "area '{}' unlockable dealer needs a name and a portrait",
+                    area.id
+                ));
+            }
+            if !names.insert(dealer.name.trim()) {
+                return Err(format!(
+                    "area '{}' has a duplicate dealer name '{}' - names must be unique per zone",
+                    area.id,
+                    dealer.name.trim()
+                ));
+            }
         }
         // SOW-034: the restock margin must be a sensible fraction of a sale -
         // 0 would give product away free, >=1 would run every product
@@ -184,6 +229,7 @@ mod tests {
                 name: "Bubba".to_string(),
                 portrait: "Bubba".to_string(),
             }),
+            unlockable_dealers: Vec::new(),
             narc_portrait: None,
             restock_margin: 0.5,
         }
@@ -244,6 +290,65 @@ mod tests {
             portrait: String::new(),
         });
         assert!(validate_shop_locations(&[faceless]).unwrap_err().contains("portrait"));
+    }
+
+    #[test]
+    fn unlockable_dealer_missing_name_or_portrait_rejected() {
+        // SOW-038: same authorability rule as the signature - a faceless or
+        // nameless unlockable fails loud at load.
+        let mut nameless = area("trailer_park", true, 0);
+        nameless.unlockable_dealers = vec![AreaDealerDef {
+            name: "  ".to_string(),
+            portrait: "Gladys".to_string(),
+            cred_required: 5,
+        }];
+        assert!(validate_shop_locations(&[nameless]).unwrap_err().contains("name"));
+
+        let mut faceless = area("trailer_park", true, 0);
+        faceless.unlockable_dealers = vec![AreaDealerDef {
+            name: "Gladys".to_string(),
+            portrait: String::new(),
+            cred_required: 5,
+        }];
+        assert!(validate_shop_locations(&[faceless]).unwrap_err().contains("portrait"));
+    }
+
+    #[test]
+    fn duplicate_dealer_name_within_zone_rejected() {
+        // SOW-038: the (area, name) pair is the hire-once identity, so a name
+        // that collides with the signature - or with another unlockable - in the
+        // same zone must fail loud at load.
+        let mut clash_with_signature = area("trailer_park", true, 0);
+        clash_with_signature.unlockable_dealers = vec![AreaDealerDef {
+            name: "Bubba".to_string(), // same as the signature's name
+            portrait: "Gladys".to_string(),
+            cred_required: 5,
+        }];
+        assert!(validate_shop_locations(&[clash_with_signature])
+            .unwrap_err()
+            .contains("duplicate dealer name"));
+
+        let mut clash_between_unlockables = area("trailer_park", true, 0);
+        clash_between_unlockables.unlockable_dealers = vec![
+            AreaDealerDef { name: "Gladys".to_string(), portrait: "Gladys".to_string(), cred_required: 5 },
+            AreaDealerDef { name: "Gladys".to_string(), portrait: "Marcus".to_string(), cred_required: 9 },
+        ];
+        assert!(validate_shop_locations(&[clash_between_unlockables])
+            .unwrap_err()
+            .contains("duplicate dealer name"));
+    }
+
+    #[test]
+    fn zone_with_valid_unlockables_passes() {
+        // SOW-038: the Gladys pilot shape - a unique-named, credited unlockable
+        // alongside the signature - validates cleanly.
+        let mut tp = area("trailer_park", true, 0);
+        tp.unlockable_dealers = vec![AreaDealerDef {
+            name: "Gladys".to_string(),
+            portrait: "Gladys".to_string(),
+            cred_required: 5,
+        }];
+        assert!(validate_shop_locations(&[tp]).is_ok());
     }
 
     #[test]

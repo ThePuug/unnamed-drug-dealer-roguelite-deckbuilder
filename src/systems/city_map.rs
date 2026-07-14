@@ -10,7 +10,7 @@ use bevy::prelude::*;
 use crate::assets::GameAssets;
 use crate::save::SaveData;
 use crate::ui::components::*;
-use crate::ui::map_view::{self, MoveEligibility, SignatureStatus, ZoneStatus};
+use crate::ui::map_view::{self, AreaDealerOfferState, MoveEligibility, SignatureStatus, ZoneStatus};
 use crate::ui::theme;
 
 /// Map overlay state. Selection arms the move flow: pick a dealer chip,
@@ -411,6 +411,10 @@ fn spawn_zone_node(
                         spawn_send_action(card, save_data, dealer_index, node);
                     } else {
                         spawn_signature_action(card, node);
+                        // SOW-038: the zone's cred-gated unlockable dealers, below
+                        // the signature action (additive). Armed-move SEND above
+                        // keeps precedence over the whole resting block.
+                        spawn_area_dealer_actions(card, node);
                     }
                 }
             }
@@ -590,5 +594,70 @@ fn spawn_signature_action(card: &mut ChildSpawnerCommands, node: &map_view::Zone
             ));
         }
         SignatureStatus::Unavailable => {}
+    }
+}
+
+/// SOW-038: the unlocked node's cred-gated unlockable-dealer offers, spawned
+/// below the signature action (additive). Available -> a HIRE button carrying
+/// the self-contained payload (incl. cred_required for a server-side re-check);
+/// Locked -> a "<NAME> — NEEDS CRED N (have M)" row; Hired -> a "<NAME> RUNS
+/// THIS ZONE" tag. All state comes from the pure view-model, so a button never
+/// promises a hire the save model would refuse.
+fn spawn_area_dealer_actions(card: &mut ChildSpawnerCommands, node: &map_view::ZoneNodeView) {
+    for offer in &node.unlockable_dealers {
+        match &offer.state {
+            AreaDealerOfferState::Available { cost, affordable } => {
+                card.spawn((
+                    Button,
+                    Node {
+                        width: Val::Percent(100.0),
+                        height: Val::Px(56.0),
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
+                        border_radius: BorderRadius::all(Val::Px(8.0)),
+                        ..default()
+                    },
+                    BackgroundColor(if *affordable {
+                        theme::CONTINUE_BUTTON_BG
+                    } else {
+                        theme::BUTTON_DISABLED_BG
+                    }),
+                    MapAreaDealerHireButton {
+                        area_id: node.area_id.clone(),
+                        name: offer.name.clone(),
+                        portrait: offer.portrait.clone(),
+                        cred_required: offer.cred_required,
+                    },
+                ))
+                .with_children(|btn| {
+                    btn.spawn((
+                        Text::new(format!("HIRE {} — ${}", offer.name.to_uppercase(), cost)),
+                        TextFont::from_font_size(18.0),
+                        TextColor(Color::WHITE),
+                    ));
+                });
+            }
+            AreaDealerOfferState::Locked { cred_have } => {
+                card.spawn((
+                    Text::new(format!(
+                        "{} — NEEDS CRED {} (have {})",
+                        offer.name.to_uppercase(),
+                        offer.cred_required,
+                        cred_have
+                    )),
+                    TextFont::from_font_size(13.0),
+                    TextColor(theme::V2_LABEL),
+                    Node { align_self: AlignSelf::Center, ..default() },
+                ));
+            }
+            AreaDealerOfferState::Hired => {
+                card.spawn((
+                    Text::new(format!("{} RUNS THIS ZONE", offer.name.to_uppercase())),
+                    TextFont::from_font_size(13.0),
+                    TextColor(theme::ROSTER_STATION_TEXT),
+                    Node { align_self: AlignSelf::Center, ..default() },
+                ));
+            }
+        }
     }
 }
