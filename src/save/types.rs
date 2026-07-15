@@ -1517,6 +1517,14 @@ pub struct AccountState {
     /// without changing access. Absent entries read 0 (`charges_in`).
     #[serde(default)]
     pub stock: HashMap<String, u32>,
+    /// SOW-032: count of product batches bought in the SHOP (via `buy_batch`).
+    /// The seeded starter batch uses `add_stock`, not `buy_batch`, so this is 0
+    /// on a fresh save and increments only on a real cash product purchase -
+    /// including a same-product restock. The tutorial's Restock beat reads this
+    /// directly instead of proxying off collection growth (which both
+    /// false-fires on non-product unlocks and false-misses on a restock).
+    #[serde(default)]
+    pub product_batches_bought: u32,
 }
 
 impl AccountState {
@@ -1528,6 +1536,7 @@ impl AccountState {
             unlocked_cards: Self::starting_collection(),
             unlocked_locations: HashSet::from(["trailer_park".to_string()]),
             stock: HashMap::new(),
+            product_batches_bought: 0,
         };
         // SOW-034: seed one Weed batch so turn 1 is playable without a forced
         // front (0-start is legal since fronting is the floor, but a seeded
@@ -1646,6 +1655,11 @@ impl AccountState {
         }
         self.unlocked_cards.insert(card_id.to_string());
         self.add_stock(card_id, batch);
+        // SOW-032: a real cash product purchase - the event the tutorial's
+        // Restock beat teaches (distinct from the seeded starter, which uses
+        // add_stock, and from non-product one-time unlocks, which never reach
+        // buy_batch).
+        self.product_batches_bought = self.product_batches_bought.saturating_add(1);
         true
     }
 
@@ -2080,17 +2094,23 @@ mod tests {
         let mut account = AccountState::new();
         account.cash_on_hand = 112; // two batches at 14 x 4 = 56 each
         assert!(!account.unlocked_cards.contains("shrooms"));
+        // SOW-032: the seeded starter weed batch uses add_stock, not buy_batch,
+        // so the tutorial's product-batch counter starts at 0.
+        assert_eq!(account.product_batches_bought, 0);
 
         // First buy: 56 spent, access granted, 4 charges added
         assert!(account.buy_batch("shrooms", 14, BATCH_SIZE));
         assert_eq!(account.cash_on_hand, 56);
         assert!(account.unlocked_cards.contains("shrooms"));
         assert_eq!(account.charges_in("shrooms"), 4);
+        assert_eq!(account.product_batches_bought, 1);
 
-        // Restock: adds another batch, no re-unlock, spends again
+        // Restock: adds another batch, no re-unlock, spends again - and the
+        // counter climbs even though access did not change.
         assert!(account.buy_batch("shrooms", 14, BATCH_SIZE));
         assert_eq!(account.cash_on_hand, 0);
         assert_eq!(account.charges_in("shrooms"), 8);
+        assert_eq!(account.product_batches_bought, 2);
     }
 
     #[test]
@@ -2101,6 +2121,8 @@ mod tests {
         assert_eq!(account.cash_on_hand, 40);
         assert!(!account.unlocked_cards.contains("shrooms"));
         assert_eq!(account.charges_in("shrooms"), 0);
+        // SOW-032: a refused buy is a no-op - the counter must not move.
+        assert_eq!(account.product_batches_bought, 0);
     }
 
     // ------------------------------------------------------------------

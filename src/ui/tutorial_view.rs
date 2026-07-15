@@ -18,7 +18,7 @@
 //     and adds charges; utility cards are NOT consumable (SOW-040 reversed), so
 //     the restock beat is products-only.
 
-use crate::save::{AccountState, SaveData, TutorialState, TutorialStatus};
+use crate::save::{SaveData, TutorialState, TutorialStatus};
 
 /// The six guided-play beats, in play order. Each completes by DOING the
 /// action in ordinary play; the predicate reads existing save fields only.
@@ -124,9 +124,13 @@ pub fn beat_satisfied(save: &SaveData, beat: Beat) -> bool {
         //    front was taken first (advance only reaches this beat past beat 3),
         //    so an empty ledger here means PAID or SOURED - not "never fronted".
         Beat::FirstPayback => save.fronts.is_empty(),
-        // 5. RESTOCK - the collection grew past the seeded start. unlocked_cards
-        //    only ever grows (buy_batch inserts), so any difference is growth.
-        Beat::Restock => save.account.unlocked_cards != AccountState::starting_collection(),
+        // 5. RESTOCK - a product batch was bought in the shop. Counts the exact
+        //    event the beat teaches: buy_batch (a cash product purchase) bumps
+        //    this, INCLUDING a same-product restock. The seeded starter uses
+        //    add_stock (counter stays 0 on a fresh save), and non-product
+        //    one-time unlocks (spots/cover/insurance/modifiers) never route
+        //    through buy_batch, so they never satisfy this beat.
+        Beat::Restock => save.account.product_batches_bought >= 1,
         // 6. GRADUATION - the first hire lands (roster past the kingpin).
         Beat::Graduation => save.dealers.len() >= 2,
     }
@@ -195,7 +199,9 @@ pub fn derive_view(save: &SaveData, state: &TutorialState) -> GoalStripView {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::save::{DealerState, TutorialState, TutorialStatus, BATCH_SIZE, DEFAULT_STATION};
+    use crate::save::{
+        AccountState, DealerState, TutorialState, TutorialStatus, BATCH_SIZE, DEFAULT_STATION,
+    };
 
     fn accepted(cursor: u8) -> TutorialState {
         TutorialState {
@@ -253,6 +259,36 @@ mod tests {
     }
 
     #[test]
+    fn beat_restock_fires_on_same_product_restock() {
+        // Regression: the seeded starter is weed (added via add_stock, so the
+        // counter is 0). Restocking that same product via buy_batch - exactly
+        // what the goal strip tells the player to do - must satisfy the beat,
+        // even though unlocked_cards never changes (weed is already present).
+        let mut save = SaveData::new();
+        assert!(!beat_satisfied(&save, Beat::Restock));
+        assert_eq!(save.account.unlocked_cards, AccountState::starting_collection());
+        save.account.cash_on_hand = 1000;
+        save.account.buy_batch("weed", 25, BATCH_SIZE);
+        // Collection is unchanged (a no-op re-insert), but the beat still fires.
+        assert_eq!(save.account.unlocked_cards, AccountState::starting_collection());
+        assert!(beat_satisfied(&save, Beat::Restock));
+    }
+
+    #[test]
+    fn beat_restock_ignores_non_product_unlock() {
+        // Regression: a non-product one-time unlock (a spot/cover/insurance/
+        // modifier) grows unlocked_cards but never routes through buy_batch, so
+        // it must NOT satisfy the restock beat (the old collection-diff proxy
+        // false-fired here).
+        let mut save = SaveData::new();
+        // Mirror shop.rs's None branch for a one-time unlock: insert access,
+        // no buy_batch.
+        save.account.unlocked_cards.insert("at_the_park".to_string());
+        assert_ne!(save.account.unlocked_cards, AccountState::starting_collection());
+        assert!(!beat_satisfied(&save, Beat::Restock));
+    }
+
+    #[test]
     fn beat_graduation_true_false() {
         let mut save = SaveData::new();
         assert!(!beat_satisfied(&save, Beat::Graduation));
@@ -288,10 +324,18 @@ mod tests {
         tut.advance(&save);
         assert_eq!(tut.cursor, 3);
 
-        // Beat 4: pay it back. The books are clean AND the collection grew
-        // (shrooms), so the latch also walks beat 5, stopping on the graduation
-        // prompt (cursor 5).
+        // Beat 4: pay it back. The books are clean, so the cursor walks to beat
+        // 5 - but STOPS there: fronting shrooms was not a bought batch, so the
+        // Restock beat is still pending (this is the false-positive the fix
+        // closes - a front is not a shop purchase).
         save.pay_front(DEFAULT_STATION);
+        tut.advance(&save);
+        assert_eq!(tut.cursor, 4);
+        assert_eq!(tut.status, TutorialStatus::Accepted);
+
+        // Beat 5: buy a product batch in the shop (the real restock event).
+        save.account.cash_on_hand = 1000;
+        assert!(save.account.buy_batch("shrooms", 50, BATCH_SIZE));
         tut.advance(&save);
         assert_eq!(tut.cursor, 5);
         assert_eq!(tut.status, TutorialStatus::Accepted);

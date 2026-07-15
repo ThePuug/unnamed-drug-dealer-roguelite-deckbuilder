@@ -382,8 +382,9 @@ mod tests {
         assert!(save.pay_front(DEFAULT_STATION));
         let mut tut = save.tutorial.clone();
         tut.advance(&save);
-        // Walked past the paid front (beats 4 and 5 - shrooms grew the
-        // collection - both latch) without ever regressing beat 3.
+        // Walked onto beat 5 (paid the front -> beat 4 clean) without ever
+        // regressing beat 3. Beat 5 (RESTOCK) does NOT latch here: a front is
+        // not a shop buy_batch, so the strip correctly waits for a real batch.
         assert!(tut.cursor >= 4);
         assert!(!beat_satisfied(&save, Beat::FirstFront)); // raw predicate now false
         assert!(tut.cursor >= 3); // but the cursor never dropped
