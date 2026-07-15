@@ -4,7 +4,7 @@ use bevy::prelude::*;
 use crate::ui::components::*;
 use crate::ui::theme;
 use crate::models::card::{Card, CardType};
-use crate::models::shop_location::{batch_cost, restock_unit};
+use crate::models::shop_location::{batch_cost, effective_restock_margin, restock_unit};
 use crate::save::{SaveData, SaveManager, AccountState, BATCH_SIZE};
 use crate::assets::GameAssets;
 
@@ -238,10 +238,17 @@ pub fn populate_shop_cards_system(
         // SOW-034: the zone's per-zone restock margin (authored in RON,
         // validated in (0.0, 1.0) at load) - forgiving in the starter zone,
         // tighter up the ladder. Defensive fallback if the def is missing.
-        let margin = area_def
+        let base_margin = area_def
             .as_ref()
             .map(|a| a.restock_margin)
             .unwrap_or(DEFAULT_RESTOCK_MARGIN);
+        // SOW-040: the roster's best cred in THIS zone (the same best_cred that
+        // opens the cred gates above) discounts restock - full price at cred 0
+        // (no economy regression), progressively cheaper as reputation climbs.
+        // Discounting the margin at this single seam propagates to buy, restock,
+        // the display label, and the front, which all read this one `margin`.
+        let best_cred = area_best_cred.as_ref().map(|(_, c)| *c).unwrap_or(0);
+        let margin = effective_restock_margin(base_margin, best_cred);
 
         for card in location_cards {
             let is_unlocked = unlocked_cards.contains(&card.id);
