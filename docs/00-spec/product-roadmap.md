@@ -141,10 +141,17 @@ RFC-019 resolved (027), harness isolation/outcome-awareness shipped (023/024).
   + fixed a Beat-5 restock-detection bug (a collection-size proxy → a
   `product_batches_bought` counter); live e2e verified offer→accept→goal-strip.
   Recovered from a session-interrupted run (impl complete but uncommitted).
-- **✅ BATCH COMPLETE (2026-07-15):** the scoped roadmap batch is delivered —
-  SOW-037 / 038 / 039 / 032 all merged, verified (tests + adversarial review), and
-  live e2e-confirmed. SAVE_VERSION now 11. Next: the "widen the margins" mechanic
-  seed (non-art), per Reed's continue-into-next-seeds steer.
+- **✅ BATCH COMPLETE (2026-07-15):** the scoped roadmap batch — SOW-037 / 038 /
+  039 / 032 — all merged, verified (tests + adversarial review), and live
+  e2e-confirmed. SAVE_VERSION now 11.
+- **SOW-040 Widen the Margins — MERGED** (ecc613c, bonus seed): restock gets
+  cheaper as a zone's best street cred rises (the earn-back reward for SOW-034's
+  per-zone margins). Effective margin = authored margin × a cred factor
+  (×1.0/0.85/0.70/0.55 at cred 0/3/6/10), derived at a single shop seam so
+  buy/restock/label/front all discount together; cred 0 is a strict no-op. No save
+  bump (derived from best_cred). 333 tests, zero warnings; 3-lens review
+  merge-ready; live e2e confirmed Weed RESTOCK $24 (base $44) at cred 10.
+  Discount ladder values flagged for playtest tuning.
 
 ### Iteration 13 — 2026-07-13
 
