@@ -133,8 +133,18 @@ RFC-019 resolved (027), harness isolation/outcome-awareness shipped (023/024).
   confirmed the roster HIRE card is gone. NOTE: attempt 1 branched from a stale base
   (pre-038) and would have reverted SOW-038 — caught before merge, re-run on the
   correct base (decision D9).
-- **In flight:** SOW-032 Tutorial Arc — one-time offer + hub goal strip, graduation
-  at first map-hire; reconciled to map-only hiring + products-only stock.
+- **SOW-032 Tutorial Arc — MERGED** (1071a98): one-time "ROAD TO YOUR FIRST DEALER"
+  offer + single-beat hub goal strip; guided play (not a mode), graduation at the
+  first map-hire; declining confers NO gameplay benefit (pinned by test). Pure
+  tutorial_view.rs (6 beats over existing save fields) + TutorialState (serde-
+  default); SAVE_VERSION 10→11. 326 tests, zero warnings; adversarial review caught
+  + fixed a Beat-5 restock-detection bug (a collection-size proxy → a
+  `product_batches_bought` counter); live e2e verified offer→accept→goal-strip.
+  Recovered from a session-interrupted run (impl complete but uncommitted).
+- **✅ BATCH COMPLETE (2026-07-15):** the scoped roadmap batch is delivered —
+  SOW-037 / 038 / 039 / 032 all merged, verified (tests + adversarial review), and
+  live e2e-confirmed. SAVE_VERSION now 11. Next: the "widen the margins" mechanic
+  seed (non-art), per Reed's continue-into-next-seeds steer.
 
 ### Iteration 13 — 2026-07-13
 

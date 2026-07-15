@@ -38,7 +38,7 @@ SOWs are work orders for developers. Each SOW defines what needs to be built, wh
 | 029 | City Map Screen | 🗺️ Map/Events | ✅ Merged | 2026-07-12 |
 | 030 | Kingpin Ledger | 🎲 Roguelite | ✅ Merged | 2026-07-12 |
 | 031 | Suppliers & Fronts | 💰 Economy | ✅ Merged | 2026-07-13 |
-| 032 | Tutorial Arc: Road to Your First Dealer | 🎲 Roguelite | 🔄 Review | 2026-07-13 |
+| 032 | Tutorial Arc: Road to Your First Dealer | 🎲 Roguelite | ✅ Merged | 2026-07-15 |
 | 033 | Zone Re-Theme | 🃏 Cards | ✅ Merged | 2026-07-13 |
 | 034 | Limited-Use Cards | 🃏 Cards | ✅ Merged | 2026-07-13 |
 | 036 | Signature Dealers | 🎲 Roguelite | ✅ Merged | 2026-07-13 |
