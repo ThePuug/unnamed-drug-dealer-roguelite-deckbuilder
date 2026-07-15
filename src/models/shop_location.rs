@@ -204,6 +204,38 @@ pub fn batch_cost(product_price: u32, margin: f32) -> u32 {
     restock_unit(product_price, margin) * crate::save::BATCH_SIZE
 }
 
+/// SOW-040: the cred discount ladder - as the roster's BEST street cred in a
+/// zone (SOW-025's best_cred) climbs, restock gets progressively cheaper. This
+/// is the earn-back reward for SOW-034's per-zone restock_margin ladder.
+/// Ordered high->low; the first cleared threshold wins (see cred_margin_factor).
+/// Kept as a code const - a game-wide progression curve, matching the
+/// hire_cost/bail_cost/FRONT_VIG precedent (not RON). [TUNING] thresholds+factors.
+const CRED_MARGIN_LADDER: [(u32, f32); 3] = [(10, 0.55), (6, 0.70), (3, 0.85)];
+
+/// SOW-040: the factor in (0.0, 1.0] applied to a zone's authored restock margin
+/// for the given best cred. Scans CRED_MARGIN_LADDER high->low and returns the
+/// first cleared threshold's factor, defaulting to 1.0 (no discount) below the
+/// lowest step. Monotonic non-increasing in cred (1.0 >= 0.85 >= 0.70 >= 0.55),
+/// so restock cost never rises as a zone is built up. cred 0-2 -> 1.0, a strict
+/// no-op that preserves SOW-034's shipped economy on a fresh zone.
+pub fn cred_margin_factor(best_cred: u32) -> f32 {
+    for (threshold, factor) in CRED_MARGIN_LADDER {
+        if best_cred >= threshold {
+            return factor;
+        }
+    }
+    1.0
+}
+
+/// SOW-040: a zone's EFFECTIVE restock margin - the authored base margin scaled
+/// by the cred discount factor. restock_unit / batch_cost take THIS effective
+/// margin, so buy, restock, the shop label, and the front all discount from a
+/// single derivation. At cred 0 the factor is 1.0, so this returns base_margin
+/// unchanged (no economy regression on a fresh zone).
+pub fn effective_restock_margin(base_margin: f32, best_cred: u32) -> f32 {
+    base_margin * cred_margin_factor(best_cred)
+}
+
 // ============================================================================
 // TESTS
 // ============================================================================
@@ -407,6 +439,100 @@ mod tests {
             assert_eq!(restock_unit(base, margin), unit, "{name} restock_unit");
             assert_eq!(batch_cost(base, margin), batch, "{name} batch_cost");
             assert!(batch < base * 4, "{name}: a batch must clear under four base sales");
+        }
+    }
+
+    // SOW-040: the six shipped (name, base sale price, authored zone margin)
+    // products, reused by the discount tests to pin the whole economy.
+    const SHIPPED: [(&str, u32, f32); 6] = [
+        ("weed", 30, 0.35),    // trailer_park
+        ("shrooms", 40, 0.35), // trailer_park
+        ("codeine", 50, 0.50), // suburbia
+        ("xanax", 55, 0.50),   // suburbia
+        ("ecstasy", 80, 0.65), // red_light_district
+        ("coke", 120, 0.65),   // red_light_district
+    ];
+
+    #[test]
+    fn cred_margin_factor_step_boundaries() {
+        // SOW-040: highest cleared threshold wins; below the lowest step is 1.0.
+        assert_eq!(cred_margin_factor(0), 1.0);
+        assert_eq!(cred_margin_factor(2), 1.0);
+        assert_eq!(cred_margin_factor(3), 0.85);
+        assert_eq!(cred_margin_factor(5), 0.85);
+        assert_eq!(cred_margin_factor(6), 0.70);
+        assert_eq!(cred_margin_factor(9), 0.70);
+        assert_eq!(cred_margin_factor(10), 0.55);
+        assert_eq!(cred_margin_factor(100), 0.55); // top tier caps
+    }
+
+    #[test]
+    fn cred_zero_is_a_strict_no_op() {
+        // SOW-040: a fresh zone (cred 0) charges the authored margin EXACTLY -
+        // the discount must never perturb SOW-034's shipped economy. Multiplying
+        // by the literal 1.0 factor is exact, so this pins weed to 11/$44.
+        assert_eq!(effective_restock_margin(0.35, 0), 0.35);
+        let eff = effective_restock_margin(0.35, 0);
+        assert_eq!(restock_unit(30, eff), 11);
+        assert_eq!(batch_cost(30, eff), 44);
+    }
+
+    #[test]
+    fn high_cred_zone_costs_less() {
+        // SOW-040: at the deepest tier weed and coke both restock cheaper than
+        // their cred-0 baselines (44 and 312).
+        assert_eq!(batch_cost(30, effective_restock_margin(0.35, 10)), 24);
+        assert!(24 < 44);
+        assert_eq!(batch_cost(120, effective_restock_margin(0.65, 10)), 172);
+        assert!(172 < 312);
+    }
+
+    #[test]
+    fn discount_lands_exactly_at_thresholds() {
+        // SOW-040: weed's batch cost steps down as cred crosses 3/6/10 - assert
+        // the exact step values, not merely "less".
+        let weed_batch = |cred| batch_cost(30, effective_restock_margin(0.35, cred));
+        assert_eq!(weed_batch(2), 44); // still full price just below the first step
+        assert_eq!(weed_batch(3), 36); // 0.85 factor
+        assert_eq!(weed_batch(6), 28); // 0.70 factor
+        assert_eq!(weed_batch(10), 24); // 0.55 factor
+    }
+
+    #[test]
+    fn restock_unit_is_monotonic_non_increasing_in_cred() {
+        // SOW-040: for every shipped product, restock_unit never INCREASES as
+        // cred climbs - guards against a rounding-induced bump anywhere on the
+        // ladder (0..=15 spans all thresholds and past the top tier).
+        for (name, base, margin) in SHIPPED {
+            let mut prev = restock_unit(base, effective_restock_margin(margin, 0));
+            for cred in 1..=15u32 {
+                let unit = restock_unit(base, effective_restock_margin(margin, cred));
+                assert!(
+                    unit <= prev,
+                    "{name}: restock_unit rose from {prev} to {unit} at cred {cred}"
+                );
+                prev = unit;
+            }
+        }
+    }
+
+    #[test]
+    fn never_free_and_never_underwater_at_deepest_discount() {
+        // SOW-040: even at the deepest factor the max(1) floor keeps restock
+        // non-free (a base-1 product still costs 1/charge), and the effective
+        // margin stays in (0,1) for every shipped (margin, cred) combo, so a
+        // 4-sale batch always clears its restock (SOW-034's invariant holds).
+        assert_eq!(restock_unit(1, effective_restock_margin(0.35, 10)), 1);
+        for (name, base, margin) in SHIPPED {
+            for cred in [0u32, 3, 6, 10, 15] {
+                let eff = effective_restock_margin(margin, cred);
+                assert!(eff > 0.0 && eff < 1.0, "{name}: effective margin {eff} left (0,1)");
+                assert!(
+                    batch_cost(base, eff) < base * crate::save::BATCH_SIZE,
+                    "{name}: a batch must clear under {} base sales at cred {cred}",
+                    crate::save::BATCH_SIZE
+                );
+            }
         }
     }
 

@@ -225,6 +225,18 @@ pub fn scenario(name: &str) -> Option<SaveData> {
                 save.dealers[0].add_cred(DEFAULT_STATION);
             }
         }
+        // SOW-040: cred discount e2e - kingpin repped deep in Trailer Park
+        // (10 cred -> the ladder's deepest 0.55 factor) with cash to restock.
+        // The Trailer Park weed card's RESTOCK/BUY BATCH reads $24 (0.35 x 0.55
+        // -> unit 6 x4), well below the cred-0 baseline of $44 (cross-check with
+        // any low-cred scenario, e.g. "fronted" = 1 cred, whose weed shows $44).
+        "widened" => {
+            save.account.cash_on_hand = 200;
+            save.dealers[0].character.heat = 10;
+            for _ in 0..10 {
+                save.dealers[0].add_cred(DEFAULT_STATION);
+            }
+        }
         _ => return None,
     }
     Some(save)
@@ -233,12 +245,12 @@ pub fn scenario(name: &str) -> Option<SaveData> {
 /// CLI entry: parse `<scenario> [--dir <path>]`, write the signed save
 pub fn run_cli(args: &[String]) {
     let Some(name) = args.first() else {
-        eprintln!("usage: forge <fresh|funded|roster|hot|mogul|hustler|nightowl|legacy|fronted|strapped|tut_offer|tut_front|tut_restock|tut_hire> [--dir <path>]");
+        eprintln!("usage: forge <fresh|funded|roster|hot|mogul|hustler|nightowl|legacy|fronted|strapped|tut_offer|tut_front|tut_restock|tut_hire|widened> [--dir <path>]");
         std::process::exit(2);
     };
 
     let Some(save) = scenario(name) else {
-        eprintln!("unknown scenario '{name}' (fresh|funded|roster|hot|mogul|hustler|nightowl|legacy|fronted|strapped|tut_offer|tut_front|tut_restock|tut_hire)");
+        eprintln!("unknown scenario '{name}' (fresh|funded|roster|hot|mogul|hustler|nightowl|legacy|fronted|strapped|tut_offer|tut_front|tut_restock|tut_hire|widened)");
         std::process::exit(2);
     };
     save.validate().expect("forged scenario must pass save validation");
@@ -268,6 +280,7 @@ mod tests {
         for name in [
             "fresh", "funded", "roster", "hot", "mogul", "hustler", "nightowl", "legacy",
             "fronted", "strapped", "tut_offer", "tut_front", "tut_restock", "tut_hire",
+            "widened",
         ] {
             let save = scenario(name).expect(name);
             save.validate().unwrap_or_else(|e| panic!("{name} invalid: {e:?}"));
@@ -299,6 +312,17 @@ mod tests {
         assert_eq!(save.dealers[1].station, "suburbia");
         assert_eq!(save.dealers[1].cred_in("suburbia"), 2); // Heroin's 5 stays locked
         assert!(save.account.unlocked_locations.contains("suburbia"));
+    }
+
+    #[test]
+    fn widened_scenario_shape() {
+        // SOW-040: the kingpin sits at the ladder's deepest tier (10 cred in
+        // Trailer Park), which drives best_cred there to 10 -> the 0.55 factor,
+        // so the shop's weed restock renders $24 vs the cred-0 baseline $44.
+        let save = scenario("widened").unwrap();
+        assert_eq!(save.dealers[0].cred_in(DEFAULT_STATION), 10);
+        assert_eq!(save.best_cred(DEFAULT_STATION), Some((0, 10)));
+        assert_eq!(save.account.cash_on_hand, 200);
     }
 
     #[test]
