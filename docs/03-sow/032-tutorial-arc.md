@@ -2,8 +2,9 @@
 
 ## Status
 
-**Planned** - 2026-07-13 (authored at the Iteration 10 pause; NOT started —
-launch is the next session's first move)
+**Review** - 2026-07-15 (implemented on the CURRENT main base =
+SOW-037/038/039 merged, SAVE_VERSION 10 → 11; reconciled to the settled loop —
+see Discussion)
 
 ## References
 
@@ -76,7 +77,81 @@ version bump handled per policy.
 
 ## Discussion
 
-*Populated during implementation.*
+### Reconciliation to the CURRENT loop (2026-07-15)
+
+The authored plan predated SOW-034 (consumable stock), SOW-036/038 (zone
+signature + unlockable dealers), and SOW-039 (generic-hire retirement). The
+beats were re-grounded on the loop as it exists on THIS base, as PURE
+predicates over EXISTING save fields (no new "record" fields — derive, don't
+record). Each authored beat mapped to a real current field:
+
+| # | Authored beat | Predicate over CURRENT SaveData |
+|---|---|---|
+| 1 | First deal | `account.hands_completed >= 1` |
+| 2 | Go home hot | `Σ dealers[*].character.decks_played >= 1` |
+| 3 | First front | `!fronts.is_empty()` (latched by the cursor) |
+| 4 | First payback | `fronts.is_empty()` **again** — reachable only past beat 3, so an empty ledger here means PAID or SOURED (both teach), never "never fronted" |
+| 5 | First rung → **restock** | `account.unlocked_cards != AccountState::starting_collection()` (a `buy_batch` grows the collection) |
+| 6 | Graduation (first $500 hire) | `dealers.len() >= 2` — ALSO short-circuits the whole arc to Graduated (hire-first fast-forwards past unwalked beats) |
+
+**Settled-loop reconciliations (the two that moved):**
+
+- **Map-only hiring (SOW-039).** The roster HIRE button is gone; the hub roster
+  shows a "Hire dealers on the CITY MAP" hint. The first hire is the zone's
+  SIGNATURE dealer (Bubba @ Trailer Park, $500, no cred gate) on the CITY MAP;
+  cred-gated unlockables (Gladys) need cred. Beat 6 therefore teaches MAP
+  hiring — its hint is "Open the CITY MAP and hire the zone's dealer", not a
+  roster button. Authored beat 5 ("first rung": a cash+cred shop unlock)
+  became **restock** because permanent unlocks were re-laddered into consumable
+  stock: the ladder the player now feels is buying the next batch.
+
+- **Products-only stock (SOW-034 / SOW-040 reversal).** Products are consumable
+  charges (buy/front a batch, each play burns one); UTILITY cards are NOT
+  consumable (Reed reversed SOW-040). The restock beat is therefore
+  products-only, and the front beats (3/4) ride the same batch/charge economy
+  the rest of the game uses.
+
+**The cursor.** `TutorialState { status, cursor }` — `cursor` is the latched
+high-water mark of walked beats (0..=6, an index into `Beat::ORDER`). It NEVER
+decrements; `advance(&SaveData)` walks it forward one beat at a time in order
+(the sequential gate is what gives beat 4 its "PAID" meaning) and flips to
+Graduated the moment `dealers.len() >= 2`. Only an Accepted run advances:
+Declined stays retired forever (resurrecting a skipped run's strip would break
+the no-benefit invariant), Graduated is terminal.
+
+**No-benefit invariant (hard constraint, testable).** The arc is purely
+presentational — it never touches cash/heat/cred/unlocked_cards/stock/roster.
+`tutorial_confers_no_gameplay_benefit` runs two identical action-histories
+(Accepted vs Declined) and asserts every economy field is identical while the
+tutorial state itself diverges.
+
+**Graduation display.** The strip retires WITH its closing beat: while
+Graduated it shows "You're not a dealer anymore. You're a kingpin." and drops
+its dismiss button (nothing left to skip). Declined hides the strip entirely.
+Offered hides the strip and raises the Block offer overlay instead.
+
+**Bevy lessons applied.** The offer overlay carries `FocusPolicy::Block`
+(GUIDANCE lesson 1) and is spawned only while `status == Offered`, AFTER the
+pending-upgrade early-return guard in `setup_deck_builder` (GUIDANCE lesson 2).
+No NEW state-wide resource was needed — the tutorial's state rides in SaveData
+(already a resource), so there is no bare `ResMut` on a conditionally-inserted
+resource. The three Update systems query for the strip/overlay entities, so the
+pending-upgrade frame (where the strip is not spawned) is a clean no-op.
+
+### Code map
+
+- `src/ui/tutorial_view.rs` (NEW, pure): `Beat`, `beat_satisfied`,
+  `derive_view` → `GoalStripView`, house-voice copy constants, graduation
+  short-circuit. Unit-tested without ECS.
+- `src/save/types.rs`: `TutorialStatus`, `TutorialState` (+ `advance`), the
+  `SaveData.tutorial` field, `SaveData::new` init, SAVE_VERSION 10 → 11.
+- `src/systems/tutorial.rs` (NEW): `tutorial_offer_button_system`,
+  `tutorial_progress_system`, `populate_goal_strip_system`,
+  `spawn_tutorial_offer_overlay`.
+- `src/ui/setup.rs`: goal strip (under the tabs) + conditional offer overlay.
+- `src/ui/components.rs`: the six markers.
+- `src/save/forge.rs`: `tut_offer` / `tut_front` / `tut_restock` / `tut_hire`
+  scenarios + the no-benefit invariant test.
 
 ---
 

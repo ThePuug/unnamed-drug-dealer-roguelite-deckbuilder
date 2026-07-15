@@ -169,6 +169,62 @@ pub fn scenario(name: &str) -> Option<SaveData> {
                 .insert(DEFAULT_STATION.to_string(), SupplierStanding::CutOff);
             save.fronts[0].runs_remaining = 1;
         }
+        // SOW-032: the one-time guided-start offer at empire start. A fresh
+        // empire is already Offered; this is the explicit e2e handle for
+        // "fresh empire shows the offer once".
+        "tut_offer" => {
+            save.tutorial = TutorialState {
+                status: TutorialStatus::Offered,
+                cursor: 0,
+            };
+        }
+        // SOW-032: guided arc mid-stream on beats 3/4 - a live Shrooms front on
+        // the books, cursor sitting on FIRST PAYBACK (paying it advances the
+        // strip). Beats 1-3 are walked; hands/decks satisfy 1-2, the front 3.
+        "tut_front" => {
+            save.tutorial = TutorialState {
+                status: TutorialStatus::Accepted,
+                cursor: 3,
+            };
+            save.account.cash_on_hand = 200; // enough to settle the $125 owed
+            save.account.hands_completed = 2;
+            save.dealers[0].character.decks_played = 1;
+            save.dealers[0].add_cred(DEFAULT_STATION);
+            save.account.unlocked_cards.insert("shrooms".to_string());
+            save.take_front("shrooms", DEFAULT_STATION, 100)
+                .expect("tut_front scenario takes the shrooms batch");
+        }
+        // SOW-032: guided arc on beat 5 - cursor on RESTOCK with a pristine
+        // collection and cash in pocket, so a SHOP buy_batch grows the
+        // collection and advances the strip to the graduation prompt. Beats 1-4
+        // are walked (hands, decks, and a clean ledger).
+        "tut_restock" => {
+            save.tutorial = TutorialState {
+                status: TutorialStatus::Accepted,
+                cursor: 4,
+            };
+            save.account.cash_on_hand = 800;
+            save.account.hands_completed = 4;
+            save.dealers[0].character.decks_played = 2;
+            for _ in 0..3 {
+                save.dealers[0].add_cred(DEFAULT_STATION);
+            }
+        }
+        // SOW-032: graduation beat - cursor on the hire prompt, $500 in pocket,
+        // Trailer Park unlocked (a fresh save already is). Hiring Bubba (the
+        // zone's $500 signature, no cred gate) on the CITY MAP graduates the arc.
+        "tut_hire" => {
+            save.tutorial = TutorialState {
+                status: TutorialStatus::Accepted,
+                cursor: 5,
+            };
+            save.account.cash_on_hand = 500;
+            save.account.hands_completed = 6;
+            save.dealers[0].character.decks_played = 3;
+            for _ in 0..3 {
+                save.dealers[0].add_cred(DEFAULT_STATION);
+            }
+        }
         _ => return None,
     }
     Some(save)
@@ -177,12 +233,12 @@ pub fn scenario(name: &str) -> Option<SaveData> {
 /// CLI entry: parse `<scenario> [--dir <path>]`, write the signed save
 pub fn run_cli(args: &[String]) {
     let Some(name) = args.first() else {
-        eprintln!("usage: forge <fresh|funded|roster|hot|mogul|hustler|nightowl|legacy|fronted|strapped> [--dir <path>]");
+        eprintln!("usage: forge <fresh|funded|roster|hot|mogul|hustler|nightowl|legacy|fronted|strapped|tut_offer|tut_front|tut_restock|tut_hire> [--dir <path>]");
         std::process::exit(2);
     };
 
     let Some(save) = scenario(name) else {
-        eprintln!("unknown scenario '{name}' (fresh|funded|roster|hot|mogul|hustler|nightowl|legacy|fronted|strapped)");
+        eprintln!("unknown scenario '{name}' (fresh|funded|roster|hot|mogul|hustler|nightowl|legacy|fronted|strapped|tut_offer|tut_front|tut_restock|tut_hire)");
         std::process::exit(2);
     };
     save.validate().expect("forged scenario must pass save validation");
@@ -211,7 +267,7 @@ mod tests {
         let dir = tempdir().unwrap();
         for name in [
             "fresh", "funded", "roster", "hot", "mogul", "hustler", "nightowl", "legacy",
-            "fronted", "strapped",
+            "fronted", "strapped", "tut_offer", "tut_front", "tut_restock", "tut_hire",
         ] {
             let save = scenario(name).expect(name);
             save.validate().unwrap_or_else(|e| panic!("{name} invalid: {e:?}"));
@@ -294,5 +350,159 @@ mod tests {
     #[test]
     fn unknown_scenario_is_none() {
         assert!(scenario("nope").is_none());
+    }
+
+    // ---- SOW-032: tutorial arc scenarios ----
+
+    #[test]
+    fn tut_offer_scenario_shape() {
+        let save = scenario("tut_offer").unwrap();
+        assert_eq!(save.tutorial.status, TutorialStatus::Offered);
+        assert_eq!(save.tutorial.cursor, 0);
+        assert_eq!(save.dealers.len(), 1); // just the kingpin
+    }
+
+    #[test]
+    fn tut_front_scenario_shape() {
+        use crate::ui::tutorial_view::{beat_satisfied, Beat};
+        let save = scenario("tut_front").unwrap();
+        assert_eq!(save.tutorial.status, TutorialStatus::Accepted);
+        assert_eq!(save.tutorial.cursor, 3);
+        // A live front sits the strip on FIRST PAYBACK: beat 3 satisfied,
+        // beat 4 (books clean) not yet.
+        assert!(beat_satisfied(&save, Beat::FirstFront));
+        assert!(!beat_satisfied(&save, Beat::FirstPayback));
+        assert_eq!(save.front_in(DEFAULT_STATION).unwrap().card_id, "shrooms");
+    }
+
+    #[test]
+    fn tut_front_paying_advances_past_beat_three_without_regress() {
+        use crate::ui::tutorial_view::{beat_satisfied, Beat};
+        let mut save = scenario("tut_front").unwrap();
+        assert!(save.pay_front(DEFAULT_STATION));
+        let mut tut = save.tutorial.clone();
+        tut.advance(&save);
+        // Walked past the paid front (beats 4 and 5 - shrooms grew the
+        // collection - both latch) without ever regressing beat 3.
+        assert!(tut.cursor >= 4);
+        assert!(!beat_satisfied(&save, Beat::FirstFront)); // raw predicate now false
+        assert!(tut.cursor >= 3); // but the cursor never dropped
+    }
+
+    #[test]
+    fn tut_restock_scenario_shape() {
+        use crate::ui::tutorial_view::{beat_satisfied, Beat};
+        let save = scenario("tut_restock").unwrap();
+        assert_eq!(save.tutorial.status, TutorialStatus::Accepted);
+        assert_eq!(save.tutorial.cursor, 4);
+        // Pristine collection (RESTOCK still pending) with cash to buy a batch.
+        assert!(!beat_satisfied(&save, Beat::Restock));
+        assert!(save.account.cash_on_hand >= 200);
+    }
+
+    #[test]
+    fn tut_restock_buying_a_batch_advances_the_strip() {
+        use crate::ui::tutorial_view::{beat_satisfied, Beat};
+        let mut save = scenario("tut_restock").unwrap();
+        assert!(save.account.buy_batch("shrooms", 50, BATCH_SIZE));
+        assert!(beat_satisfied(&save, Beat::Restock));
+        let mut tut = save.tutorial.clone();
+        tut.advance(&save);
+        assert_eq!(tut.cursor, 5); // walked onto the graduation prompt
+    }
+
+    #[test]
+    fn tut_hire_scenario_shape_and_graduation() {
+        let save = scenario("tut_hire").unwrap();
+        assert_eq!(save.tutorial.status, TutorialStatus::Accepted);
+        assert_eq!(save.tutorial.cursor, 5); // on the hire prompt
+        assert_eq!(save.dealers.len(), 1);
+        assert_eq!(save.account.cash_on_hand, 500);
+        assert!(save.account.unlocked_locations.contains(DEFAULT_STATION));
+
+        // Hiring the zone's signature (Bubba, $500, no cred gate) graduates.
+        let mut save = save;
+        let def = crate::models::shop_location::SignatureDealerDef {
+            name: "Bubba".to_string(),
+            portrait: "Bubba".to_string(),
+        };
+        assert!(save.hire_signature_dealer(DEFAULT_STATION, &def));
+        assert_eq!(save.dealers.len(), 2);
+        let mut tut = save.tutorial.clone();
+        tut.advance(&save);
+        assert_eq!(tut.status, TutorialStatus::Graduated);
+    }
+
+    #[test]
+    fn hire_first_save_derives_graduated_and_retired() {
+        use crate::ui::tutorial_view::{derive_view, GRADUATION_LINE};
+        // A guided player who hires before any other beat: dealers == 2, cursor
+        // still 0. advance fast-forwards to Graduated; the view retires.
+        let mut save = scenario("tut_offer").unwrap();
+        save.tutorial.status = TutorialStatus::Accepted;
+        save.dealers
+            .push(DealerState::zone_dealer(DEFAULT_STATION, "Bubba", "Bubba"));
+        assert_eq!(save.tutorial.cursor, 0);
+
+        let mut tut = save.tutorial.clone();
+        tut.advance(&save);
+        assert_eq!(tut.status, TutorialStatus::Graduated);
+
+        let view = derive_view(&save, &tut);
+        assert!(view.retired);
+        assert_eq!(view.line, GRADUATION_LINE);
+    }
+
+    #[test]
+    fn tutorial_confers_no_gameplay_benefit() {
+        // The hard invariant: two identical action-histories, one guided
+        // (Accepted) and one skipped (Declined), must leave IDENTICAL
+        // cash/heat/cred/unlocked_cards/stock/roster. The only difference
+        // permitted is the tutorial state itself.
+        let mut accepted = SaveData::new();
+        accepted.tutorial.status = TutorialStatus::Accepted;
+        let mut declined = SaveData::new();
+        declined.tutorial.status = TutorialStatus::Declined;
+
+        for save in [&mut accepted, &mut declined] {
+            save.account.cash_on_hand = 3000;
+            save.account.add_profit(300); // bank a hand (hands_completed, cash, revenue)
+            save.dealers[0].character.mark_deck_completed(); // go home (decks_played)
+            save.dealers[0].add_cred(DEFAULT_STATION); // a successful deal's cred
+            save.account.unlocked_cards.insert("shrooms".to_string());
+            save.take_front("shrooms", DEFAULT_STATION, 100).unwrap();
+            save.pay_front(DEFAULT_STATION);
+            save.account.buy_batch("codeine", 60, BATCH_SIZE);
+            // Advance the tutorial (only the guided run moves; economy untouched).
+            let mut tut = save.tutorial.clone();
+            tut.advance(save);
+            save.tutorial = tut;
+        }
+
+        assert_eq!(accepted.account.cash_on_hand, declined.account.cash_on_hand);
+        assert_eq!(
+            accepted.account.lifetime_revenue,
+            declined.account.lifetime_revenue
+        );
+        assert_eq!(
+            accepted.account.hands_completed,
+            declined.account.hands_completed
+        );
+        assert_eq!(
+            accepted.dealers[0].character.heat,
+            declined.dealers[0].character.heat
+        );
+        assert_eq!(
+            accepted.dealers[0].cred_in(DEFAULT_STATION),
+            declined.dealers[0].cred_in(DEFAULT_STATION)
+        );
+        assert_eq!(accepted.account.unlocked_cards, declined.account.unlocked_cards);
+        assert_eq!(accepted.account.stock, declined.account.stock);
+        assert_eq!(accepted.dealers.len(), declined.dealers.len());
+        assert_eq!(accepted.fronts, declined.fronts);
+        assert_eq!(accepted.supplier_standing, declined.supplier_standing);
+        // ...and the tutorial state DID diverge (proving the arc ran, not that
+        // it is silently inert).
+        assert_ne!(accepted.tutorial, declined.tutorial);
     }
 }
