@@ -70,6 +70,14 @@ pub fn setup_deck_builder(
         }
     }
 
+    // SOW-032: show the one-time guided-start offer only at empire start
+    // (status Offered). Captured before the spawn so the overlay is built
+    // inside the DeckBuilderRoot closure (inheriting scaling + on-exit cleanup).
+    let show_tutorial_offer = save_data
+        .as_ref()
+        .map(|d| d.tutorial.status == crate::save::TutorialStatus::Offered)
+        .unwrap_or(false);
+
     // SOW-020: Initialize shop state resource
     commands.insert_resource(crate::systems::ShopState::new());
     // SOW-029: fresh map state each time the hub spawns (closed, no
@@ -226,6 +234,62 @@ pub fn setup_deck_builder(
                 ShopFeedbackText,
             ));
         });
+
+        // SOW-032: Tutorial goal strip - one guided beat at a time, right
+        // under the tab row. Hidden by default (display None); the strip is
+        // slim and non-blocking (default FocusPolicy::Pass) so a hidden strip
+        // never intercepts hub clicks. populate_goal_strip_system owns its
+        // visibility + text.
+        parent
+            .spawn((
+                Node {
+                    width: Val::Percent(100.0),
+                    flex_direction: FlexDirection::Row,
+                    justify_content: JustifyContent::SpaceBetween,
+                    align_items: AlignItems::Center,
+                    column_gap: Val::Px(12.0),
+                    padding: UiRect::axes(Val::Px(14.0), Val::Px(8.0)),
+                    margin: UiRect::bottom(Val::Px(10.0)),
+                    border: UiRect::all(Val::Px(1.0)),
+                    border_radius: BorderRadius::all(Val::Px(8.0)),
+                    display: Display::None,
+                    ..default()
+                },
+                BackgroundColor(theme::V2_SCRIM_BG),
+                BorderColor::all(theme::LEDGER_TAB_BG),
+                GoalStrip,
+            ))
+            .with_children(|strip| {
+                strip.spawn((
+                    Text::new(""),
+                    TextFont::from_font_size(15.0),
+                    TextColor(theme::TEXT_HEADER),
+                    GoalStripText,
+                ));
+                // SKIP THE LESSONS - dismiss is always free (no beat held
+                // anything back), so it confers no gameplay benefit.
+                strip
+                    .spawn((
+                        Button,
+                        Node {
+                            width: Val::Px(160.0),
+                            height: Val::Px(34.0),
+                            justify_content: JustifyContent::Center,
+                            align_items: AlignItems::Center,
+                            border_radius: BorderRadius::all(Val::Px(6.0)),
+                            ..default()
+                        },
+                        BackgroundColor(theme::BUTTON_NEUTRAL_BG),
+                        GoalStripDismissButton,
+                    ))
+                    .with_children(|btn| {
+                        btn.spawn((
+                            Text::new(crate::ui::tutorial_view::DISMISS_LABEL),
+                            TextFont::from_font_size(12.0),
+                            TextColor(Color::WHITE),
+                        ));
+                    });
+            });
 
         // SOW-023: Operations roster - who's on the payroll, who's in jail,
         // who runs next. Children rebuilt by populate_roster_panel_system.
@@ -427,6 +491,15 @@ pub fn setup_deck_builder(
 
         // SOW-030: Kingpin ledger overlay (hidden; body populated on open)
         crate::systems::kingpin_ledger::spawn_ledger_overlay(parent);
+
+        // SOW-032: one-time guided-start offer (Block overlay), only at empire
+        // start. Spawned here - AFTER the pending-upgrade early-return guard at
+        // the top of setup_deck_builder (GUIDANCE lesson 2) - so the
+        // pending-upgrades frame never builds it. tutorial_offer_button_system
+        // despawns it once ACCEPT/DECLINE lands.
+        if show_tutorial_offer {
+            crate::systems::tutorial::spawn_tutorial_offer_overlay(parent);
+        }
     });
 
     // Story History Overlay (initially hidden)

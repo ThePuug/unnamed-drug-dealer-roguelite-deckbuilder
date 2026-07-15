@@ -28,7 +28,12 @@ use std::time::{SystemTime, UNIX_EPOCH};
 // face, now an authored UNLOCKABLE with signature_of set). Per the SOW-021
 // version-bump policy the mismatch wipes such saves to a fresh account, so no
 // pool-hired ghost survives the retirement (io.rs rejects the mismatch).
-pub const SAVE_VERSION: u32 = 10;
+// SOW-032: v11 adds SaveData.tutorial (the guided-play "Road to Your First
+// Dealer" arc: offer status + a latched beat cursor). serde-default keeps it
+// back-compat within the payload, but per the SOW-021 version-bump policy the
+// mismatch wipes older saves to a fresh account (io.rs rejects the mismatch) -
+// a fresh account re-offers the arc, which is exactly the intended state.
+pub const SAVE_VERSION: u32 = 11;
 
 /// Maximum sanity values for validation
 const MAX_HEAT: u32 = 10_000;
@@ -104,6 +109,75 @@ pub struct SaveData {
     /// Absent entries read Good - old saves start clean.
     #[serde(default)]
     pub supplier_standing: HashMap<String, SupplierStanding>,
+    /// SOW-032: the guided-play tutorial arc's progress. Purely presentational
+    /// (declining/dismissing confers NO gameplay benefit); a fresh empire is
+    /// Offered.
+    #[serde(default)]
+    pub tutorial: TutorialState,
+}
+
+/// SOW-032: where the player stands with the "Road to Your First Dealer" arc.
+/// A fresh empire is Offered; the offer overlay resolves to Accepted (guided)
+/// or Declined (skipped), and the first hire flips a guided run to Graduated.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum TutorialStatus {
+    /// The one-time offer is up at empire start (fresh or post-game-over).
+    #[default]
+    Offered,
+    /// Player took the guided start - the goal strip is live.
+    Accepted,
+    /// Player skipped (offer decline OR mid-arc dismiss) - no strip, ever.
+    /// Identical downstream experience to a game that never had the arc.
+    Declined,
+    /// A guided run's first hire landed - the arc retired with its closing line.
+    Graduated,
+}
+
+/// SOW-032: the tutorial arc's save state. `cursor` is the latched high-water
+/// mark of walked beats (0..=6, an index into `Beat::ORDER`); it NEVER
+/// decrements. Nothing here touches the economy - it is direction only.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Default)]
+pub struct TutorialState {
+    #[serde(default)]
+    pub status: TutorialStatus,
+    #[serde(default)]
+    pub cursor: u8,
+}
+
+impl TutorialState {
+    /// Latch the cursor forward through the beats the save now satisfies, in
+    /// order, and flip to Graduated the moment the first hire lands. PURE given
+    /// the save; NEVER decrements the cursor; NEVER touches economy.
+    ///
+    /// Only a guided (Accepted) run moves: Offered waits on the offer button,
+    /// Declined stays retired (resurrecting a skipped run's strip would break
+    /// the no-benefit invariant), and Graduated is terminal.
+    pub fn advance(&mut self, save: &SaveData) {
+        use crate::ui::tutorial_view::{beat_satisfied, Beat};
+
+        if self.status != TutorialStatus::Accepted {
+            return;
+        }
+
+        // Graduation short-circuit: the first hire ends the arc regardless of
+        // how many beats were walked (hire-first fast-forwards past the middle).
+        if beat_satisfied(save, Beat::Graduation) {
+            self.cursor = Beat::ORDER.len() as u8;
+            self.status = TutorialStatus::Graduated;
+            return;
+        }
+
+        // Walk forward one beat at a time, in order, while satisfied. The
+        // sequential gate is what makes beat 4 ("books clean AGAIN") mean PAID
+        // rather than "never fronted": the cursor cannot reach it before beat 3
+        // (front taken) latched. Graduation is handled above, never auto-walked.
+        while let Some(beat) = Beat::at_cursor(self.cursor) {
+            if beat == Beat::Graduation || !beat_satisfied(save, beat) {
+                break;
+            }
+            self.cursor += 1;
+        }
+    }
 }
 
 /// SOW-031: a batch of product taken on credit from a zone's supplier.
@@ -214,6 +288,9 @@ impl SaveData {
             fallen_empires: Vec::new(),
             fronts: Vec::new(),
             supplier_standing: HashMap::new(),
+            // SOW-032: a fresh empire is offered the guided start. reset_empire
+            // routes through new(), so every fresh empire re-offers the arc.
+            tutorial: TutorialState::default(),
         }
     }
 
@@ -1440,6 +1517,14 @@ pub struct AccountState {
     /// without changing access. Absent entries read 0 (`charges_in`).
     #[serde(default)]
     pub stock: HashMap<String, u32>,
+    /// SOW-032: count of product batches bought in the SHOP (via `buy_batch`).
+    /// The seeded starter batch uses `add_stock`, not `buy_batch`, so this is 0
+    /// on a fresh save and increments only on a real cash product purchase -
+    /// including a same-product restock. The tutorial's Restock beat reads this
+    /// directly instead of proxying off collection growth (which both
+    /// false-fires on non-product unlocks and false-misses on a restock).
+    #[serde(default)]
+    pub product_batches_bought: u32,
 }
 
 impl AccountState {
@@ -1451,6 +1536,7 @@ impl AccountState {
             unlocked_cards: Self::starting_collection(),
             unlocked_locations: HashSet::from(["trailer_park".to_string()]),
             stock: HashMap::new(),
+            product_batches_bought: 0,
         };
         // SOW-034: seed one Weed batch so turn 1 is playable without a forced
         // front (0-start is legal since fronting is the floor, but a seeded
@@ -1569,6 +1655,11 @@ impl AccountState {
         }
         self.unlocked_cards.insert(card_id.to_string());
         self.add_stock(card_id, batch);
+        // SOW-032: a real cash product purchase - the event the tutorial's
+        // Restock beat teaches (distinct from the seeded starter, which uses
+        // add_stock, and from non-product one-time unlocks, which never reach
+        // buy_batch).
+        self.product_batches_bought = self.product_batches_bought.saturating_add(1);
         true
     }
 
@@ -2003,17 +2094,23 @@ mod tests {
         let mut account = AccountState::new();
         account.cash_on_hand = 112; // two batches at 14 x 4 = 56 each
         assert!(!account.unlocked_cards.contains("shrooms"));
+        // SOW-032: the seeded starter weed batch uses add_stock, not buy_batch,
+        // so the tutorial's product-batch counter starts at 0.
+        assert_eq!(account.product_batches_bought, 0);
 
         // First buy: 56 spent, access granted, 4 charges added
         assert!(account.buy_batch("shrooms", 14, BATCH_SIZE));
         assert_eq!(account.cash_on_hand, 56);
         assert!(account.unlocked_cards.contains("shrooms"));
         assert_eq!(account.charges_in("shrooms"), 4);
+        assert_eq!(account.product_batches_bought, 1);
 
-        // Restock: adds another batch, no re-unlock, spends again
+        // Restock: adds another batch, no re-unlock, spends again - and the
+        // counter climbs even though access did not change.
         assert!(account.buy_batch("shrooms", 14, BATCH_SIZE));
         assert_eq!(account.cash_on_hand, 0);
         assert_eq!(account.charges_in("shrooms"), 8);
+        assert_eq!(account.product_batches_bought, 2);
     }
 
     #[test]
@@ -2024,6 +2121,8 @@ mod tests {
         assert_eq!(account.cash_on_hand, 40);
         assert!(!account.unlocked_cards.contains("shrooms"));
         assert_eq!(account.charges_in("shrooms"), 0);
+        // SOW-032: a refused buy is a no-op - the counter must not move.
+        assert_eq!(account.product_batches_bought, 0);
     }
 
     // ------------------------------------------------------------------
@@ -2300,6 +2399,42 @@ mod tests {
         assert!(data.fronts.is_empty(), "debts die with the empire");
         assert_eq!(data.standing_with("red_light_district"), SupplierStanding::Good);
         assert_eq!(data.fallen_empires.len(), 1);
+    }
+
+    // ---- SOW-032: tutorial arc save state ----
+
+    #[test]
+    fn tutorial_save_version_is_eleven() {
+        assert_eq!(SAVE_VERSION, 11);
+    }
+
+    #[test]
+    fn fresh_empire_offers_the_tutorial() {
+        let data = SaveData::new();
+        assert_eq!(data.tutorial.status, TutorialStatus::Offered);
+        assert_eq!(data.tutorial.cursor, 0);
+    }
+
+    #[test]
+    fn reset_empire_reoffers_the_tutorial() {
+        let mut data = SaveData::new();
+        data.tutorial.status = TutorialStatus::Graduated;
+        data.tutorial.cursor = 6;
+        data.account.cash_on_hand = 999; // ensure a real epitaph is carved
+        data.reset_empire();
+        assert_eq!(data.tutorial.status, TutorialStatus::Offered);
+        assert_eq!(data.tutorial.cursor, 0);
+    }
+
+    #[test]
+    fn tutorial_state_roundtrips_through_bincode() {
+        let mut data = SaveData::new();
+        data.tutorial.status = TutorialStatus::Accepted;
+        data.tutorial.cursor = 3;
+        let bytes = bincode::serialize(&data).unwrap();
+        let loaded: SaveData = bincode::deserialize(&bytes).unwrap();
+        assert_eq!(loaded.tutorial.status, TutorialStatus::Accepted);
+        assert_eq!(loaded.tutorial.cursor, 3);
     }
 
     #[test]

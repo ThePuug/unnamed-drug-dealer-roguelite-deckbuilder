@@ -513,6 +513,38 @@ pub struct MapAreaDealerHireButton {
 }
 
 // ============================================================================
+// SOW-032: Tutorial Arc ("Road to Your First Dealer")
+// ============================================================================
+
+/// Slim goal strip under the tab row (child of DeckBuilderRoot). Shows one
+/// guided beat at a time; populate_goal_strip_system owns its visibility.
+#[derive(Component)]
+pub struct GoalStrip;
+
+/// The strip's text (current beat line + hint, or the graduation send-off)
+#[derive(Component)]
+pub struct GoalStripText;
+
+/// "SKIP THE LESSONS" - dismisses the arc mid-stream (always free; retires the
+/// strip, confers no gameplay benefit)
+#[derive(Component)]
+pub struct GoalStripDismissButton;
+
+/// One-time offer overlay root at empire start. FocusPolicy::Block (GUIDANCE
+/// lesson 1) so the offer owns the hub until the player decides; spawned only
+/// while tutorial.status == Offered, despawned by tutorial_offer_button_system.
+#[derive(Component)]
+pub struct TutorialOfferOverlay;
+
+/// "TAKE THE GUIDED START" - accept the arc (-> Accepted)
+#[derive(Component)]
+pub struct TutorialAcceptButton;
+
+/// "I KNOW THE STREETS" - skip the arc (-> Declined; identical to pre-arc play)
+#[derive(Component)]
+pub struct TutorialDeclineButton;
+
+// ============================================================================
 // SOW-030: Kingpin Ledger overlay
 // ============================================================================
 

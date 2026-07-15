@@ -15,6 +15,7 @@ pub mod map_view; // SOW-029: pure view-model logic for the city map overlay
 pub mod ledger_view; // SOW-030: pure view-model logic for the kingpin ledger
 pub mod front_view; // SOW-031: pure view-model logic for supplier fronts
 pub mod stock_view; // SOW-034: pure view-model logic for consumable product stock
+pub mod tutorial_view; // SOW-032: pure beat detection + goal-strip presentation
 
 // Re-exports for convenience
 pub use helpers::*;

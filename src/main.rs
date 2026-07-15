@@ -160,6 +160,14 @@ fn main() {
             front_pay_system,
             update_front_pressure_system,
             shop_save_refresh_system, // SOW-031 review: cash moved -> re-offer FRONTs
+            // SOW-032: tutorial arc - self-contained too (reads SaveData, writes
+            // only the strip/overlay entities + the save). No new UI-state
+            // resource: the tutorial's state (offer status + beat cursor) rides
+            // in SaveData, which is already a resource, so GUIDANCE lesson 2 (a
+            // bare ResMut on a conditionally-inserted resource) does not apply.
+            tutorial_offer_button_system,
+            tutorial_progress_system,
+            populate_goal_strip_system,
         ).chain().run_if(in_state(GameState::DeckBuilding)))
         .run();
 }
